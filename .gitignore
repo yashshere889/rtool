@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# local run directories and big binaries
+runs/
+rtool-runs/
+*.sif
+*.img
+
+# never commit credentials
+secrets.env
+*.secrets

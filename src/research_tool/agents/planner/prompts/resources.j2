@@ -1,0 +1,21 @@
+List the datasets, models and code this experiment needs.
+
+Hypothesis: {{ h.statement }}
+Design: {{ core.design }}
+Procedure:
+{% for step in core.procedure %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+Datasets mentioned in the collected literature: {{ known_datasets | join(", ") or "none" }}
+{% if issues %}
+
+Problems with the previous list that you must fix:
+{% for i in issues %}
+- {{ i }}
+{% endfor %}
+{% endif %}
+
+Rules:
+- Prefer public resources on the Hugging Face Hub: source "huggingface" with the exact repository id (for example "imdb" or "google-bert/bert-base-uncased").
+- Use source "url" only for a direct download link, "torchvision" for torchvision datasets, "pip" for software packages, and "manual" only if nothing public exists.
+- Only give identifiers you are confident exist; prefer well-known resources.

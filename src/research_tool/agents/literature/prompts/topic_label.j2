@@ -1,0 +1,6 @@
+These papers were grouped together because their abstracts use similar language.
+Give the group a short name (2 to 6 words) and one sentence saying what the papers have in common.
+
+{% for p in papers %}
+- {{ p.title }} ({{ p.year or "n.d." }})
+{% endfor %}

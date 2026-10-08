@@ -1,0 +1,21 @@
+You are editing the "{{ title }}" section of a research report after peer review. Rewrite it so that it
+addresses every review point below. Keep what is right; change only what the points require.
+
+## Review points
+{% for p in points %}- {{ p }}
+{% endfor %}
+
+## Rules
+- Results appear only as placeholders from the list below, copied exactly; never type those numbers.
+- Cite only these keys, as [@key]: {{ keys | join(", ") if keys else "(none — do not cite)" }}.
+- Do not add claims about prior work that the current text does not already support with a citation.
+{% if values %}
+
+## Placeholders
+{% for key, value in values %}- {{ "{{" }}{{ key }}{{ "}}" }} — {{ value.meaning }}; renders as "{{ value.text }}"
+{% endfor %}{% endif %}
+
+## Current text
+{{ text }}
+
+Reply with the revised section text only (no heading).

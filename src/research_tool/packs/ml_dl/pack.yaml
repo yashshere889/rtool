@@ -1,0 +1,15 @@
+name: ml_dl
+description: Machine-learning and deep-learning experiments with PyTorch.
+smoke: >-
+  When smoke is True, use at most SMOKE_EXAMPLES examples, SMOKE_STEPS optimisation steps and
+  evaluate on the same tiny subset, so the run finishes in under a minute on a CPU.
+packages: [torch, numpy, transformers, accelerate]
+hints:
+  - Use PyTorch. Put the model and every batch on `device()`; evaluate under `torch.no_grad()`.
+  - Load datasets and pretrained models only from the local paths in `resources` (Hugging Face
+    snapshots, so `from_pretrained(path)` and parquet/json/csv files work); never download.
+  - Keep BATCH_SIZE as a module-level constant and use it everywhere — the tool halves it
+    automatically if a run runs out of memory.
+  - Seeds are already set by the caller; also pass `seed` to data shuffling (torch.Generator).
+  - Return plain Python floats (`float(tensor.item())`), never tensors.
+  - Save checkpoints only under `workdir`, and only if the run needs them.

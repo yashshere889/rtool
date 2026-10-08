@@ -1,0 +1,25 @@
+Write the "{{ title }}" section of a research report.
+
+{{ instructions }}
+
+## Rules
+- Markdown paragraphs only: no heading, no title, no bullet lists unless asked.
+- Cite prior work only with the keys listed in the material, as [@key] (several: [@a; @b]). Never invent a key.
+{% if values %}- Never type a number from our experiment. Write its placeholder instead, exactly as listed, e.g. "accuracy rose to {{ example }}".
+{% else %}- Only use numbers that appear in the material below.
+{% endif %}- Be precise and honest: say "not significant" when the material says so, and never overstate.
+{% if values %}
+
+## Placeholders for our results (the text after the dash is for you, not for the report)
+{% for key, value in values %}- {{ "{{" }}{{ key }}{{ "}}" }} — {{ value.meaning }}; renders as "{{ value.text }}"
+{% endfor %}{% endif %}
+
+## Material
+{{ material }}
+{% if feedback %}
+
+## Requests from the researcher or reviewers — address them
+{% for item in feedback %}- {{ item }}
+{% endfor %}{% endif %}
+
+Reply with the section text only.

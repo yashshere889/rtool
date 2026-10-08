@@ -1,0 +1,16 @@
+Extract structured facts from the paper below, for a literature review on: {{ topic }}
+
+Rules:
+- Use only what the paper text states. If something is not stated, leave it empty.
+- Every "quote" must be copied word for word from the paper text: one complete sentence or clause. Never paraphrase a quote.
+- key_results: up to 8 concrete findings, with the method, dataset, metric and value whenever the paper states them.
+- limitations and future_work: only what the authors themselves say.
+{% if abstract_only %}
+- Only the abstract is available, so there will be few results; that is fine.
+{% endif %}
+
+Paper title: {{ title }}
+Paper text:
+<<<
+{{ text }}
+>>>

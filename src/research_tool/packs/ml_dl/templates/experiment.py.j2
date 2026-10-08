@@ -1,0 +1,31 @@
+"""Experiment: {{ hypothesis }}
+
+Written by the rtool Coder from the approved plan. Edit freely; then run
+`rtool retry <run> --resume`. run.py calls run(...) once per condition and seed.
+"""
+
+# requirements:
+
+from __future__ import annotations
+
+import torch
+
+BATCH_SIZE = 32  # halved automatically if a run runs out of memory
+SMOKE_EXAMPLES = 64  # examples used when smoke=True
+SMOKE_STEPS = 2  # optimisation steps when smoke=True
+
+CONDITIONS = {{ conditions }}  # name -> description
+METRICS = {{ metrics }}  # run() returns a float for each
+
+
+def device() -> torch.device:
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def run(condition: str, seed: int, resources: dict[str, str], smoke: bool, workdir: str) -> dict[str, float]:
+    """Run one condition with one seed and return {metric: value} for every name in METRICS.
+
+    resources maps resource names to local paths (already downloaded).
+    smoke=True: at most SMOKE_EXAMPLES examples and SMOKE_STEPS steps, same code path.
+    """
+    raise NotImplementedError("the rtool Coder implements the experiment here")

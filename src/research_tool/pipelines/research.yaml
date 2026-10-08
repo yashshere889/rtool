@@ -1,0 +1,57 @@
+# The research pipeline:
+#   literature -> hypotheses -> plan -> fetch -> code -> report -> review
+# Human gates: literature_review, hypothesis_selection, experiment_plan, gpu_runs (inside
+# the code stage, before any GPU time is spent) and final_report. Set any of them to
+# `auto` under gates.modes in the config for unattended runs.
+name: research
+description: From a topic to a reviewed report, with a human gate before every costly or irreversible step.
+initial_artifacts: [research_brief]
+
+gates:
+  literature_review:
+    kind: approve
+    prompt: >-
+      Review the corpus and knowledge map. Approve to continue, or reject with feedback
+      (e.g. "focus on X", "drop Y"). Add paywalled papers with `rtool add-paper`.
+  hypothesis_selection:
+    kind: select
+    prompt: Choose the hypothesis to test (or reject with feedback to get new ones).
+    options_artifact: hypothesis_set
+    options_path: hypotheses
+    selection_artifact: selected_hypothesis
+  experiment_plan:
+    kind: approve
+    prompt: >-
+      Review the experiment plan, especially resources and compute. Approving lets the
+      tool download the listed datasets and models on Barkla.
+  final_report:
+    kind: approve
+    prompt: >-
+      Read the final report and the review (verdict, scores, checks, open issues).
+      Approve to finish, or reject with feedback for another round of writing and review.
+
+stages:
+  - id: literature
+    agent: literature
+    gate: literature_review
+
+  - id: hypotheses
+    agent: hypothesis
+    gate: hypothesis_selection
+
+  - id: plan
+    agent: planner
+    gate: experiment_plan
+
+  - id: fetch
+    agent: fetch_resources
+
+  - id: code
+    agent: coder
+
+  - id: report
+    agent: writer
+
+  - id: review
+    agent: reviewer
+    gate: final_report

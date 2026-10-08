@@ -1,0 +1,13 @@
+Check the report sections below against the facts. List every sentence that contradicts the facts: a
+difference called significant when it is not (or the other way round), the wrong direction ("improved"
+when it got worse), a condition that did better described as worse, or a claim the results cannot support.
+List nothing else; an empty list is a fine answer.
+
+## Facts from the experiment (computed, reliable)
+{{ facts }}
+
+## Sections
+{% for section in sections %}### {{ section.id }}
+{{ section.text }}
+
+{% endfor %}

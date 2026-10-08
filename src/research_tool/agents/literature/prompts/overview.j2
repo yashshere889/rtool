@@ -1,0 +1,12 @@
+Write a state-of-the-art overview for a researcher starting work on: {{ topic }}
+Use 2 to 4 paragraphs. Base every statement on the papers below and cite them as [key], using only the keys listed.
+Say what is well established, where results disagree, and what is missing.
+
+{% for p in papers %}
+[{{ p.key }}] {{ p.title }} ({{ p.year or "n.d." }})
+  Problem: {{ p.problem }}
+  Approach: {{ p.approach }}
+{% for r in p.results %}
+  Result: {{ r }}
+{% endfor %}
+{% endfor %}

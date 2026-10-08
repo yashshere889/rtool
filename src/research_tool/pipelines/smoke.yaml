@@ -1,0 +1,27 @@
+# Cluster smoke test: checks the whole episode chain on Barkla in a few minutes of GPU time.
+#   source  (LLM, GPU episode)  -> gate numbers_review (rtool approve)
+#   analyze (no LLM, CPU episode) submits a 1-core Slurm job and waits for it
+#   write   (LLM, GPU episode)  -> done
+#
+#     rtool new smoke --topic "anything" --pipeline smoke && rtool run smoke
+name: smoke
+description: Checks the episode chain on a real cluster (LLM, human gate, Slurm job, CPU/GPU hand-over).
+initial_artifacts: [research_brief]
+
+gates:
+  numbers_review:
+    kind: approve
+    prompt: Approve to continue the smoke test.
+
+stages:
+  - id: source
+    agent: toy_source
+    gate: numbers_review
+    config: {count: 5}
+
+  - id: analyze
+    agent: toy_analyzer
+    config: {use_job: true, partition: nodes}
+
+  - id: write
+    agent: toy_writer

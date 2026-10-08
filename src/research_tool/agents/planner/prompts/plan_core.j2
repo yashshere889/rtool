@@ -1,0 +1,39 @@
+Design an experiment to test this hypothesis.
+
+Hypothesis: {{ h.statement }}
+Null hypothesis: {{ h.null_hypothesis }}
+Why it is plausible: {{ h.rationale }}
+Independent variables: {{ h.independent_variables | join(", ") }}
+Dependent variables: {{ h.dependent_variables | join(", ") }}
+Controls: {{ h.controls | join(", ") or "none given" }}
+Suggested data and methods: {{ (h.datasets + h.methods) | join(", ") or "none given" }}
+Success criteria: {{ h.success_criteria }}
+
+What the literature says about methods and data (excerpts):
+{% for s in snippets %}
+- {{ s.title }} [{{ s.section }}]: {{ s.text }}
+{% endfor %}
+
+Available compute:
+{{ compute }}
+{% if feedback %}
+
+Feedback from the researcher (follow it):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
+{% if issues %}
+
+Problems with the previous version that you must fix:
+{% for i in issues %}
+- {{ i }}
+{% endfor %}
+{% endif %}
+
+Requirements:
+- Compare at least one baseline condition with the treatment condition(s); mark baselines with is_baseline = true.
+- Use short snake_case names for conditions and metrics.
+- Use at least {{ min_seeds }} seeds (independent runs) per condition, and statistical tests that fit the design.
+- Write the procedure as concrete steps a programmer can implement: loading data, preprocessing, training or analysis, evaluation, saving results.
+- Keep it achievable with the compute above within a few days.

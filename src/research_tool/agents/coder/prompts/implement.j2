@@ -1,0 +1,44 @@
+Write the complete Python file `experiment.py` for this experiment.
+
+## Hypothesis
+{{ plan.hypothesis }}
+Null hypothesis: {{ plan.null_hypothesis }}
+
+## Design
+{{ plan.design }}
+
+## Conditions — run() receives one of these names
+{% for c in conditions %}- `{{ c.name }}`{% if c.is_baseline %} (baseline){% endif %}: {{ c.description }}
+{% endfor %}
+## Metrics — run() returns a dict with exactly these keys, as floats
+{% for m in plan.metrics %}- `{{ m.name }}` ({{ "higher" if m.higher_is_better else "lower" }} is better): {{ m.definition }}
+{% endfor %}
+## Procedure
+{% for step in plan.procedure %}{{ loop.index }}. {{ step }}
+{% endfor %}
+## Data and models — already downloaded; use these local paths and never download
+{% for r in resources %}- resources["{{ r.name }}"]: {{ r.kind }} from {{ r.source }}:{{ r.identifier }}{% if r.files %}; files: {{ r.files }}{% endif %}
+{% else %}- (none downloaded{% if not deferred %}: generate or simulate the data in code{% endif %})
+{% endfor %}
+{% for r in deferred %}- `{{ r.name }}` ({{ r.source }}:{{ r.identifier }}) is not pre-downloaded: {% if r.source == "pip" %}add it to the `# requirements:` line{% else %}fetch it into `workdir` in code (downloads are allowed for this one){% endif %}.
+{% endfor %}
+## Environment
+- Python 3.10. Installed: {{ packages | join(", ") }}.
+- Need another pip package? List it on the `# requirements:` line at the top of the file (comma-separated).
+- Full runs get {{ gpu }}; smoke runs use only the CPU.
+{% for hint in pack.hints %}- {{ hint }}
+{% endfor %}
+## Contract (checked automatically)
+- Keep the signature exactly: `def run(condition: str, seed: int, resources: dict[str, str], smoke: bool, workdir: str) -> dict[str, float]`.
+- {{ pack.smoke }}
+- Write files only under `workdir`. Print a few short progress lines, nothing large.
+{% if feedback %}
+## Requests from the researcher or reviewers — address every one
+{% for f in feedback %}- {{ f }}
+{% endfor %}{% endif %}
+## Start from this skeleton
+```python
+{{ skeleton }}
+```
+
+Reply with the complete `experiment.py` in one ```python code block and nothing after it.

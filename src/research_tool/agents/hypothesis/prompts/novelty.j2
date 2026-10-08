@@ -1,0 +1,11 @@
+Decide whether this hypothesis has already been tested by one of the papers below.
+
+Hypothesis: {{ statement }}
+
+The most similar papers in the collected literature:
+{% for p in neighbours %}
+[{{ p.id }}] {{ p.title }} ({{ p.year or "n.d." }})
+  {{ p.summary }}
+{% endfor %}
+
+Answer novel = false only if one of these papers already tests essentially the same claim in the same setting.

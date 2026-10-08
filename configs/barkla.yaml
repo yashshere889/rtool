@@ -1,0 +1,86 @@
+# Site configuration for Barkla2 (University of Liverpool). Use it on the cluster with
+#     export RTOOL_CONFIG="$HOME/Research tool/configs/barkla.yaml"
+# Facts come from the Research IT documentation (2025.1) and were checked on the cluster
+# with scripts/probe_barkla.sh on 2026-10-08 (see docs/barkla_runbook.md).
+
+paths:
+  runs_root: /mnt/scratch/users/${USER}/rtool/projects   # jobs must be submitted from scratch
+  resources_root: /mnt/scratch/users/${USER}/rtool/resources  # datasets/models, shared by all runs
+  archive_root: /users/${USER}/data/rtool-archive   # `rtool archive` (login node): data is backed up, scratch is not
+
+knowledge:
+  embedder: fastembed                     # your choice: BAAI/bge-small-en-v1.5 (~130 MB, downloaded once on Barkla)
+  embedder_model: BAAI/bge-small-en-v1.5
+  cache_dir: /mnt/scratch/users/${USER}/rtool/models/fastembed
+
+llm:
+  backend: vllm
+  model: nvidia/NVIDIA-Nemotron-Nano-12B-v2
+  served_model: nemotron
+  # Without a server-side reasoning parser, JSON constraints would also bind the thinking,
+  # so reasoning-on JSON is done in two calls: think freely, then format.
+  structured_with_reasoning: false
+  concurrency: 32   # llm-bench on one L40S: 23 tokens/s for 1 request, 160 at 8, 507 at 32
+  server:
+    # Expanded when the server starts, after `module load nemotron/...` sets it. The image has
+    # vLLM 0.11.0, torch 2.8.0, transformers 4.57.1 and xgrammar (Python 3.10).
+    container: $NEMOTRON_SIF
+    modules: [apptainer/1.3.6, nemotron/nano-12b-v2]
+    hf_home: /mnt/scratch/users/${USER}/rtool/hf    # model weights (~25 GB), downloaded once by scripts/fetch_model.sh
+    home: /mnt/scratch/users/${USER}/rtool/vllm-home  # caches stay off your home; ~/.local stays hidden
+    binds: [/mnt/scratch, /mnt/fastscratch]
+    max_model_len: 65536
+    gpu_memory_utilization: 0.90
+    # Model-card flags, plus eager loading: on Lustre, whole-file reads run at ~1.6 GB/s while
+    # vLLM's default memory-mapped loading managed ~0.12 GB/s (3.5 min per cold start).
+    extra_args: [--trust-remote-code, --mamba_ssm_cache_dtype, float32, --safetensors-load-strategy, eager]
+    # vLLM's deepseek_r1 parser needs <think>/</think> as single tokens, which this tokenizer lacks
+    # (it refused to start). rtool splits the reasoning from the answer itself instead.
+    reasoning_parser: null
+
+experiments:
+  # Experiments run in the Nemotron image too: torch 2.8.0 + CUDA 12.8, transformers 4.57.1,
+  # accelerate 1.11 (Python 3.10). Anything else is pip-installed into a venv layered on it.
+  container: $NEMOTRON_SIF
+  modules: [apptainer/1.3.6, nemotron/nano-12b-v2]
+  binds: [/mnt/scratch, /mnt/fastscratch]
+  home: /mnt/scratch/users/${USER}/rtool/exp-home   # fresh HOME: ~/.local stays out
+  packages: [torch, numpy, transformers, accelerate, tokenizers, safetensors, huggingface_hub, pydantic]
+  max_parallel_runs: 4                                # GPUs one run may use at the same time
+
+slurm:
+  backend: real
+  submit_roots: [/mnt/scratch, /mnt/fastscratch]
+  max_jobs_in_queue: 900
+  experiment_partitions: [gpu-l40s, gpu-h100, gpu-v100]   # your choice: common partitions only
+  partitions:
+    gpu-l40s: {gpu_type: l40s, gpus_per_node: 2, gpu_memory_gb: 48, max_time: "3-00:00:00", note: "gpu[41-44], common"}
+    gpu-h100: {gpu_type: h100, gpus_per_node: 4, gpu_memory_gb: 80, max_time: "3-00:00:00", note: "gpu[31-33], common"}
+    gpu-v100: {gpu_type: v100, gpus_per_node: 4, gpu_memory_gb: 16, max_time: "3-00:00:00", note: "gpu05, common"}
+    # Low priority: free to use, but preempted (requeued) when the owners need them. LLM episodes only.
+    gpu-l40s-low: {gpu_type: l40s, gpus_per_node: 2, gpu_memory_gb: 48, max_time: "1-00:00:00", preemptible: true, note: "gpu[45-48]"}
+    gpu-a-lowsmall: {gpu_type: a40, gpu_types: [a40, a100], gpus_per_node: 2, gpu_memory_gb: 40, max_time: "1-00:00:00", preemptible: true, note: "gpu[11-16] 2x A100, gpu[21-24] 2x A40"}
+    gpu-a100-lowbig: {gpu_type: a100, gpus_per_node: 3, gpu_memory_gb: 40, max_time: "1-00:00:00", preemptible: true, note: "gpu[06-09], 3-4x A100"}
+    nodes: {max_time: "3-00:00:00", note: "default CPU partition, 168 cores/node"}
+    short: {max_time: "1-00:00:00", note: "CPU cores of gpu[41-44]"}
+    long: {max_time: "7-00:00:00", note: "4 CPU nodes"}
+  episode:
+    partition: gpu-l40s
+    gpu_type: l40s
+    # Your choice: LLM episodes take any free GPU with >= 40 GB. Each submission asks Slurm
+    # (sbatch --test-only) when each would start; the soonest wins, but an earlier entry is
+    # kept if it starts within prefer_within_minutes. Preempted episodes are requeued and resume.
+    gpu_choices:
+      - {partition: gpu-l40s, gpu_type: l40s}
+      - {partition: gpu-h100, gpu_type: h100}
+      - {partition: gpu-l40s-low, gpu_type: l40s}
+      - {partition: gpu-a-lowsmall, gpu_type: a40}
+      - {partition: gpu-a-lowsmall, gpu_type: a100}
+      - {partition: gpu-a100-lowbig, gpu_type: a100}
+    prefer_within_minutes: 30
+    gpus: 1
+    cpu_partition: nodes
+    time_limit: "08:00:00"
+    modules: [apptainer/1.3.6, miniforge3/25.3.0-python3.12.10, nemotron/nano-12b-v2]
+    activate: /mnt/fastscratch/users/${USER}/rtool/venv/bin/activate
+    config_files: ["~/Research tool/configs/barkla.yaml"]

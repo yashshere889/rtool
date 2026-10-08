@@ -1,0 +1,28 @@
+# Demo pipeline: exercises a post-stage gate, an in-stage gate, a Slurm wait,
+# and a revision loop (the writer asks the analyzer for the variance).
+name: toy
+description: Three toy stages that show gates, a Slurm wait and a change request.
+initial_artifacts: [research_brief]
+
+gates:
+  numbers_review:
+    kind: approve
+    prompt: Check the numbers before they are analysed.
+  final:
+    kind: approve
+    prompt: Sign off the report.
+
+stages:
+  - id: source
+    agent: toy_source
+    gate: numbers_review
+    config: {count: 5}
+
+  - id: analyze
+    agent: toy_analyzer
+    config: {use_job: true, gate: gpu_runs}
+
+  - id: write
+    agent: toy_writer
+    gate: final
+    config: {require_variance: true}

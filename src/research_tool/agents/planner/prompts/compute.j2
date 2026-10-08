@@ -1,0 +1,22 @@
+Estimate the compute for ONE run (one condition with one seed) of this experiment.
+
+Design: {{ core.design }}
+Procedure:
+{% for step in core.procedure %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+Resources: {% for r in resources %}{{ r.name }} ({{ r.kind }}{% if r.size_gb %}, {{ r.size_gb }} GB{% endif %}){% if not loop.last %}, {% endif %}{% endfor %}
+
+Available compute:
+{{ compute }}
+Number of runs planned: {{ runs }}
+{% if issues %}
+
+Problems with the previous estimate that you must fix:
+{% for i in issues %}
+- {{ i }}
+{% endfor %}
+{% endif %}
+
+Give the GPU memory one run needs in GB, how many GPUs one run uses (0 for CPU-only work), and the wall-clock hours one run takes.
+Be realistic: small experiments should finish in hours, not days.

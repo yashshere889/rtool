@@ -1,0 +1,11 @@
+name: generic
+description: Any computational experiment in Python (simulation, statistics, data analysis).
+smoke: >-
+  When smoke is True, use a tiny problem (e.g. at most 50 data points or 2 simulation steps)
+  that goes through the same code path and finishes in a few seconds on a CPU.
+packages: [numpy]
+hints:
+  - Keep the code small and readable — one module with a few helper functions.
+  - Read data only from the local paths in `resources`; never download anything.
+  - Vectorise with numpy where it is easy; plain Python is fine for small problems.
+  - Return plain Python floats (e.g. `float(x)`), not numpy scalars or arrays.

@@ -1,0 +1,33 @@
+You are proposing hypotheses for an experiment on: {{ topic }}
+{% if questions %}
+Research questions: {{ questions | join("; ") }}
+{% endif %}
+{% if feedback %}
+Feedback from the researcher (follow it):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
+
+Opportunity found in the literature:
+{{ opportunity.description }}
+
+Evidence (paper id in brackets, then a sentence from that paper):
+{% for e in opportunity.evidence %}
+[{{ e.paper_id }}] {{ e.text }}
+{% endfor %}
+
+Other papers you may cite:
+{% for p in papers %}
+[{{ p.id }}] {{ p.title }} ({{ p.year or "n.d." }})
+{% endfor %}
+
+Available compute:
+{{ compute }}
+
+Propose 1 or 2 hypotheses that one experiment could test with this compute within a few weeks.
+Each hypothesis must:
+- be falsifiable, with measurable dependent variables and a clear null hypothesis;
+- follow from the evidence above, and cite it in "evidence" using the paper id and a sentence copied word for word from the evidence lines;
+- use realistic, publicly available datasets, models or resources where possible;
+- say honestly how much compute it needs.

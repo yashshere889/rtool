@@ -1,0 +1,13 @@
+Rate how useful this paper is for the research topic below, on a scale from 0 to 10.
+10 = directly about the topic and likely to be cited; 6 = clearly related, useful background; 3 = same broad field only; 0 = unrelated.
+
+Research topic: {{ brief.topic }}
+{% if brief.questions %}
+Research questions: {{ brief.questions | join("; ") }}
+{% endif %}
+{% if feedback %}
+Researcher feedback to take into account: {{ feedback | join(" ") }}
+{% endif %}
+
+Paper: {{ paper.title }} ({{ paper.year or "year unknown" }}{% if paper.venue %}, {{ paper.venue }}{% endif %})
+Abstract: {{ paper.abstract or "(no abstract available; judge from the title)" }}

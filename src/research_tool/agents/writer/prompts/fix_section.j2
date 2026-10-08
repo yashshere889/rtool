@@ -1,0 +1,19 @@
+Rewrite this "{{ title }}" section of a research report so that it fixes every problem below and changes nothing else.
+
+## Problems
+{% for p in problems %}- {{ p }}
+{% endfor %}
+
+## Rules
+- Results appear only as placeholders from this list (copy them exactly); never type those numbers.
+- Cite only these keys, as [@key]: {{ keys | join(", ") if keys else "(none)" }}.
+{% if values %}
+
+## Placeholders
+{% for key, value in values %}- {{ "{{" }}{{ key }}{{ "}}" }} — {{ value.meaning }}
+{% endfor %}{% endif %}
+
+## Current text
+{{ text }}
+
+Reply with the corrected section text only.

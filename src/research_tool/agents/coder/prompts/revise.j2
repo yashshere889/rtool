@@ -1,0 +1,17 @@
+Revise the experiment code below. Address every request:
+{% for f in feedback %}- {{ f }}
+{% endfor %}
+## The experiment
+Hypothesis: {{ plan.hypothesis }}
+Conditions: {{ conditions | join(", ") }}.
+Metrics (run() returns a float for each): {{ metrics | join(", ") }}.
+Local data and models: {{ resources }}.
+Installed: {{ packages | join(", ") }}; anything else goes on the `# requirements:` line.
+
+## Current experiment.py
+```python
+{{ source }}
+```
+
+Keep the signature `run(condition, seed, resources, smoke, workdir) -> dict[str, float]` and the smoke behaviour.
+Reply with the complete revised file in one ```python code block and nothing after it.

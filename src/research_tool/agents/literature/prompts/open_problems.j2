@@ -1,0 +1,9 @@
+Below are limitations and future-work statements taken from papers on: {{ topic }}
+Each line starts with the paper's id in square brackets.
+
+{% for item in items %}
+[{{ item.paper_id }}] {{ item.text }}
+{% endfor %}
+
+Identify up to {{ max_problems }} open problems that several of these statements point to, or that matter most for the topic.
+For each one give: a one-sentence statement; the ids of the papers that raise it (only ids from the list above); and why it is still open.

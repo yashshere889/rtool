@@ -1,0 +1,27 @@
+You are planning literature searches for a research project.
+
+Research topic: {{ brief.topic }}
+{% if brief.questions %}
+Research questions:
+{% for q in brief.questions %}
+- {{ q }}
+{% endfor %}
+{% endif %}
+{% if brief.constraints %}
+Constraints:
+{% for c in brief.constraints %}
+- {{ c }}
+{% endfor %}
+{% endif %}
+{% if feedback %}
+Feedback from the researcher on the previous attempt (follow it):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
+
+Write {{ n_queries }} short search queries (3 to 8 words each) for academic search engines such as OpenAlex and arXiv.
+Cover different angles: the core problem, the main methods, the datasets or study populations, and closely related problems.
+Use the vocabulary of the field. Do not use quotation marks or boolean operators.
+Set year_from only if the topic is about recent work; otherwise leave it empty.
+In must_cover, list up to 5 sub-topics the collected papers should include.

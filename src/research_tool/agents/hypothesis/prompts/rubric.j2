@@ -1,0 +1,21 @@
+Score this research hypothesis from 1 (poor) to 5 (excellent) on each criterion:
+- novelty: is it new compared with the literature?
+- feasibility: can it be tested with the available compute and public data within a few weeks?
+- testability: are the variables measurable and the success criteria unambiguous?
+- significance: would the answer matter to researchers in this field?
+- clarity: is it stated precisely?
+
+Topic: {{ topic }}
+Available compute:
+{{ compute }}
+
+Hypothesis: {{ h.title }}
+Statement: {{ h.statement }}
+Null hypothesis: {{ h.null_hypothesis }}
+Rationale: {{ h.rationale }}
+Independent variables: {{ h.independent_variables | join(", ") }}
+Dependent variables: {{ h.dependent_variables | join(", ") }}
+Data and methods: {{ (h.datasets + h.methods) | join(", ") }}
+Success criteria: {{ h.success_criteria }}
+Estimated compute: {{ h.compute }}
+Novelty check: {{ novelty }}

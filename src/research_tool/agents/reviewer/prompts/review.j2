@@ -1,0 +1,27 @@
+Review this research report as a careful, fair scientific reviewer.
+
+Score it from 1 (poor) to 5 (excellent) on:
+- soundness: do the conclusions follow from the results and the statistics shown?
+- evidence: are statements about prior work supported by the cited papers?
+- clarity: is it clear and well organised?
+- reproducibility: could someone rerun the study from the report and the code?
+- limitations: are limitations and threats to validity discussed honestly?
+
+Then list concrete issues (at most 10, the important ones first). For each give the section id, the problem
+and a concrete suggestion. Set target to "report" if rewriting the text fixes it; to "experiment_results",
+"code_bundle" or "experiment_plan" only if the experiment itself must change (missing or wrong runs, a bug,
+a flawed design), and mark such issues "major" only when the conclusions cannot be trusted without the change.
+Do not ask for things the automated checks already confirm.
+
+## Automated checks (computed, reliable)
+{% for c in checks %}- {{ c.name }}: {{ "ok" if c.ok else "PROBLEM" }}{% if c.detail %} — {{ c.detail }}{% endif %}
+{% endfor %}
+
+## Facts from the experiment (computed, reliable)
+{{ facts }}
+
+## Section ids
+{{ section_ids | join(", ") }}
+
+## The report
+{{ report }}

@@ -1,0 +1,24 @@
+The experiment code below fails. Fix it and reply with the complete corrected `experiment.py`.
+
+## What went wrong
+{{ summary }}{% if condition %} (in the {{ phase }} run of condition `{{ condition }}`){% endif %}.
+
+## End of the log
+```
+{{ log_tail }}
+```
+
+## Current experiment.py
+```python
+{{ source }}
+```
+
+## Keep in mind
+- `run(condition, seed, resources, smoke, workdir)` must return floats for: {{ metrics | join(", ") }}.
+- Conditions: {{ conditions | join(", ") }}.
+- Local data and models: {{ resources }}.
+- Installed: {{ packages | join(", ") }}; anything else goes on the `# requirements:` line.
+- {{ smoke }}
+{% if history %}- Earlier attempts failed with: {{ history | join("; ") }}. Do not repeat those mistakes.
+{% endif %}
+Reply with the complete corrected file in one ```python code block and nothing after it.
