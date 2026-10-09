@@ -10,6 +10,7 @@ import { Loading } from "./components/ui/states";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { NewResearch } from "./pages/NewResearch";
 import { NotFound } from "./pages/NotFound";
+import { PaperReader } from "./pages/literature/PaperReader";
 import { Overview } from "./pages/Overview";
 import { Projects } from "./pages/Projects";
 import { Settings } from "./pages/Settings";
@@ -29,6 +30,7 @@ export const routes = [
         children: [
           { index: true, element: <Overview /> },
           { path: ":stageId", element: <StagePage /> },
+          { path: ":stageId/reader", element: <PaperReader /> },
         ],
       },
       { path: "*", element: <NotFound /> },

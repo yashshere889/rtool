@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -14,53 +12,10 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from research_tool.core.actions import ActionInbox  # noqa: E402
-from research_tool.service import KickResult, open_run, run_status  # noqa: E402
-from research_tool.testing.demo_run import build_demo_run  # noqa: E402
-from research_tool.web.app import create_app  # noqa: E402
-from research_tool.web.runner import LocalRunner, WorkerState  # noqa: E402
-from research_tool.web.settings import UISettings  # noqa: E402
-
-TOKEN = "test-token-0123456789abcdef"
-BASE = "http://127.0.0.1:8765"
-WRITE = {"x-requested-with": "rtool"}
-
-
-class StubRunner:
-    """Records wake-ups and advances nothing, so queued actions stay queued."""
-
-    def __init__(self) -> None:
-        self.woken: list[str] = []
-
-    def wake(self, run: Any, reason: str, *, needs_llm: bool = False) -> KickResult:
-        self.woken.append(reason)
-        return KickResult(submitted=False, detail="stub")
-
-    def state(self, run: Any) -> WorkerState:
-        return WorkerState()
-
-
-@pytest.fixture(scope="module")
-def demo_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    root = tmp_path_factory.mktemp("demo-runs")
-    for stop_at in ("literature_review", "hypothesis_selection"):
-        build_demo_run(root, stop_at)
-    return root
-
-
-@pytest.fixture
-def runs_root(demo_root: Path, tmp_path: Path) -> Path:
-    """A fresh copy per test: tests change runs."""
-    copy = tmp_path / "runs"
-    shutil.copytree(demo_root, copy)
-    return copy
-
-
-def client(runs_root: Path, runner: Any = None, *, signed_in: bool = True) -> TestClient:
-    app = create_app(UISettings(runs_root=runs_root, token=TOKEN, mode="local"), runner=runner or StubRunner())
-    c = TestClient(app, base_url=BASE)
-    if signed_in:
-        assert c.post("/api/session", json={"token": TOKEN}, headers=WRITE).status_code == 204
-    return c
+from research_tool.service import open_run, run_status  # noqa: E402
+from research_tool.testing.web import BASE, TOKEN, WRITE, StubRunner  # noqa: E402
+from research_tool.testing.web import web_client as client  # noqa: E402
+from research_tool.web.runner import LocalRunner  # noqa: E402
 
 
 # ---------------------------------------------------------------- security

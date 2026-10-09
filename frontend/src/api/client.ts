@@ -75,3 +75,42 @@ export function fileUrl(project: string, runId: string, path: string): string {
 export function runPath(project: string, runId: string): string {
   return `/runs/${encodeURIComponent(project)}/${encodeURIComponent(runId)}`;
 }
+
+/** Send a paper the researcher has (PDF or HTML) into the literature stage's inbox. */
+export async function uploadPaper<T>(
+  project: string,
+  runId: string,
+  file: File,
+  fields: { title: string; paper_id?: string; doi?: string },
+): Promise<T> {
+  const params = new URLSearchParams(
+    Object.entries(fields).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  );
+  const html = /\.html?$/i.test(file.name) || file.type === "text/html";
+  const response = await fetch(
+    `/api/runs/${encodeURIComponent(project)}/${encodeURIComponent(runId)}/literature/inbox?${params}`,
+    {
+      method: "PUT",
+      headers: { "X-Requested-With": "rtool", "Content-Type": html ? "text/html" : "application/pdf" },
+      body: file,
+      credentials: "same-origin",
+    },
+  );
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      detail = (await response.json()).detail ?? detail;
+    } catch {
+      // keep the status text
+    }
+    throw new ApiError(response.status, String(detail));
+  }
+  return (await response.json()) as T;
+}
+
+/** In-app reader for one paper (optionally scrolled to one of its claims). */
+export function readerPath(project: string, runId: string, stage: string, paperId: string, claim?: number): string {
+  const query = new URLSearchParams({ paper: paperId });
+  if (claim !== undefined) query.set("claim", String(claim));
+  return `${runPath(project, runId)}/${encodeURIComponent(stage)}/reader?${query}`;
+}

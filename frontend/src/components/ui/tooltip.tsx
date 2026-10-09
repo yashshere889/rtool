@@ -5,6 +5,7 @@ export const TooltipProvider = RadixTooltip.Provider;
 
 export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
   return (
+    <RadixTooltip.Provider delayDuration={300}>
     <RadixTooltip.Root>
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
       <RadixTooltip.Portal>
@@ -16,5 +17,6 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
         </RadixTooltip.Content>
       </RadixTooltip.Portal>
     </RadixTooltip.Root>
+    </RadixTooltip.Provider>
   );
 }

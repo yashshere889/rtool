@@ -11,6 +11,7 @@ import { useRunContext } from "@/components/layout/RunLayout";
 import { NoteBox } from "@/components/NoteBox";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { LiteraturePage } from "@/pages/literature/LiteraturePage";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { dateTime, humanize, timeAgo } from "@/lib/format";
 import { STAGES, stageTitle } from "@/lib/stages";
@@ -74,6 +75,7 @@ export function StagePage() {
   const { run } = useRunContext();
   const stage = run.stages.find((s) => s.id === stageId);
   if (!stage) return <Empty title="No such stage">This run has no stage called “{stageId}”.</Empty>;
+  if (stage.agent === "literature") return <LiteraturePage run={run} stage={stage} />;
   const outputs = Object.entries(stage.output_versions);
   return (
     <div className="space-y-6">

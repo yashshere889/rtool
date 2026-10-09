@@ -267,6 +267,98 @@
     "title": "ArtifactInfo",
     "type": "object"
    },
+   "ClaimView": {
+    "properties": {
+     "dataset": {
+      "title": "Dataset",
+      "type": "string"
+     },
+     "index": {
+      "title": "Index",
+      "type": "integer"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "method": {
+      "title": "Method",
+      "type": "string"
+     },
+     "metric": {
+      "title": "Metric",
+      "type": "string"
+     },
+     "quote": {
+      "title": "Quote",
+      "type": "string"
+     },
+     "support": {
+      "title": "Support",
+      "type": "number"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "value": {
+      "title": "Value",
+      "type": "string"
+     },
+     "verified": {
+      "title": "Verified",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "dataset",
+     "index",
+     "kind",
+     "method",
+     "metric",
+     "quote",
+     "support",
+     "text",
+     "value",
+     "verified"
+    ],
+    "title": "ClaimView",
+    "type": "object"
+   },
+   "CoverageView": {
+    "properties": {
+     "dataset": {
+      "title": "Dataset",
+      "type": "string"
+     },
+     "method": {
+      "title": "Method",
+      "type": "string"
+     },
+     "paper_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Paper Ids",
+      "type": "array"
+     },
+     "results": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Results",
+      "type": "array"
+     }
+    },
+    "required": [
+     "dataset",
+     "method",
+     "paper_ids",
+     "results"
+    ],
+    "title": "CoverageView",
+    "type": "object"
+   },
    "Created": {
     "properties": {
      "kick": {
@@ -281,6 +373,32 @@
      "run"
     ],
     "title": "Created",
+    "type": "object"
+   },
+   "EntityView": {
+    "properties": {
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "paper_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Paper Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "kind",
+     "name",
+     "paper_ids"
+    ],
+    "title": "EntityView",
     "type": "object"
    },
    "EventPage": {
@@ -303,6 +421,32 @@
      "events"
     ],
     "title": "EventPage",
+    "type": "object"
+   },
+   "GapView": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "paper_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Paper Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "description",
+     "kind",
+     "paper_ids"
+    ],
+    "title": "GapView",
     "type": "object"
    },
    "HTTPValidationError": {
@@ -345,6 +489,39 @@
     "title": "Health",
     "type": "object"
    },
+   "Highlight": {
+    "properties": {
+     "claim": {
+      "title": "Claim",
+      "type": "integer"
+     },
+     "end": {
+      "title": "End",
+      "type": "integer"
+     },
+     "score": {
+      "title": "Score",
+      "type": "number"
+     },
+     "section": {
+      "title": "Section",
+      "type": "integer"
+     },
+     "start": {
+      "title": "Start",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "claim",
+     "end",
+     "score",
+     "section",
+     "start"
+    ],
+    "title": "Highlight",
+    "type": "object"
+   },
    "KickResult": {
     "properties": {
      "detail": {
@@ -374,6 +551,126 @@
      "submitted"
     ],
     "title": "KickResult",
+    "type": "object"
+   },
+   "LiteratureView": {
+    "properties": {
+     "corpus_version": {
+      "title": "Corpus Version",
+      "type": "integer"
+     },
+     "coverage": {
+      "items": {
+       "$ref": "#/components/schemas/CoverageView"
+      },
+      "title": "Coverage",
+      "type": "array"
+     },
+     "entities": {
+      "items": {
+       "$ref": "#/components/schemas/EntityView"
+      },
+      "title": "Entities",
+      "type": "array"
+     },
+     "gaps": {
+      "items": {
+       "$ref": "#/components/schemas/GapView"
+      },
+      "title": "Gaps",
+      "type": "array"
+     },
+     "keys": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "title": "Keys",
+      "type": "object"
+     },
+     "map_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Map Version"
+     },
+     "open_problems": {
+      "items": {
+       "$ref": "#/components/schemas/OpenProblemView"
+      },
+      "title": "Open Problems",
+      "type": "array"
+     },
+     "overview": {
+      "title": "Overview",
+      "type": "string"
+     },
+     "papers": {
+      "items": {
+       "$ref": "#/components/schemas/PaperCard"
+      },
+      "title": "Papers",
+      "type": "array"
+     },
+     "queries": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Queries",
+      "type": "array"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "stats": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Stats",
+      "type": "object"
+     },
+     "timeline": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Timeline",
+      "type": "object"
+     },
+     "topic": {
+      "title": "Topic",
+      "type": "string"
+     },
+     "topics": {
+      "items": {
+       "$ref": "#/components/schemas/TopicView"
+      },
+      "title": "Topics",
+      "type": "array"
+     }
+    },
+    "required": [
+     "corpus_version",
+     "coverage",
+     "entities",
+     "gaps",
+     "keys",
+     "map_version",
+     "open_problems",
+     "overview",
+     "papers",
+     "queries",
+     "stage",
+     "stats",
+     "timeline",
+     "topic",
+     "topics"
+    ],
+    "title": "LiteratureView",
     "type": "object"
    },
    "NewRun": {
@@ -509,6 +806,445 @@
      "summary"
     ],
     "title": "OpenGate",
+    "type": "object"
+   },
+   "OpenProblemView": {
+    "properties": {
+     "paper_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Paper Ids",
+      "type": "array"
+     },
+     "statement": {
+      "title": "Statement",
+      "type": "string"
+     },
+     "why_open": {
+      "title": "Why Open",
+      "type": "string"
+     }
+    },
+    "required": [
+     "paper_ids",
+     "statement",
+     "why_open"
+    ],
+    "title": "OpenProblemView",
+    "type": "object"
+   },
+   "PaperCard": {
+    "properties": {
+     "abstract": {
+      "title": "Abstract",
+      "type": "string"
+     },
+     "authors": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Authors",
+      "type": "array"
+     },
+     "bib_key": {
+      "title": "Bib Key",
+      "type": "string"
+     },
+     "citation_count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Citation Count"
+     },
+     "claims": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Claims",
+      "type": "object"
+     },
+     "file": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File"
+     },
+     "file_kind": {
+      "anyOf": [
+       {
+        "enum": [
+         "pdf",
+         "html"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File Kind"
+     },
+     "found_by": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Found By",
+      "type": "array"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "included": {
+      "title": "Included",
+      "type": "boolean"
+     },
+     "links": {
+      "$ref": "#/components/schemas/PaperLinks"
+     },
+     "needs_upload": {
+      "title": "Needs Upload",
+      "type": "boolean"
+     },
+     "note": {
+      "title": "Note",
+      "type": "string"
+     },
+     "read": {
+      "enum": [
+       "full_text",
+       "abstract",
+       "none"
+      ],
+      "title": "Read",
+      "type": "string"
+     },
+     "relevance": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Relevance"
+     },
+     "relevance_reason": {
+      "title": "Relevance Reason",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "topics": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Topics",
+      "type": "array"
+     },
+     "venue": {
+      "title": "Venue",
+      "type": "string"
+     },
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year"
+     }
+    },
+    "required": [
+     "abstract",
+     "authors",
+     "bib_key",
+     "citation_count",
+     "claims",
+     "file",
+     "file_kind",
+     "found_by",
+     "id",
+     "included",
+     "links",
+     "needs_upload",
+     "note",
+     "read",
+     "relevance",
+     "relevance_reason",
+     "status",
+     "title",
+     "topics",
+     "venue",
+     "year"
+    ],
+    "title": "PaperCard",
+    "type": "object"
+   },
+   "PaperDetail": {
+    "properties": {
+     "approach": {
+      "title": "Approach",
+      "type": "string"
+     },
+     "bibtex": {
+      "title": "Bibtex",
+      "type": "string"
+     },
+     "cited_by": {
+      "items": {
+       "$ref": "#/components/schemas/PaperRef"
+      },
+      "title": "Cited By",
+      "type": "array"
+     },
+     "cites": {
+      "items": {
+       "$ref": "#/components/schemas/PaperRef"
+      },
+      "title": "Cites",
+      "type": "array"
+     },
+     "claims": {
+      "items": {
+       "$ref": "#/components/schemas/ClaimView"
+      },
+      "title": "Claims",
+      "type": "array"
+     },
+     "coverage": {
+      "items": {
+       "$ref": "#/components/schemas/CoverageView"
+      },
+      "title": "Coverage",
+      "type": "array"
+     },
+     "datasets": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Datasets",
+      "type": "array"
+     },
+     "gaps": {
+      "items": {
+       "$ref": "#/components/schemas/GapView"
+      },
+      "title": "Gaps",
+      "type": "array"
+     },
+     "methods": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Methods",
+      "type": "array"
+     },
+     "methods_section": {
+      "title": "Methods Section",
+      "type": "string"
+     },
+     "metrics": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Metrics",
+      "type": "array"
+     },
+     "open_problems": {
+      "items": {
+       "$ref": "#/components/schemas/OpenProblemView"
+      },
+      "title": "Open Problems",
+      "type": "array"
+     },
+     "paper": {
+      "$ref": "#/components/schemas/PaperCard"
+     },
+     "problem": {
+      "title": "Problem",
+      "type": "string"
+     },
+     "section_titles": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Section Titles",
+      "type": "array"
+     }
+    },
+    "required": [
+     "approach",
+     "bibtex",
+     "cited_by",
+     "cites",
+     "claims",
+     "coverage",
+     "datasets",
+     "gaps",
+     "methods",
+     "methods_section",
+     "metrics",
+     "open_problems",
+     "paper",
+     "problem",
+     "section_titles"
+    ],
+    "title": "PaperDetail",
+    "type": "object"
+   },
+   "PaperLinks": {
+    "properties": {
+     "arxiv": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Arxiv"
+     },
+     "doi": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Doi"
+     },
+     "landing": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Landing"
+     },
+     "open_access": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Open Access",
+      "type": "array"
+     },
+     "openalex": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Openalex"
+     }
+    },
+    "required": [
+     "arxiv",
+     "doi",
+     "landing",
+     "open_access",
+     "openalex"
+    ],
+    "title": "PaperLinks",
+    "type": "object"
+   },
+   "PaperRef": {
+    "properties": {
+     "bib_key": {
+      "title": "Bib Key",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year"
+     }
+    },
+    "required": [
+     "bib_key",
+     "id",
+     "title",
+     "year"
+    ],
+    "title": "PaperRef",
+    "type": "object"
+   },
+   "PaperText": {
+    "properties": {
+     "highlights": {
+      "items": {
+       "$ref": "#/components/schemas/Highlight"
+      },
+      "title": "Highlights",
+      "type": "array"
+     },
+     "sections": {
+      "items": {
+       "$ref": "#/components/schemas/TextSection"
+      },
+      "title": "Sections",
+      "type": "array"
+     },
+     "source": {
+      "enum": [
+       "full_text",
+       "abstract",
+       "none"
+      ],
+      "title": "Source",
+      "type": "string"
+     }
+    },
+    "required": [
+     "highlights",
+     "sections",
+     "source"
+    ],
+    "title": "PaperText",
     "type": "object"
    },
    "Producer": {
@@ -832,6 +1568,39 @@
     "title": "RunSummary",
     "type": "object"
    },
+   "SearchHit": {
+    "properties": {
+     "bib_key": {
+      "title": "Bib Key",
+      "type": "string"
+     },
+     "paper_id": {
+      "title": "Paper Id",
+      "type": "string"
+     },
+     "section": {
+      "title": "Section",
+      "type": "string"
+     },
+     "snippet": {
+      "title": "Snippet",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bib_key",
+     "paper_id",
+     "section",
+     "snippet",
+     "title"
+    ],
+    "title": "SearchHit",
+    "type": "object"
+   },
    "ServerSettings": {
     "properties": {
      "mode": {
@@ -1020,6 +1789,80 @@
      }
     },
     "title": "StopRequest",
+    "type": "object"
+   },
+   "TextSection": {
+    "properties": {
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text",
+     "title"
+    ],
+    "title": "TextSection",
+    "type": "object"
+   },
+   "TopicView": {
+    "properties": {
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "paper_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Paper Ids",
+      "type": "array"
+     },
+     "summary": {
+      "title": "Summary",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label",
+     "paper_ids",
+     "summary"
+    ],
+    "title": "TopicView",
+    "type": "object"
+   },
+   "Uploaded": {
+    "properties": {
+     "file": {
+      "title": "File",
+      "type": "string"
+     },
+     "paper_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paper Id"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file",
+     "paper_id",
+     "title"
+    ],
+    "title": "Uploaded",
     "type": "object"
    },
    "ValidationError": {
@@ -1811,6 +2654,346 @@
     "summary": "Run File",
     "tags": [
      "artifacts"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/literature": {
+   "get": {
+    "operationId": "literature_api_runs__project___run_id__literature_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiteratureView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Literature",
+    "tags": [
+     "literature"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/literature/inbox": {
+   "put": {
+    "description": "A copy of a paper you have (e.g. paywalled, through your library), as the request body (PDF or HTML).\n\nIt goes into the literature stage's inbox; the agent reads it the next time that stage runs.",
+    "operationId": "upload_api_runs__project___run_id__literature_inbox_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "title",
+      "required": true,
+      "schema": {
+       "title": "Title",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "paper_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Paper Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "doi",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Doi"
+      }
+     }
+    ],
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Uploaded"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload",
+    "tags": [
+     "literature"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/literature/paper": {
+   "get": {
+    "operationId": "paper_detail_api_runs__project___run_id__literature_paper_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "id",
+      "required": true,
+      "schema": {
+       "title": "Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PaperDetail"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Paper Detail",
+    "tags": [
+     "literature"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/literature/paper/text": {
+   "get": {
+    "description": "The text the agent read (full text by section, or the abstract), with each claim's quote located in it.",
+    "operationId": "paper_text_api_runs__project___run_id__literature_paper_text_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "id",
+      "required": true,
+      "schema": {
+       "title": "Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PaperText"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Paper Text",
+    "tags": [
+     "literature"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/literature/search": {
+   "get": {
+    "description": "Full-text search over every paper the agent read (BM25).",
+    "operationId": "search_api_runs__project___run_id__literature_search_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "q",
+      "required": true,
+      "schema": {
+       "title": "Q",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "k",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "title": "K",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SearchHit"
+         },
+         "title": "Response Search Api Runs  Project   Run Id  Literature Search Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Search",
+    "tags": [
+     "literature"
     ]
    }
   },

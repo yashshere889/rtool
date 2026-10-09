@@ -11,8 +11,9 @@ gates:
   literature_review:
     kind: approve
     prompt: >-
-      Review the corpus and knowledge map. Approve to continue, or reject with feedback
-      (e.g. "focus on X", "drop Y"). Add paywalled papers with `rtool add-paper`.
+      Review the papers and the literature map. Approve to continue, or request changes
+      with feedback (e.g. "focus on X", "drop Y"). Papers without an open-access copy can be
+      added by hand (Upload PDF in the web UI, or `rtool add-paper`).
   hypothesis_selection:
     kind: select
     prompt: Choose the hypothesis to test (or reject with feedback to get new ones).

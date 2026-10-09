@@ -33,3 +33,15 @@ export interface EventPage {
   events: RunEvent[];
   cursor: number;
 }
+
+export type LiteratureView = Schemas["LiteratureView"];
+export type PaperCardData = Schemas["PaperCard"];
+export type PaperDetail = Schemas["PaperDetail"];
+export type PaperText = Schemas["PaperText"];
+export type ClaimView = Schemas["ClaimView"];
+export type PaperRef = Schemas["PaperRef"];
+export type GapView = Schemas["GapView"];
+export type OpenProblemView = Schemas["OpenProblemView"];
+export type CoverageView = Schemas["CoverageView"];
+export type SearchHit = Schemas["SearchHit"];
+export type Uploaded = Schemas["Uploaded"];

@@ -150,3 +150,14 @@ def test_working_copy_writes_back(tmp_path: Path) -> None:
         assert home.exists()
     assert KnowledgeStore(home).paper("arxiv:9") is not None
     assert not list((tmp_path / "local").glob("*.sqlite"))  # local copy cleaned up
+
+
+def test_locate_quote_points_into_the_original_text() -> None:
+    from research_tool.knowledge.verify import locate_quote
+
+    text = "Intro.\nSpindle density predicted\nrecall (r = 0.41) across\nparticipants. The effect remained."
+    start, end, score = locate_quote("spindle density predicted recall (r = 0.41) across participants", text)
+    assert score == 1.0 and text[start:end] == "Spindle density predicted\nrecall (r = 0.41) across\nparticipants"
+    start, end, score = locate_quote("Spindle density predicted the recall (r = 0.41) across participants", text)
+    assert 0.85 <= score < 1 and text[start:end].startswith("Spindle") and text[start:end].endswith("participants")
+    assert locate_quote("Sleep deprivation impairs working memory in rats", text) is None

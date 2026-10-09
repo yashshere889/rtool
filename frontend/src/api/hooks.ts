@@ -16,7 +16,11 @@ import type {
   Queued,
   RunDetail,
   RunEvent,
+  LiteratureView,
+  PaperDetail,
+  PaperText,
   RunSummary,
+  SearchHit,
   ServerSettings,
 } from "./types";
 
@@ -31,6 +35,9 @@ export const keys = {
   artifacts: (p: string, r: string) => ["artifacts", p, r] as const,
   artifact: (p: string, r: string, name: string, version?: number) =>
     ["artifact", p, r, name, version ?? "head"] as const,
+  literature: (p: string, r: string) => ["artifact", p, r, "literature"] as const,
+  paper: (p: string, r: string, id: string) => ["artifact", p, r, "paper", id] as const,
+  paperText: (p: string, r: string, id: string) => ["artifact", p, r, "paper-text", id] as const,
 };
 
 export function useSettings() {
@@ -185,5 +192,38 @@ export function useCreateRun() {
   return useMutation({
     mutationFn: (body: NewRun) => api<Created>("/runs", { method: "POST", body }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.runs }),
+  });
+}
+
+// ------------------------------------------------------------- literature
+// (keys start with "artifact", so the event stream refreshes them when the corpus changes)
+export function useLiterature(project: string, runId: string) {
+  return useQuery({
+    queryKey: keys.literature(project, runId),
+    queryFn: () => api<LiteratureView>(`${base(project, runId)}/literature`),
+  });
+}
+
+export function usePaper(project: string, runId: string, paperId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.paper(project, runId, paperId),
+    queryFn: () => api<PaperDetail>(`${base(project, runId)}/literature/paper?id=${enc(paperId)}`),
+    enabled,
+  });
+}
+
+export function usePaperText(project: string, runId: string, paperId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.paperText(project, runId, paperId),
+    queryFn: () => api<PaperText>(`${base(project, runId)}/literature/paper/text?id=${enc(paperId)}`),
+    enabled,
+  });
+}
+
+export function useLiteratureSearch(project: string, runId: string, query: string) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "search", query],
+    queryFn: () => api<SearchHit[]>(`${base(project, runId)}/literature/search?q=${enc(query)}`),
+    enabled: query.trim().length >= 2,
   });
 }

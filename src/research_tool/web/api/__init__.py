@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import actions, artifacts, events, runs, session
+from . import actions, artifacts, events, literature, runs, session
 
 router = APIRouter()
-for module in (session, runs, actions, artifacts, events):
+for module in (session, runs, actions, artifacts, events, literature):
     router.include_router(module.router)
