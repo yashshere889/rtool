@@ -508,6 +508,46 @@ def stop(
 
 
 @app.command()
+def ui(
+    mode: str = typer.Option(
+        "local",
+        "--mode",
+        help="local: this machine, with simulated papers, model and cluster (demos, development). "
+        "login: on a cluster login node, only for as long as your ssh session lasts.",
+    ),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+    port: int = typer.Option(8765, "--port"),
+    token_file: Path | None = typer.Option(
+        None, "--token-file", help="Also write the access token to this file (readable only by you)."
+    ),
+    demo: bool = typer.Option(False, "--demo", help="local mode: create the demo runs first if there are no runs."),
+    open_browser: bool = typer.Option(False, "--open", help="Open the UI in the browser."),
+    config: list[Path] = typer.Option([], "--config", "-c"),
+) -> None:
+    """Start the web UI (needs the `web` extra). It listens on 127.0.0.1 only; reach it through an ssh tunnel."""
+    with _guard():
+        if mode not in ("local", "login"):
+            raise RToolError("--mode must be local or login")
+        try:
+            from ..web.server import new_token, serve, write_private
+            from ..web.settings import UISettings
+        except ImportError as exc:
+            raise RToolError(f"the web UI needs the web extra: pip install -e '.[web]' ({exc})") from None
+        load_secrets()
+        root = (runs_root or load_app_config(config).paths.resolved_runs_root()).expanduser()
+        if mode == "local" and demo and not list_all_runs(root):
+            from ..testing.demo_run import build_demo_runs
+
+            console.print("building the demo runs (about ten seconds)...")
+            build_demo_runs(root)
+        token = new_token()
+        if token_file is not None:
+            write_private(token_file.expanduser(), token + "\n")
+        settings = UISettings(runs_root=root, token=token, mode=mode, config_files=list(config))  # type: ignore[arg-type]
+        serve(settings, host="127.0.0.1", port=port, open_browser=open_browser)
+
+
+@app.command()
 def show(
     run_ref: str = typer.Argument(...),
     name: str | None = typer.Argument(None, help="Artifact name; omit to list all artifacts."),

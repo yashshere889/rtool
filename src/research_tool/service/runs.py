@@ -152,7 +152,7 @@ def list_runs(runs_root: Path) -> list[RunSummary]:
                 found.append(run_summary(RunHandle(run_dir)))
             except Exception as exc:  # noqa: BLE001 - one unreadable run must not hide the others
                 found.append(RunSummary(project=project.name, run_id=run_dir.name, error=str(exc)))
-    found.sort(key=lambda s: s.created_at, reverse=True)
+    found.sort(key=lambda s: (s.created_at, s.project, s.run_id), reverse=True)
     return found
 
 

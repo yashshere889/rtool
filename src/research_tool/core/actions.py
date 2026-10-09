@@ -78,3 +78,32 @@ class ActionInbox:
         if not self.processed_dir.is_dir():
             return []
         return [read_json(p) for p in sorted(self.processed_dir.glob("*.json"))]
+
+    def lookup(self, action_id: str) -> tuple[str, dict[str, Any] | None]:
+        """Where action ``action_id`` is: ("queued" | "processed" | "invalid" | "unknown", its record)."""
+        pattern = f"*-{action_id[:12]}.json"
+        places = (("queued", self.root), ("processed", self.processed_dir), ("invalid", self.invalid_dir))
+        for state, directory in places:
+            for path in sorted(directory.glob(pattern)) if directory.is_dir() else []:
+                try:
+                    record = read_json(path)
+                except (json.JSONDecodeError, OSError):
+                    record = {}
+                if record.get("id") == action_id or state == "invalid":
+                    return state, record
+        return "unknown", None
+
+    def withdraw(self, action_id: str) -> bool:
+        """Remove a queued action before an episode applies it. False if it is no longer queued."""
+        for path in self.root.glob(f"*-{action_id[:12]}.json") if self.root.is_dir() else []:
+            try:
+                if read_json(path).get("id") != action_id:
+                    continue
+            except (json.JSONDecodeError, OSError):
+                continue
+            try:
+                path.unlink()  # an episode may have taken it this very moment: then it is not queued any more
+            except FileNotFoundError:
+                return False
+            return True
+        return False
