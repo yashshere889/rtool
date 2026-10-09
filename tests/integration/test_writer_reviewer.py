@@ -170,6 +170,26 @@ def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
     assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.DONE
 
 
+def test_rejecting_the_final_report_sends_it_back_to_the_writer(runs_root: Path) -> None:
+    run = seed(runs_root)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    queue(run, ActionKind.REJECT, payload={"feedback": "Shorten the discussion"})
+    llm = writer_llm()
+    result = Engine(run, services(run, llm)).advance()
+    assert result.outcome is Outcome.WAITING_GATE and result.open_gates[0]["gate"] == "final_report"
+    from research_tool.core.engine import load_status
+
+    _, stages, _ = load_status(run)
+    assert stages["report"].attempt == 2 and stages["review"].attempt == 3  # placeholder round, then a real review
+    drafts = [r for r in llm.calls if "section of a research report" in r.messages[-1].content]
+    assert drafts and all("Shorten the discussion" in r.messages[-1].content for r in drafts)  # the Writer heard it
+    reviews = [r for r in llm.calls if "Review this research report" in r.messages[-1].content]
+    assert len(reviews) == 3  # one full review (3 samples), none wasted on the rejected version
+    review = ArtifactStore(run.artifacts_dir).get("review")
+    assert review.verdict == "accept" and not review.summary.startswith("Sent back")
+    assert "review_returned_to_writer" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+
+
 def test_major_experiment_problems_go_back_upstream(runs_root: Path) -> None:
     run = seed(runs_root)
     issue = {

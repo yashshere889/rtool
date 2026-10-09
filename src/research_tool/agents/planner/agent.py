@@ -90,7 +90,14 @@ class PlannerAgent(Agent):
             if resources is None or res_issues:
                 plan = ctx.llm.structured(
                     ResourcePlan,
-                    render("resources.j2", h=hypothesis, core=core, known_datasets=known, issues=res_issues),
+                    render(
+                        "resources.j2",
+                        h=hypothesis,
+                        core=core,
+                        known_datasets=known,
+                        feedback=feedback,
+                        issues=res_issues,
+                    ),
                     profile="reason",
                     system=SYSTEM,
                 )
@@ -100,7 +107,15 @@ class PlannerAgent(Agent):
             if estimate is None or cmp_issues:
                 estimate = ctx.llm.structured(
                     ComputeEstimate,
-                    render("compute.j2", core=core, resources=resources, compute=compute, runs=runs, issues=cmp_issues),
+                    render(
+                        "compute.j2",
+                        core=core,
+                        resources=resources,
+                        compute=compute,
+                        runs=runs,
+                        feedback=feedback,
+                        issues=cmp_issues,
+                    ),
                     profile="reason",
                     system=SYSTEM,
                 )

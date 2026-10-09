@@ -24,6 +24,7 @@ import httpx
 from ..core.config import LLMConfig
 from ..core.errors import RToolError
 from ..core.fs import atomic_write_json
+from ..core.secrets import without_secrets
 
 
 class VLLMServerError(RToolError):
@@ -120,7 +121,7 @@ class VLLMServer:
             inner["HF_HOME"] = expand_path(self.settings.hf_home)
         if self.settings.offline:
             inner["HF_HUB_OFFLINE"] = "1"
-        env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
+        env = {k: v for k, v in without_secrets().items() if k not in ("PYTHONPATH", "PYTHONHOME")}
         env.update(inner)
         # Images may set these themselves (the Nemotron image sets HF_HOME), and an image's
         # own values beat the host's; APPTAINERENV_* values beat the image's.

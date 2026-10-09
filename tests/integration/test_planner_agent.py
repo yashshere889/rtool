@@ -206,3 +206,21 @@ def test_unfixable_problems_reach_the_human(runs_root: Path, tmp_path: Path) -> 
     plan = ArtifactStore(run.artifacts_dir).get("experiment_plan")
     assert any("Ghost" in issue and "could not be found" in issue for issue in plan.issues)
     assert "Unresolved issues" in (run.root / plan.markdown_path).read_text()
+
+
+def test_rejection_feedback_reaches_every_planning_step(runs_root: Path, tmp_path: Path) -> None:
+    run = seed(runs_root, tmp_path)
+    llm = MockLLM()
+    llm.add(lambda r: schema(r) == "PlanCore", core)
+    llm.add(lambda r: schema(r) == "ResourcePlan", resources)
+    llm.add(
+        lambda r: schema(r) == "ComputeEstimate",
+        {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 1.5, "justification": "BERT base fits"},
+    )
+    Engine(run, services(run, llm)).advance()
+    queue(run, ActionKind.REJECT, payload={"feedback": "Use DistilBERT and keep each run under an hour"})
+    first = len(llm.calls)
+    assert Engine(run, services(run, llm)).advance().outcome is Outcome.WAITING_GATE
+    redo = {schema(r): r.messages[-1].content for r in llm.calls[first:]}
+    assert set(redo) == {"PlanCore", "ResourcePlan", "ComputeEstimate"}
+    assert all("Use DistilBERT and keep each run under an hour" in text for text in redo.values())

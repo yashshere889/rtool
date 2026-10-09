@@ -23,7 +23,7 @@ from rich.table import Table
 
 from .. import __version__
 from ..core.actions import Action, ActionInbox, ActionKind
-from ..core.artifacts import ArtifactStore, Producer
+from ..core.artifacts import ArtifactStore
 from ..core.config import (
     AppConfig,
     apply_overrides,
@@ -40,14 +40,15 @@ from ..core.fs import atomic_write_json
 from ..core.pipeline import builtin_pipelines, find_pipeline, resolve_pipeline
 from ..core.registry import registry
 from ..core.run import RunHandle, resolve_run_path
+from ..core.secrets import load_secrets
 from ..core.services import LLMEndpoint, build_llm, build_services, build_slurm
 from ..core.state import StageStatus
 from ..hpc.episode import SAFETY_MARGIN_S, llm_needed, run_episode, schedule_next, submit_episode
 from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
 from ..llm.server import VLLMServer
-from ..packs import load_pack
-from ..schemas.common import ResearchBrief
+from ..service import create_run, kick, load_app_config, queue_action, run_status, stop_run
+from ..service import list_runs as list_all_runs
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -87,10 +88,7 @@ def _guard() -> Iterator[None]:
 
 
 def _app_config(config: list[Path], sets: list[str], runs_root: Path | None) -> AppConfig:
-    overrides: dict[str, Any] = parse_set_overrides(sets)
-    if runs_root is not None:
-        overrides.setdefault("paths", {})["runs_root"] = str(runs_root)
-    return load_config(*default_config_files(), *config, overrides=overrides)
+    return load_app_config(config, sets, runs_root=runs_root)
 
 
 def _open_run(
@@ -188,19 +186,16 @@ def _print_result(run: RunHandle, result: AdvanceResult) -> None:
 
 def _kick(run: RunHandle, reason: str, *, needs_llm: bool = False) -> None:
     """On a real cluster, make sure an episode job will pick up queued work."""
-    job_id = submit_episode(run, build_slurm(run), needs_llm=needs_llm, reason=reason)
-    if job_id:
-        kind = "GPU" if needs_llm else "CPU"
-        console.print(f"submitted {kind} episode job [bold]{job_id}[/bold]; follow it with: rtool status {_ref(run)}")
-    else:
-        console.print("an episode job is already queued or running; it will pick this up")
+    result = kick(run, reason, needs_llm=needs_llm)
+    console.print(result.detail + (f"; follow it with: rtool status {_ref(run)}" if result.submitted else ""))
 
 
 def _queue(run: RunHandle, action: Action, *, now: bool, simulate_jobs: bool) -> None:
-    ActionInbox(run.actions_dir).submit(action)
+    real = run.config.slurm.backend == "real"
+    result = queue_action(run, action, wake=real)
     console.print(f"queued [bold]{action.kind.value}[/bold]")
-    if run.config.slurm.backend == "real":
-        _kick(run, f"action:{action.kind.value}")
+    if result is not None:
+        console.print(result.detail)
     elif now:
         _print_result(run, _advance(run, simulate_jobs=simulate_jobs))
     else:
@@ -238,19 +233,16 @@ def new(
     """Create a run from a pipeline and a research brief."""
     with _guard():
         cfg = _app_config(config, set_, runs_root)
-        spec = find_pipeline(pipeline)
-        resolve_pipeline(spec)  # fail now, not in the first episode
-        load_pack(pack)  # a typo in --pack should not surface days later in the coder
-        run = RunHandle.create(cfg.paths.resolved_runs_root(), project, spec, cfg, run_id=run_id, pack=pack)
-        brief = ResearchBrief(
-            topic=topic,
+        run = create_run(
+            cfg,
+            project,
+            topic,
+            pipeline=pipeline,
             questions=question,
             constraints=constraint,
             seed_queries=seed_query,
-            domain_pack=pack,
-        )
-        ArtifactStore(run.artifacts_dir).put(
-            "research_brief", brief, producer=Producer(stage="user", agent="rtool new")
+            pack=pack,
+            run_id=run_id,
         )
         console.print(f"created run [bold]{run.run_id}[/bold] at {run.root}")
         console.print(f"next: rtool run {_ref(run)}")
@@ -275,6 +267,7 @@ def run_command(
         if run.config.slurm.backend == "real" and not inline:
             _kick(run, "rtool run", needs_llm=llm_needed(run))
             return
+        load_secrets()  # the episode runs here, so the agents need the API keys here
         _print_result(run, _advance(run, max_minutes=max_minutes, simulate_jobs=simulate_jobs, serve_llm=serve_llm))
 
 
@@ -289,6 +282,11 @@ def episode(
         run = _open_run(run_dir, None, config, set_)
         slurm = build_slurm(run)
         self_job = os.environ.get("SLURM_JOB_ID")
+        try:
+            load_secrets()  # jobs never inherit API keys (sbatch gets a scrubbed environment)
+        except RToolError as exc:
+            EventLog(run.events_path, run.run_id).emit("episode_not_started", job=self_job, error=str(exc))
+            raise
 
         def time_limit_warning(_signum: int, _frame: object) -> None:
             # Slurm warns before the time limit: queue the continuation to start after this job.
@@ -318,6 +316,9 @@ def episode(
         )
         _print_result(run, result)
         next_job = schedule_next(run, slurm, result, self_job_id=self_job)
+        if next_job is None and ActionInbox(run.actions_dir).pending():
+            # decisions that arrived after this episode last looked would otherwise wait for the next kick
+            next_job = submit_episode(run, slurm, needs_llm=False, reason="pending_actions", self_job_id=self_job)
         if next_job:
             console.print(f"next episode: job {next_job}")
 
@@ -335,15 +336,12 @@ def status(
         table = Table(title=f"{run.spec.project}/{run.run_id} · pipeline '{run.spec.pipeline.name}'")
         for column in ("stage", "agent", "status", "try", "outputs", "note"):
             table.add_column(column)
-        open_gates = []
+        open_gates = [gate.model_dump() for gate in run_status(run).open_gates]
         for sid in pipeline.order:
             st = stages[sid]
             note = ""
             if st.status is StageStatus.AWAITING_GATE and st.gate:
                 note = f"gate {st.gate.gate_id}"
-                open_gates.append(
-                    {"stage": sid, "gate": st.gate.gate_id, "in_stage": st.gate.in_stage, "summary": st.gate.summary}
-                )
             elif st.status is StageStatus.SUSPENDED:
                 note = "jobs " + ", ".join(st.waiting_on)
             elif st.status is StageStatus.FAILED:
@@ -468,6 +466,45 @@ def note(
     with _guard():
         run = _open_run(run_ref, runs_root)
         _queue(run, Action(kind=ActionKind.NOTE, stage=stage, payload={"text": text}), now=False, simulate_jobs=False)
+
+
+@app.command("list")
+def list_command(
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """List every run, newest first, with the stage it is at."""
+    with _guard():
+        root = runs_root or load_config(*default_config_files()).paths.resolved_runs_root()
+        table = Table(title=f"runs in {root}")
+        for column in ("project/run", "topic", "pipeline", "status", "waiting for you"):
+            table.add_column(column)
+        for summary in list_all_runs(root):
+            if summary.error:
+                table.add_row(f"{summary.project}/{summary.run_id}", "", "", "[red]unreadable[/red]", summary.error)
+                continue
+            current = next((s for s in summary.stages if s.status is not StageStatus.DONE), None)
+            status = "done" if current is None else f"{current.id}: {current.status.value}"
+            gates = ", ".join(f"{g.gate} ({g.stage})" for g in summary.open_gates)
+            table.add_row(
+                f"{summary.project}/{summary.run_id}", escape(summary.topic[:60]), summary.pipeline, status, gates
+            )
+        console.print(table)
+
+
+@app.command()
+def stop(
+    run_ref: str = typer.Argument(...),
+    experiments: bool = typer.Option(
+        False, "--experiments", help="Also cancel running experiment jobs (the Coder reports what finished)."
+    ),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Cancel the run's episode job; resume later with `rtool run`."""
+    with _guard():
+        run = _open_run(run_ref, runs_root)
+        result = stop_run(run, cancel_experiments=experiments)
+        jobs = ", ".join(result.cancelled) or "none were queued or running"
+        console.print(f"cancelled jobs: {jobs}. Resume with: rtool run {_ref(run)}")
 
 
 @app.command()

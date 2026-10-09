@@ -49,11 +49,15 @@ rtool run sleep                      # submits an episode job; it stops at the f
 rtool status sleep                   # stages, gates, files to read
 rtool approve sleep                  # or: rtool reject sleep -f "focus on older adults"
 rtool select sleep 1                 # at the hypothesis gate
+rtool list                           # every run and what it waits for
+rtool stop sleep                     # cancel its episode job (resume with rtool run)
 rtool archive sleep                  # when done: results, report and code to ~/data
 ```
 
 Secrets (you create them, `chmod 600`): `~/.config/rtool/secrets.env` with
-`OPENALEX_API_KEY`, `S2_API_KEY` and `UNPAYWALL_EMAIL`. Details, paths and
+`OPENALEX_API_KEY`, `S2_API_KEY` and `UNPAYWALL_EMAIL`. Episodes load the file
+themselves; the keys are never passed on to experiment code, the vLLM server or
+Slurm jobs. Details, paths and
 cluster facts: [docs/barkla_runbook.md](docs/barkla_runbook.md).
 
 ## How it works

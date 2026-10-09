@@ -213,3 +213,23 @@ def test_several_open_gates_need_disambiguation(runs_root: Path, mock_llm: MockL
     result = Engine(run, services).advance()
     assert [g["gate"] for g in result.open_gates] == ["a"]
     assert "several gates are open" in processed_outcomes(run)[0]["error"]
+
+
+def test_a_decision_names_the_gate_it_was_made_at(runs_root: Path, mock_llm: MockLLM) -> None:
+    run = make_run(runs_root, GATED)
+    services = make_services(run, mock_llm)
+    assert Engine(run, services).advance().outcome is Outcome.WAITING_GATE
+    _, stages, _ = load_status(run)
+    gate = stages["source"].gate
+    assert gate is not None and len(gate.nonce) == 12
+    seen = {"gate_nonce": gate.nonce, "artifacts": gate.summary["artifacts"]}
+
+    queue(run, ActionKind.APPROVE, stage="source", gate="check", payload={"expect": {"gate_nonce": "0" * 12}})
+    stale = {"gate_nonce": gate.nonce, "artifacts": {"toy_numbers": 99}}
+    queue(run, ActionKind.APPROVE, stage="source", gate="check", payload={"expect": stale})
+    assert Engine(run, services).advance().outcome is Outcome.WAITING_GATE  # both refused: the gate stays open
+    errors = [o.get("error", "") for o in processed_outcomes(run)]
+    assert "opened again" in errors[0] and "toy_numbers (v99 -> v1)" in errors[1]
+
+    queue(run, ActionKind.APPROVE, stage="source", gate="check", payload={"expect": seen})
+    assert Engine(run, services).advance().outcome is Outcome.DONE

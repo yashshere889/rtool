@@ -25,6 +25,7 @@ barkla = [
   "pymupdf4llm>=0.0.17", # PDF -> Markdown with reading order (PyMuPDF is AGPL; fine for research use)
   "fastembed>=0.4",      # small CPU (ONNX) embedding models; downloads the model on first use
   "huggingface_hub>=0.24", # dataset/model downloads for experiments
+  "ruff>=0.6",            # the Coder's undefined-name check on generated code (skipped without it)
 ]
 
 [project.scripts]

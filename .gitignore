@@ -8,12 +8,18 @@ dist/
 .ruff_cache/
 .DS_Store
 
-# local run directories and big binaries
-runs/
-rtool-runs/
+# local run directories (repo root only) and big binaries
+/runs/
+/rtool-runs/
 *.sif
 *.img
 
 # never commit credentials
 secrets.env
 *.secrets
+
+# web frontend build tooling
+node_modules/
+/frontend/dist/
+/frontend/test-results/
+/frontend/playwright-report/

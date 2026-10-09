@@ -194,6 +194,37 @@ def test_rejected_gate_revises_the_code(runs_root: Path, tmp_path: Path) -> None
     assert revise and "log the loss curve too" in revise[0].messages[-1].content
 
 
+def test_edits_at_the_gpu_gate_are_tested_before_any_gpu_time(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    advance(run, svc, Outcome.WAITING_GATE)
+    path = run.work_dir("code") / "code" / "experiment.py"
+    path.write_text(path.read_text() + "\n# tuned by hand\n")  # the researcher edits the code at the gate...
+    queue(run, ActionKind.APPROVE)  # ...and approves (the CLI shows experiment.py among the files to read)
+    calls = len(llm.calls)
+    again = advance(run, svc, Outcome.WAITING_GATE)  # nothing submitted: the edit is smoke-tested first
+    assert again.open_gates[0]["gate"] == "gpu_runs" and len(llm.calls) == calls  # no model involved
+    queue(run, ActionKind.APPROVE)
+    advance(run, svc, Outcome.WAITING_JOB)  # the approval of the tested edit stands
+    svc.slurm.finish_all()  # type: ignore[union-attr]
+    advance(run, svc, Outcome.DONE)
+    bundle = ArtifactStore(run.artifacts_dir).get("code_bundle")
+    assert {f.path: f.origin for f in bundle.files}["experiment.py"] == "human"
+    assert "# tuned by hand" in path.read_text() and "human_edit" in [f.signature for f in bundle.fixes]
+
+
+def test_reject_with_retest_tests_again_without_the_model(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    advance(run, svc, Outcome.WAITING_GATE)
+    calls = len(llm.calls)
+    queue(run, ActionKind.REJECT, payload={"feedback": "", "retest": True})
+    assert advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["gate"] == "gpu_runs"
+    assert len(llm.calls) == calls  # re-tested, not revised
+
+
 def test_unfixable_code_asks_a_human_then_resumes(runs_root: Path, tmp_path: Path) -> None:
     run = setup(runs_root, tmp_path, config={"max_fix_rounds": 1})
     svc = services(run, coder_llm(CRASHES_IN_SMOKE, fix=CRASHES_IN_SMOKE))

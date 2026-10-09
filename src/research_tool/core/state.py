@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
@@ -28,9 +29,14 @@ class GateStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+def new_gate_nonce() -> str:
+    return secrets.token_hex(6)
+
+
 class GateState(BaseModel):
     gate_id: str
     in_stage: bool = False  # requested by the agent mid-run (ctx.gate) rather than after the stage
+    nonce: str = ""  # new every time a gate opens: a decision can name the exact gate it was made at
     status: GateStatus = GateStatus.OPEN
     summary: dict[str, Any] = Field(default_factory=dict)
     opened_at: str = Field(default_factory=now_iso)

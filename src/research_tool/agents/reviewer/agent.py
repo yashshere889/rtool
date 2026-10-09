@@ -28,6 +28,7 @@ from ...core.agent import Agent
 from ...core.context import AgentContext
 from ...core.fs import atomic_write_text
 from ...core.registry import register_agent
+from ...core.state import FeedbackKind
 from ...llm.client import LLMOutputError
 from ...llm.prompts import PromptLibrary
 from ...schemas.code import CodeBundle, ExperimentResults
@@ -262,6 +263,10 @@ class Reviewing:
     # ---------------------------------------------------------------- main
     def review(self) -> None:
         ctx = self.ctx
+        rejections = [f.text for f in ctx.feedback if f.kind is FeedbackKind.HUMAN_REJECTION]
+        if rejections:
+            self.return_to_writer(rejections)
+            return
         checks = self.checks()
         try:
             drafts = self.drafts(checks)
@@ -343,6 +348,22 @@ class Reviewing:
             }
         )
         ctx.outputs.put("final_report", final, meta={"review": ctx.relative(final_path)})
+
+    def return_to_writer(self, rejections: list[str]) -> None:
+        """The researcher rejected the final report: another round of writing first, then a fresh review.
+
+        No review is done now (it would be thrown away). The stage still has to
+        produce its outputs, so it stages a short placeholder review and the
+        unchanged report; the change request makes the engine re-run the Writer
+        with the feedback and then this stage.
+        """
+        ctx = self.ctx
+        reason = "researcher: " + " / ".join(rejections)
+        ctx.request_change(artifact="report", reason=reason, required_changes=rejections)
+        summary = "Sent back to the Writer at the researcher's request: " + "; ".join(rejections)
+        ctx.outputs.put("review", Review(verdict="needs_human", summary=summary, change_requests=[summary]))
+        ctx.outputs.put("final_report", self.report)
+        ctx.emit("review_returned_to_writer", feedback=rejections)
 
     def copy_figures(self, out: Any) -> None:
         target = out / "figures"

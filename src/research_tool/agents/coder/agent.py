@@ -324,9 +324,12 @@ class CoderSession:
                 raise StageFailed("the model did not return experiment.py in a ```python block", needs_human=True)
             self.save_source(code, "llm")
         self.state.pop("gate_feedback", None)
+        self.static_checks()
+        self.goto("smoke")
+
+    def static_checks(self) -> None:
         while problems := static_problems(self.source(), self.code / "experiment.py"):
             self.repair(Diagnosis("static_check", problems[0]), log="\n".join(problems), condition="", phase="check")
-        self.goto("smoke")
 
     def gpu_text(self) -> str:
         c = self.plan.compute
@@ -350,6 +353,7 @@ class CoderSession:
                 continue
             failure = self.run_smoke()
             if failure is None:
+                self.state["tested_sha"] = sha256_text(self.source())  # what the GPU-runs approval refers to
                 self.goto("approve")
                 return
             condition, diagnosis, log = failure
@@ -481,6 +485,12 @@ class CoderSession:
 
     # -------------------------------------------------------------- approve
     def approve(self) -> None:
+        tested = self.state.get("tested_sha")
+        if tested and sha256_text(self.source()) != tested:
+            # experiment.py was edited (by hand, at this gate) after its smoke test passed: test the edit
+            # before anyone can approve GPU time for it; any earlier decision referred to the old code
+            self.retest("the researcher's edits")
+            return
         runs = planned_runs(self.plan)
         hours = self.gpu_hours(len(runs), self.plan.compute.time_limit)
         smoke = [SmokeResult.model_validate(r) for r in self.state.get("smoke", [])]
@@ -499,10 +509,22 @@ class CoderSession:
             self.state.setdefault("pending", [list(r) for r in runs])  # a rerun keeps its own list
             self.goto("submit")
             return
+        if decision.data.get("retest"):  # "test it again", not "rewrite it": no model involved
+            self.retest("the code, as asked")
+            return
         self.state.get("_gates", {}).pop(GATE, None)  # ask again after the revision
         self.state["gate_feedback"] = [decision.feedback or "The researcher rejected the GPU runs; improve the code."]
         self.state["fix_rounds"] = 0
         self.goto("write")
+
+    def retest(self, what: str) -> None:
+        """Static checks and smoke tests again, then a fresh GPU-runs gate."""
+        self.state.get("_gates", {}).pop(GATE, None)
+        self.state["fix_rounds"] = 0
+        if sha256_text(self.source()) != self.marker().get("sha"):
+            self.record(phase="smoke", signature="human_edit", action=f"re-testing {what}")
+        self.static_checks()
+        self.goto("smoke")
 
     def gpu_hours(self, runs: int, time_limit: str) -> float:
         return round(runs * self.plan.compute.gpus_per_run * parse_time_limit(time_limit) / 3600, 2)

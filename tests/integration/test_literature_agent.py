@@ -286,6 +286,29 @@ def test_literature_agent_builds_a_verified_corpus_and_map(setup) -> None:  # no
     assert "literature_phase_done" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
 
 
+def test_every_paper_gets_its_own_file(setup) -> None:  # noqa: ANN001
+    run, services, _, _, _ = setup
+    Engine(run, services).advance()
+    corpus = ArtifactStore(run.artifacts_dir).get("corpus")
+    copies = [p for p in corpus.papers if p.file]
+    assert len(copies) >= 4
+    assert len({p.file for p in copies}) == len(copies)  # doi:10.1/sp3 and doi:10.1/thal used to share doi_10.pdf
+    for paper in copies:
+        content = (run.root / paper.file).read_bytes()
+        if paper.file.endswith(".pdf"):  # the fake server puts the URL it served into the PDF
+            assert any(marker.encode() in content for marker in [paper.arxiv_id or "", *paper.oa_urls] if marker)
+
+
+def test_paper_stems_never_collide_on_dotted_ids() -> None:
+    from research_tool.agents.literature.agent import paper_stem
+
+    ids = ["doi:10.1038/s41586-020-2649-2", "doi:10.1038/nature14539", "arxiv:2401.12345", "arxiv:2401.67890"]
+    stems = [paper_stem(i) for i in ids]
+    assert len(set(stems)) == len(ids)
+    assert all("/" not in s and ":" not in s for s in stems)
+    assert stems[0].startswith("doi_10.1038_s41586-020-2649-2-")
+
+
 def test_rejecting_the_gate_reuses_downloads_and_reading(setup) -> None:  # noqa: ANN001
     run, services, documents, calls, sources = setup
     Engine(run, services).advance()

@@ -10,6 +10,7 @@ open-access copies are downloaded; anything else is listed in
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -88,6 +89,17 @@ def local_scratch() -> Path | None:
 
 def is_included(paper: PaperRecord) -> bool:
     return paper.status in INCLUDED
+
+
+def paper_stem(paper_id: str) -> str:
+    """File name (without extension) of a paper's copy: readable, and unique per id.
+
+    Ids are full of dots (``doi:10.1038/...``, ``arxiv:2401.12345``), so never use
+    ``Path.with_suffix`` on the result: it would cut the name at the first dot and
+    let different papers overwrite each other.
+    """
+    digest = hashlib.sha1(paper_id.encode("utf-8")).hexdigest()[:8]
+    return f"{_SAFE.sub('_', paper_id)[:100]}-{digest}"
 
 
 @register_agent("literature")
@@ -290,7 +302,7 @@ class _LiteratureRun:
                 )
                 record, _ = self.index.add(hit, found_by="manual")
                 record.relevance = record.relevance if record.relevance is not None else 10
-            dest = papers_dir / f"{_SAFE.sub('_', record.id)[:120]}{path.suffix.lower()}"
+            dest = papers_dir / f"{paper_stem(record.id)}{path.suffix.lower()}"
             shutil.move(str(path), dest)
             sidecar.unlink(missing_ok=True)
             record.file, record.status, record.note = self.ctx.relative(dest), "downloaded", "added by hand"
@@ -320,14 +332,14 @@ class _LiteratureRun:
             raise StageFailed(f"not enough storage for {len(todo)} papers: {exc}", needs_human=True) from None
         max_bytes = self.cfg.max_download_mb * 1024 * 1024
         for n, paper in enumerate(todo, 1):
-            base = papers_dir / _SAFE.sub("_", paper.id)[:120]
+            stem = paper_stem(paper.id)
             for url in self.candidate_urls(paper):
                 try:
-                    result = self.tools.http.download(url, base.with_suffix(".part"), max_bytes=max_bytes)
+                    result = self.tools.http.download(url, papers_dir / f"{stem}.part", max_bytes=max_bytes)
                 except HttpError:
                     continue
                 suffix = ".pdf" if result.content_type == "application/pdf" else ".html"
-                final = base.with_suffix(suffix)
+                final = papers_dir / f"{stem}{suffix}"
                 result.path.replace(final)
                 paper.file, paper.file_sha256, paper.status = self.ctx.relative(final), result.sha256, "downloaded"
                 break

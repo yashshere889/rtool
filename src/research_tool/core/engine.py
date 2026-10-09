@@ -63,6 +63,7 @@ from .state import (
     StageState,
     StageStatus,
     StateStore,
+    new_gate_nonce,
 )
 from .workspace import Workspace
 
@@ -286,7 +287,7 @@ class Engine:
             self._record_usage(st, budget, started)
             st.agent_state = ctx.state
             st.status = StageStatus.AWAITING_GATE
-            st.gate = GateState(gate_id=signal.gate_id, in_stage=True, summary=signal.summary)
+            st.gate = GateState(gate_id=signal.gate_id, in_stage=True, summary=signal.summary, nonce=new_gate_nonce())
             self._save(st)
             self.events.emit("gate_opened", stage=sid, gate=signal.gate_id, in_stage=True)
         except BudgetExceeded as exc:
@@ -508,6 +509,7 @@ class Engine:
             st.status = StageStatus.AWAITING_GATE
             st.gate = GateState(
                 gate_id=REVISION_LIMIT_GATE,
+                nonce=new_gate_nonce(),
                 summary={
                     "message": (
                         f"Revision limit ({limit}) reached. Approve to accept the current outputs; "
@@ -563,7 +565,7 @@ class Engine:
         except ActionError as exc:
             self._fail(sid, f"cannot open gate {gate_id!r}: {exc}", retryable=False)
             return
-        st.gate = GateState(gate_id=gate_id, summary=summary)
+        st.gate = GateState(gate_id=gate_id, summary=summary, nonce=new_gate_nonce())
         if self.config.gates.mode(gate_id) is GateMode.AUTO:
             self._save(st)
             self.events.emit("gate_auto_resolved", stage=sid, gate=gate_id)
@@ -732,6 +734,32 @@ class Engine:
             raise ActionError(f"several gates are open ({names}); choose one with --gate or --stage")
         return candidates[0]
 
+    def _check_expected_gate(self, action: Action, gate: GateState) -> None:
+        """Refuse a decision made while looking at an earlier version of this gate.
+
+        ``payload["expect"]`` (optional) is what the decider saw: ``gate_nonce`` (new
+        each time a gate opens) and/or ``artifacts`` ({name: version} under review).
+        A UI sends both, so a click from a stale page never approves something unseen.
+        """
+        expect = action.payload.get("expect")
+        if not expect:
+            return
+        if not isinstance(expect, dict):
+            raise ActionError("expect must be a mapping")
+        nonce = expect.get("gate_nonce")
+        if nonce and gate.nonce and nonce != gate.nonce:
+            raise ActionError(
+                f"gate {gate.gate_id!r} was opened again since this decision was made; look at it again and decide"
+            )
+        shown = gate.summary.get("artifacts") or {}
+        changed = [
+            f"{name} (v{seen} -> v{shown.get(name)})"
+            for name, seen in (expect.get("artifacts") or {}).items()
+            if shown.get(name) != seen
+        ]
+        if changed:
+            raise ActionError(f"changed since this decision was made: {', '.join(changed)}; look again and decide")
+
     def _single(self, status: StageStatus, label: str) -> str:
         matches = [sid for sid in self.pipeline.order if self.stages[sid].status is status]
         if len(matches) == 1:
@@ -747,6 +775,7 @@ class Engine:
             st = self.stages[sid]
             gate_state = st.gate
             assert gate_state is not None
+            self._check_expected_gate(action, gate_state)
             approved = kind is not ActionKind.REJECT
             feedback = str(action.payload.get("feedback") or action.payload.get("note") or "")
             if gate_state.gate_id == REVISION_LIMIT_GATE:

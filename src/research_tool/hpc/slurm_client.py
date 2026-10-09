@@ -26,6 +26,7 @@ from typing import Any
 from ..core.config import SlurmConfig
 from ..core.errors import RToolError
 from ..core.fs import atomic_write_json, atomic_write_text, read_json
+from ..core.secrets import without_secrets
 from .jobspec import JobSpec
 from .sbatch import JobSpecError, array_size, render_script, validate_job
 from .slurm import JobState, JobStatus
@@ -63,7 +64,10 @@ class SlurmCommandError(RToolError):
 
 
 def default_runner(args: list[str], cwd: Path | None, timeout: float) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
+    # sbatch exports this environment into the job; jobs that need API keys (episodes) load them themselves
+    return subprocess.run(
+        args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False, env=without_secrets()
+    )
 
 
 def parse_sacct_state(text: str) -> JobState:
