@@ -34,10 +34,21 @@ def visible(events: list[dict[str, Any]], include_noise: bool) -> list[dict[str,
 
 @router.get("/runs/{project}/{run_id}/events", response_model=EventPage)
 def events(
-    project: str, run_id: str, request: Request, after: int = 0, limit: int = 500, include_noise: bool = False
+    project: str,
+    run_id: str,
+    request: Request,
+    after: int = 0,
+    limit: int = 500,
+    tail: int | None = None,
+    include_noise: bool = False,
 ) -> EventPage:
+    """Events after the cursor ``after`` (at most ``limit``), or with ``tail`` the last ``tail`` events."""
     run = get_run(request, project, run_id)
-    found, cursor = EventLog(run.events_path, run.run_id).read_from(after, limit=max(1, min(limit, 5000)))
+    log = EventLog(run.events_path, run.run_id)
+    if tail is not None:
+        found, cursor = log.read_from(0)
+        return EventPage(events=visible(found, include_noise)[-max(1, min(tail, 5000)) :], cursor=cursor)
+    found, cursor = log.read_from(after, limit=max(1, min(limit, 5000)))
     return EventPage(events=visible(found, include_noise), cursor=cursor)
 
 

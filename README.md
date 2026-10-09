@@ -60,6 +60,24 @@ themselves; the keys are never passed on to experiment code, the vLLM server or
 Slurm jobs. Details, paths and
 cluster facts: [docs/barkla_runbook.md](docs/barkla_runbook.md).
 
+## Web UI
+
+`rtool ui` serves a browser interface: start research from a question, follow every stage
+live, and make the decisions at each checkpoint. It needs the `web` extra.
+
+```bash
+rtool ui --mode local --demo --open      # try it on a laptop: demo runs, simulated papers, model and cluster
+```
+
+On Barkla it listens on 127.0.0.1 only and is reached through an ssh tunnel (a one-command
+launcher is planned), e.g. `ssh -L 8765:127.0.0.1:8765 barkla` and then `rtool ui --mode login`
+there. Open the link it prints: it carries the access token.
+
+Frontend development (`frontend/`, React + TypeScript + Vite): run `rtool ui --mode local
+--runs-root runs/demo` and `npm run dev` in `frontend/` (it forwards `/api` to port 8765), then
+`scripts/build_frontend.sh` to rebuild the app into `src/research_tool/web/static` — commit the
+result, the cluster has no Node. Demo runs: `python -m research_tool.testing.demo_run runs/demo`.
+
 ## How it works
 
 A *run* is a directory. Each stage is an **agent** that reads typed, versioned

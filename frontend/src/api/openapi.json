@@ -1,0 +1,1993 @@
+{
+ "components": {
+  "schemas": {
+   "Action": {
+    "properties": {
+     "by": {
+      "title": "By",
+      "type": "string"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "gate": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gate"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/ActionKind"
+     },
+     "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     }
+    },
+    "required": [
+     "by",
+     "created_at",
+     "gate",
+     "id",
+     "kind",
+     "payload",
+     "stage"
+    ],
+    "title": "Action",
+    "type": "object"
+   },
+   "ActionKind": {
+    "enum": [
+     "approve",
+     "reject",
+     "select",
+     "retry",
+     "note"
+    ],
+    "title": "ActionKind",
+    "type": "string"
+   },
+   "ActionRequest": {
+    "properties": {
+     "gate": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gate"
+     },
+     "id": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9a-f]{32}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Client-chosen id (idempotency)",
+      "title": "Id"
+     },
+     "kind": {
+      "enum": [
+       "approve",
+       "reject",
+       "select",
+       "retry",
+       "note"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     }
+    },
+    "required": [
+     "kind"
+    ],
+    "title": "ActionRequest",
+    "type": "object"
+   },
+   "ActionState": {
+    "properties": {
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "outcome": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Outcome"
+     },
+     "state": {
+      "enum": [
+       "queued",
+       "applied",
+       "rejected",
+       "duplicate",
+       "invalid",
+       "unknown"
+      ],
+      "title": "State",
+      "type": "string"
+     }
+    },
+    "required": [
+     "error",
+     "outcome",
+     "state"
+    ],
+    "title": "ActionState",
+    "type": "object"
+   },
+   "ArtifactEnvelope": {
+    "properties": {
+     "content_hash": {
+      "title": "Content Hash",
+      "type": "string"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "inputs": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Inputs",
+      "type": "object"
+     },
+     "meta": {
+      "additionalProperties": true,
+      "title": "Meta",
+      "type": "object"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+     },
+     "producer": {
+      "$ref": "#/components/schemas/Producer"
+     },
+     "schema_ref": {
+      "title": "Schema Ref",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "content_hash",
+     "created_at",
+     "inputs",
+     "meta",
+     "name",
+     "payload",
+     "producer",
+     "schema_ref",
+     "version"
+    ],
+    "title": "ArtifactEnvelope",
+    "type": "object"
+   },
+   "ArtifactInfo": {
+    "properties": {
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "head": {
+      "title": "Head",
+      "type": "integer"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "producer": {
+      "$ref": "#/components/schemas/Producer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     }
+    },
+    "required": [
+     "created_at",
+     "head",
+     "name",
+     "producer",
+     "versions"
+    ],
+    "title": "ArtifactInfo",
+    "type": "object"
+   },
+   "Created": {
+    "properties": {
+     "kick": {
+      "$ref": "#/components/schemas/KickResult"
+     },
+     "run": {
+      "$ref": "#/components/schemas/RunDetail"
+     }
+    },
+    "required": [
+     "kick",
+     "run"
+    ],
+    "title": "Created",
+    "type": "object"
+   },
+   "EventPage": {
+    "properties": {
+     "cursor": {
+      "title": "Cursor",
+      "type": "integer"
+     },
+     "events": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Events",
+      "type": "array"
+     }
+    },
+    "required": [
+     "cursor",
+     "events"
+    ],
+    "title": "EventPage",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "required": [
+     "detail"
+    ],
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "Health": {
+    "properties": {
+     "mode": {
+      "title": "Mode",
+      "type": "string"
+     },
+     "ok": {
+      "default": true,
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode",
+     "ok",
+     "version"
+    ],
+    "title": "Health",
+    "type": "object"
+   },
+   "KickResult": {
+    "properties": {
+     "detail": {
+      "default": "",
+      "title": "Detail",
+      "type": "string"
+     },
+     "job_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Id"
+     },
+     "submitted": {
+      "title": "Submitted",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "detail",
+     "job_id",
+     "submitted"
+    ],
+    "title": "KickResult",
+    "type": "object"
+   },
+   "NewRun": {
+    "properties": {
+     "constraints": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Constraints",
+      "type": "array"
+     },
+     "max_gpu_hours": {
+      "anyOf": [
+       {
+        "exclusiveMinimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Gpu Hours"
+     },
+     "pack": {
+      "default": "generic",
+      "title": "Pack",
+      "type": "string"
+     },
+     "project": {
+      "anyOf": [
+       {
+        "maxLength": 80,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Group name; made from the topic if empty",
+      "title": "Project"
+     },
+     "questions": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Questions",
+      "type": "array"
+     },
+     "review": {
+      "default": "every_step",
+      "enum": [
+       "every_step",
+       "gpu_and_final",
+       "automatic"
+      ],
+      "title": "Review",
+      "type": "string"
+     },
+     "seed_queries": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Seed Queries",
+      "type": "array"
+     },
+     "topic": {
+      "description": "The research question or topic",
+      "maxLength": 2000,
+      "minLength": 3,
+      "title": "Topic",
+      "type": "string"
+     }
+    },
+    "required": [
+     "topic"
+    ],
+    "title": "NewRun",
+    "type": "object"
+   },
+   "OpenGate": {
+    "properties": {
+     "actions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Actions",
+      "type": "array"
+     },
+     "gate": {
+      "title": "Gate",
+      "type": "string"
+     },
+     "in_stage": {
+      "default": false,
+      "title": "In Stage",
+      "type": "boolean"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "nonce": {
+      "default": "",
+      "title": "Nonce",
+      "type": "string"
+     },
+     "opened_at": {
+      "default": "",
+      "title": "Opened At",
+      "type": "string"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "summary": {
+      "additionalProperties": true,
+      "title": "Summary",
+      "type": "object"
+     }
+    },
+    "required": [
+     "actions",
+     "gate",
+     "in_stage",
+     "kind",
+     "nonce",
+     "opened_at",
+     "stage",
+     "summary"
+    ],
+    "title": "OpenGate",
+    "type": "object"
+   },
+   "Producer": {
+    "properties": {
+     "agent": {
+      "title": "Agent",
+      "type": "string"
+     },
+     "agent_version": {
+      "default": "",
+      "title": "Agent Version",
+      "type": "string"
+     },
+     "attempt": {
+      "default": 0,
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "token": {
+      "default": "",
+      "title": "Token",
+      "type": "string"
+     }
+    },
+    "required": [
+     "agent",
+     "agent_version",
+     "attempt",
+     "stage",
+     "token"
+    ],
+    "title": "Producer",
+    "type": "object"
+   },
+   "Queued": {
+    "properties": {
+     "action": {
+      "$ref": "#/components/schemas/Action"
+     },
+     "kick": {
+      "$ref": "#/components/schemas/KickResult"
+     }
+    },
+    "required": [
+     "action",
+     "kick"
+    ],
+    "title": "Queued",
+    "type": "object"
+   },
+   "RunDetail": {
+    "description": "A run as the browser sees it: no server paths, plus what is advancing it right now.",
+    "properties": {
+     "created_at": {
+      "default": "",
+      "title": "Created At",
+      "type": "string"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "last_outcome": {
+      "default": "new",
+      "title": "Last Outcome",
+      "type": "string"
+     },
+     "open_gates": {
+      "items": {
+       "$ref": "#/components/schemas/OpenGate"
+      },
+      "title": "Open Gates",
+      "type": "array"
+     },
+     "pack": {
+      "default": "",
+      "title": "Pack",
+      "type": "string"
+     },
+     "pipeline": {
+      "default": "",
+      "title": "Pipeline",
+      "type": "string"
+     },
+     "project": {
+      "title": "Project",
+      "type": "string"
+     },
+     "queued_actions": {
+      "items": {
+       "$ref": "#/components/schemas/Action"
+      },
+      "title": "Queued Actions",
+      "type": "array"
+     },
+     "run_id": {
+      "title": "Run Id",
+      "type": "string"
+     },
+     "run_state": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RunState"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "stages": {
+      "items": {
+       "$ref": "#/components/schemas/StageSummary"
+      },
+      "title": "Stages",
+      "type": "array"
+     },
+     "tool_version": {
+      "default": "",
+      "title": "Tool Version",
+      "type": "string"
+     },
+     "topic": {
+      "default": "",
+      "title": "Topic",
+      "type": "string"
+     },
+     "updated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated At"
+     },
+     "worker": {
+      "$ref": "#/components/schemas/WorkerState"
+     }
+    },
+    "required": [
+     "created_at",
+     "error",
+     "last_outcome",
+     "open_gates",
+     "pack",
+     "pipeline",
+     "project",
+     "queued_actions",
+     "run_id",
+     "run_state",
+     "stages",
+     "tool_version",
+     "topic",
+     "updated_at",
+     "worker"
+    ],
+    "title": "RunDetail",
+    "type": "object"
+   },
+   "RunState": {
+    "properties": {
+     "active_episode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Active Episode"
+     },
+     "episodes": {
+      "default": 0,
+      "title": "Episodes",
+      "type": "integer"
+     },
+     "last_outcome": {
+      "default": "new",
+      "title": "Last Outcome",
+      "type": "string"
+     },
+     "nonce": {
+      "title": "Nonce",
+      "type": "string"
+     },
+     "processed_actions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Processed Actions",
+      "type": "array"
+     },
+     "run_id": {
+      "title": "Run Id",
+      "type": "string"
+     },
+     "updated_at": {
+      "title": "Updated At",
+      "type": "string"
+     },
+     "usage": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Usage",
+      "type": "object"
+     }
+    },
+    "required": [
+     "active_episode",
+     "episodes",
+     "last_outcome",
+     "nonce",
+     "processed_actions",
+     "run_id",
+     "updated_at",
+     "usage"
+    ],
+    "title": "RunState",
+    "type": "object"
+   },
+   "RunSummary": {
+    "properties": {
+     "created_at": {
+      "default": "",
+      "title": "Created At",
+      "type": "string"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "last_outcome": {
+      "default": "new",
+      "title": "Last Outcome",
+      "type": "string"
+     },
+     "open_gates": {
+      "items": {
+       "$ref": "#/components/schemas/OpenGate"
+      },
+      "title": "Open Gates",
+      "type": "array"
+     },
+     "pack": {
+      "default": "",
+      "title": "Pack",
+      "type": "string"
+     },
+     "pipeline": {
+      "default": "",
+      "title": "Pipeline",
+      "type": "string"
+     },
+     "project": {
+      "title": "Project",
+      "type": "string"
+     },
+     "run_id": {
+      "title": "Run Id",
+      "type": "string"
+     },
+     "stages": {
+      "items": {
+       "$ref": "#/components/schemas/StageSummary"
+      },
+      "title": "Stages",
+      "type": "array"
+     },
+     "topic": {
+      "default": "",
+      "title": "Topic",
+      "type": "string"
+     },
+     "updated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated At"
+     }
+    },
+    "required": [
+     "created_at",
+     "error",
+     "last_outcome",
+     "open_gates",
+     "pack",
+     "pipeline",
+     "project",
+     "run_id",
+     "stages",
+     "topic",
+     "updated_at"
+    ],
+    "title": "RunSummary",
+    "type": "object"
+   },
+   "ServerSettings": {
+    "properties": {
+     "mode": {
+      "title": "Mode",
+      "type": "string"
+     },
+     "runs_locally": {
+      "title": "Runs Locally",
+      "type": "boolean"
+     },
+     "runs_root": {
+      "title": "Runs Root",
+      "type": "string"
+     },
+     "secrets": {
+      "additionalProperties": {
+       "type": "boolean"
+      },
+      "title": "Secrets",
+      "type": "object"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode",
+     "runs_locally",
+     "runs_root",
+     "secrets",
+     "version"
+    ],
+    "title": "ServerSettings",
+    "type": "object"
+   },
+   "SessionRequest": {
+    "properties": {
+     "token": {
+      "title": "Token",
+      "type": "string"
+     }
+    },
+    "required": [
+     "token"
+    ],
+    "title": "SessionRequest",
+    "type": "object"
+   },
+   "StageStatus": {
+    "enum": [
+     "pending",
+     "running",
+     "suspended",
+     "awaiting_gate",
+     "done",
+     "stale",
+     "failed"
+    ],
+    "title": "StageStatus",
+    "type": "string"
+   },
+   "StageSummary": {
+    "properties": {
+     "agent": {
+      "title": "Agent",
+      "type": "string"
+     },
+     "attempt": {
+      "default": 0,
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     },
+     "gate": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/OpenGate"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "last_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Error"
+     },
+     "output_versions": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Output Versions",
+      "type": "object"
+     },
+     "pending_feedback": {
+      "default": 0,
+      "title": "Pending Feedback",
+      "type": "integer"
+     },
+     "stale_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stale Reason"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "status": {
+      "$ref": "#/components/schemas/StageStatus"
+     },
+     "usage": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Usage",
+      "type": "object"
+     },
+     "waiting_on": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Waiting On",
+      "type": "array"
+     }
+    },
+    "required": [
+     "agent",
+     "attempt",
+     "finished_at",
+     "gate",
+     "id",
+     "last_error",
+     "output_versions",
+     "pending_feedback",
+     "stale_reason",
+     "started_at",
+     "status",
+     "usage",
+     "waiting_on"
+    ],
+    "title": "StageSummary",
+    "type": "object"
+   },
+   "StopRequest": {
+    "properties": {
+     "experiments": {
+      "default": false,
+      "title": "Experiments",
+      "type": "boolean"
+     }
+    },
+    "title": "StopRequest",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "ctx",
+     "input",
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "WorkerState": {
+    "description": "Is something advancing this run right now?",
+    "properties": {
+     "active": {
+      "default": false,
+      "title": "Active",
+      "type": "boolean"
+     },
+     "detail": {
+      "default": "",
+      "title": "Detail",
+      "type": "string"
+     },
+     "job_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Id"
+     },
+     "last_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Error"
+     }
+    },
+    "required": [
+     "active",
+     "detail",
+     "job_id",
+     "last_error"
+    ],
+    "title": "WorkerState",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "title": "Research Tool",
+  "version": "0.1.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/api/artifact-types": {
+   "get": {
+    "description": "JSON Schema of every artifact type, so pages for new agents can be generated.",
+    "operationId": "artifact_types_api_artifact_types_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Artifact Types Api Artifact Types Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Artifact Types",
+    "tags": [
+     "artifacts"
+    ]
+   }
+  },
+  "/api/health": {
+   "get": {
+    "operationId": "health_api_health_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Health"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Health",
+    "tags": [
+     "session"
+    ]
+   }
+  },
+  "/api/runs": {
+   "get": {
+    "operationId": "all_runs_api_runs_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RunSummary"
+         },
+         "title": "Response All Runs Api Runs Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "All Runs",
+    "tags": [
+     "runs"
+    ]
+   },
+   "post": {
+    "operationId": "new_run_api_runs_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NewRun"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Created"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "New Run",
+    "tags": [
+     "runs"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}": {
+   "get": {
+    "operationId": "one_run_api_runs__project___run_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunDetail"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "One Run",
+    "tags": [
+     "runs"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/actions": {
+   "post": {
+    "operationId": "submit_api_runs__project___run_id__actions_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ActionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Queued"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Submit",
+    "tags": [
+     "actions"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/actions/{action_id}": {
+   "delete": {
+    "operationId": "undo_api_runs__project___run_id__actions__action_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "action_id",
+      "required": true,
+      "schema": {
+       "title": "Action Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Undo",
+    "tags": [
+     "actions"
+    ]
+   },
+   "get": {
+    "operationId": "action_state_api_runs__project___run_id__actions__action_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "action_id",
+      "required": true,
+      "schema": {
+       "title": "Action Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActionState"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Action State",
+    "tags": [
+     "actions"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/artifacts": {
+   "get": {
+    "operationId": "artifacts_api_runs__project___run_id__artifacts_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ArtifactInfo"
+         },
+         "title": "Response Artifacts Api Runs  Project   Run Id  Artifacts Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Artifacts",
+    "tags": [
+     "artifacts"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/artifacts/{name}": {
+   "get": {
+    "description": "One version (the latest by default). Versions never change, so ETags make reloads cheap.",
+    "operationId": "artifact_api_runs__project___run_id__artifacts__name__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ArtifactEnvelope"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Artifact",
+    "tags": [
+     "artifacts"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/events": {
+   "get": {
+    "description": "Events after the cursor ``after`` (at most ``limit``), or with ``tail`` the last ``tail`` events.",
+    "operationId": "events_api_runs__project___run_id__events_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "default": 0,
+       "title": "After",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 500,
+       "title": "Limit",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "tail",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Tail"
+      }
+     },
+     {
+      "in": "query",
+      "name": "include_noise",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Include Noise",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventPage"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Events",
+    "tags": [
+     "events"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/events/stream": {
+   "get": {
+    "description": "New events as they are written: one SSE message per batch, ``{\"events\": [...], \"cursor\": n}``.\n\nResumes from ``Last-Event-ID`` (or ``?after=``); without either it starts at the end of the log.\n``timeout`` (seconds) ends the stream, for tests.",
+    "operationId": "stream_api_runs__project___run_id__events_stream_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     },
+     {
+      "in": "query",
+      "name": "timeout",
+      "required": false,
+      "schema": {
+       "default": 0.0,
+       "title": "Timeout",
+       "type": "number"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Stream",
+    "tags": [
+     "events"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/files/{path}": {
+   "get": {
+    "description": "A file from the run directory (papers, figures, reports, logs) \u2014 only known kinds, never outside the run.",
+    "operationId": "run_file_api_runs__project___run_id__files__path__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "path",
+      "required": true,
+      "schema": {
+       "title": "Path",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Run File",
+    "tags": [
+     "artifacts"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/resume": {
+   "post": {
+    "description": "Make sure something is advancing the run (after a pause, or if a decision was not picked up).",
+    "operationId": "resume_api_runs__project___run_id__resume_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/KickResult"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resume",
+    "tags": [
+     "runs"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/stop": {
+   "post": {
+    "operationId": "stop_api_runs__project___run_id__stop_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StopRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "title": "Response Stop Api Runs  Project   Run Id  Stop Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Stop",
+    "tags": [
+     "runs"
+    ]
+   }
+  },
+  "/api/session": {
+   "post": {
+    "operationId": "sign_in_api_session_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SessionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Sign In",
+    "tags": [
+     "session"
+    ]
+   }
+  },
+  "/api/settings": {
+   "get": {
+    "operationId": "server_settings_api_settings_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ServerSettings"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Server Settings",
+    "tags": [
+     "session"
+    ]
+   }
+  }
+ }
+}
