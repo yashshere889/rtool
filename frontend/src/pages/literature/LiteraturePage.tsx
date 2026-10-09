@@ -7,6 +7,7 @@ import { useLiterature } from "@/api/hooks";
 import type { PaperCardData, RunDetail, StageSummary } from "@/api/types";
 import { CheckpointCard } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
+import { ReopenButton } from "@/components/ReopenDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
@@ -79,6 +80,15 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Literature</h1>
         <StatusBadge stage={stage} run={run} />
+        <div className="ml-auto">
+          <ReopenButton
+            run={run}
+            stage={stage}
+            label="Reopen the literature"
+            title="Reopen the literature checkpoint?"
+            description="To add papers you have, or to have the search and screening redone with your comments."
+          />
+        </div>
       </div>
       <p className="mt-2 max-w-3xl text-sm text-ink-soft">{STAGES.literature.description}</p>
     </header>

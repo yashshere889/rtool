@@ -22,7 +22,8 @@ from ..hpc.episode import EpisodeTracker, submit_episode
 from ..packs import load_pack
 from ..schemas.common import ResearchBrief
 
-# What a human can answer at each kind of gate (select gates also take an edit with the choice).
+# What a human can answer at each kind of gate (select gates also take an edit with the choice;
+# a reopened select gate also takes approve, which keeps the current choice).
 GATE_ACTIONS = {
     "approve": ["approve", "reject"],
     "select": ["select", "reject"],
@@ -46,6 +47,8 @@ class StageSummary(BaseModel):
     agent: str
     status: StageStatus
     attempt: int = 0
+    checkpoint: str | None = None  # the gate this stage ends with, if any (a finished stage can reopen it)
+    needs: list[str] = Field(default_factory=list)  # the stages it builds on
     gate: OpenGate | None = None
     stale_reason: str | None = None
     last_error: str | None = None
@@ -86,6 +89,15 @@ class KickResult(BaseModel):
 
 class StopResult(BaseModel):
     cancelled: list[str] = Field(default_factory=list)
+
+
+class Affected(BaseModel):
+    """A later stage, and what happens to it if a stage's outputs change."""
+
+    stage: str
+    status: StageStatus
+    effect: str  # redo | cancel_jobs | not_started
+    detail: str = ""
 
 
 # ------------------------------------------------------------------ config
@@ -176,6 +188,9 @@ def _open_gate(sid: str, st: StageState, pipeline: ResolvedPipeline) -> OpenGate
     else:
         spec = pipeline.stage(sid).gate
         kind = spec.kind.value if spec is not None else "approve"
+    actions = list(GATE_ACTIONS[kind])
+    if kind == "select" and gate.summary.get("reopened"):
+        actions.insert(1, "approve")
     return OpenGate(
         stage=sid,
         gate=gate.gate_id,
@@ -183,17 +198,20 @@ def _open_gate(sid: str, st: StageState, pipeline: ResolvedPipeline) -> OpenGate
         in_stage=gate.in_stage,
         nonce=gate.nonce,
         opened_at=gate.opened_at,
-        actions=GATE_ACTIONS[kind],
+        actions=actions,
         summary=gate.summary,
     )
 
 
 def _stage_summary(sid: str, st: StageState, pipeline: ResolvedPipeline) -> StageSummary:
+    spec = pipeline.stage(sid).spec
     return StageSummary(
         id=sid,
-        agent=pipeline.stage(sid).spec.agent,
+        agent=spec.agent,
         status=st.status,
         attempt=st.attempt,
+        checkpoint=spec.gate,
+        needs=list(spec.needs),
         gate=_open_gate(sid, st, pipeline),
         stale_reason=st.stale_reason,
         last_error=st.last_error,
@@ -230,6 +248,26 @@ def run_status(run: RunHandle) -> RunStatus:
         run_state=run_state,
         queued_actions=[action for _, action in ActionInbox(run.actions_dir).pending()],
     )
+
+
+def downstream_impact(run: RunHandle, stage: str) -> list[Affected]:
+    """What a change to ``stage``'s outputs would do to the stages built on it (directly or not), in order."""
+    _, stages, pipeline = load_status(run)
+    if stage not in stages:
+        raise RToolError(f"no stage {stage!r} in this run")
+    out: list[Affected] = []
+    for sid in pipeline.order:
+        if stage not in pipeline.ancestors(sid):
+            continue
+        st = stages[sid]
+        if st.status is StageStatus.SUSPENDED:
+            jobs = ", ".join(st.waiting_on)
+            out.append(Affected(stage=sid, status=st.status, effect="cancel_jobs", detail=f"cluster jobs {jobs}"))
+        elif st.status in (StageStatus.DONE, StageStatus.AWAITING_GATE, StageStatus.RUNNING) or st.attempt > 0:
+            out.append(Affected(stage=sid, status=st.status, effect="redo"))
+        else:
+            out.append(Affected(stage=sid, status=st.status, effect="not_started"))
+    return out
 
 
 # ------------------------------------------------------------------ act

@@ -7,6 +7,8 @@ import { api } from "./client";
 import type {
   ActionRequest,
   ActionState,
+  Affected,
+  HypothesesView,
   ArtifactEnvelope,
   ArtifactInfo,
   Created,
@@ -37,7 +39,10 @@ export const keys = {
     ["artifact", p, r, name, version ?? "head"] as const,
   literature: (p: string, r: string) => ["artifact", p, r, "literature"] as const,
   paper: (p: string, r: string, id: string) => ["artifact", p, r, "paper", id] as const,
-  paperText: (p: string, r: string, id: string) => ["artifact", p, r, "paper-text", id] as const,
+  paperText: (p: string, r: string, id: string, quote?: string) =>
+    ["artifact", p, r, "paper-text", id, quote ?? ""] as const,
+  hypotheses: (p: string, r: string, version?: number) => ["artifact", p, r, "hypotheses", version ?? "head"] as const,
+  impact: (p: string, r: string, stage: string) => ["run", p, r, "impact", stage] as const,
 };
 
 export function useSettings() {
@@ -212,10 +217,11 @@ export function usePaper(project: string, runId: string, paperId: string, enable
   });
 }
 
-export function usePaperText(project: string, runId: string, paperId: string, enabled = true) {
+export function usePaperText(project: string, runId: string, paperId: string, quote?: string, enabled = true) {
+  const extra = quote ? `&quote=${enc(quote)}` : "";
   return useQuery({
-    queryKey: keys.paperText(project, runId, paperId),
-    queryFn: () => api<PaperText>(`${base(project, runId)}/literature/paper/text?id=${enc(paperId)}`),
+    queryKey: keys.paperText(project, runId, paperId, quote),
+    queryFn: () => api<PaperText>(`${base(project, runId)}/literature/paper/text?id=${enc(paperId)}${extra}`),
     enabled,
   });
 }
@@ -225,5 +231,22 @@ export function useLiteratureSearch(project: string, runId: string, query: strin
     queryKey: ["artifact", project, runId, "search", query],
     queryFn: () => api<SearchHit[]>(`${base(project, runId)}/literature/search?q=${enc(query)}`),
     enabled: query.trim().length >= 2,
+  });
+}
+
+// ------------------------------------------------------------- hypotheses
+export function useHypotheses(project: string, runId: string, version?: number) {
+  return useQuery({
+    queryKey: keys.hypotheses(project, runId, version),
+    queryFn: () => api<HypothesesView>(`${base(project, runId)}/hypotheses${version ? `?version=${version}` : ""}`),
+  });
+}
+
+/** What a change to a stage's outputs would do to the later stages (shown before reopening a checkpoint). */
+export function useImpact(project: string, runId: string, stage: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.impact(project, runId, stage),
+    queryFn: () => api<Affected[]>(`${base(project, runId)}/stages/${enc(stage)}/impact`),
+    enabled,
   });
 }

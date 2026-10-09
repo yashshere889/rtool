@@ -27,11 +27,13 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, get_args, get_origin
+
+from pydantic import BaseModel, ValidationError
 
 from ..schemas.common import SelectedItem
 from .actions import Action, ActionInbox, ActionKind
-from .artifacts import ArtifactStore, Producer, StagedOutputs
+from .artifacts import ArtifactStore, Producer, StagedOutputs, artifact_model
 from .budgets import BudgetTracker, Usage
 from .config import GateMode
 from .context import RESUME_WITHOUT_LLM, AgentContext, InputView
@@ -47,7 +49,7 @@ from .errors import (
 )
 from .events import EventLog
 from .fs import FileLease, now_iso
-from .pipeline import GateKind, ResolvedPipeline, ResolvedStage, get_by_path, resolve_pipeline
+from .pipeline import GateKind, GateSpec, ResolvedPipeline, ResolvedStage, get_by_path, resolve_pipeline
 from .registry import AgentRegistry
 from .registry import registry as default_registry
 from .run import RunHandle
@@ -97,6 +99,44 @@ def _option_title(item: Any) -> str:
             if isinstance(item.get(key), str):
                 return item[key][:160]
     return str(item)[:160]
+
+
+def _option_model(gate: GateSpec) -> type[BaseModel] | None:
+    """The schema of one option at a selection gate, when the options artifact declares ``list[Model]`` there."""
+    assert gate.options_artifact and gate.options_path
+    try:
+        annotation: Any = artifact_model(gate.options_artifact)
+    except ArtifactError:
+        return None
+    for part in gate.options_path.split("."):
+        fields = annotation.model_fields if isinstance(annotation, type) and issubclass(annotation, BaseModel) else {}
+        if part not in fields:
+            return None
+        annotation = fields[part].annotation
+    args = get_args(annotation)
+    if get_origin(annotation) is list and args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
+        return args[0]
+    return None
+
+
+def edit_option(gate: GateSpec, option: Any, edit: Any) -> dict[str, Any]:
+    """The chosen option with the human's changes, checked against the option's schema (ActionError if invalid)."""
+    item = dict(option) if isinstance(option, dict) else {"value": option}
+    if not edit:
+        return item
+    if not isinstance(edit, dict):
+        raise ActionError("an edit must map field names to new values")
+    model = _option_model(gate)
+    if model is None:
+        return item | edit
+    unknown = sorted(set(edit) - set(model.model_fields))
+    if unknown:
+        raise ActionError(f"the choice has no field {', '.join(map(repr, unknown))}")
+    try:
+        return model.model_validate(item | edit).model_dump(mode="json")
+    except ValidationError as exc:
+        problems = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:3])
+        raise ActionError(f"the edited choice is not valid: {problems}") from None
 
 
 class Engine:
@@ -641,17 +681,17 @@ class Engine:
             return {"approved": False}
 
         resolution: dict[str, Any] = {"approved": True, "auto": auto, "by": by, "note": feedback}
-        if gate.kind is GateKind.SELECT:
+        reopened = bool(st.gate.summary.get("reopened")) and gate.selection_artifact in st.output_versions
+        if gate.kind is GateKind.SELECT and index is None and reopened:
+            resolution.update(kept=True)  # a reopened choice approved as it stands
+        elif gate.kind is GateKind.SELECT:
             assert gate.options_artifact and gate.selection_artifact
             if index is None:
                 raise ActionError(f"gate {st.gate.gate_id!r} needs a choice: rtool select <run> <index>")
             options = self._gate_options(rs, st)
             if not 0 <= index < len(options):
                 raise ActionError(f"index {index} is out of range (0..{len(options) - 1})")
-            chosen = options[index]
-            item = dict(chosen) if isinstance(chosen, dict) else {"value": chosen}
-            if edit:
-                item.update(edit)
+            item = edit_option(gate, options[index], edit)
             version = self.store.put(
                 gate.selection_artifact,
                 SelectedItem(index=index, item=item, edited=bool(edit), note=feedback),
@@ -826,6 +866,9 @@ class Engine:
             self._save(st)
             return {"stage_id": sid, "resume": resume}
 
+        if kind is ActionKind.REOPEN:
+            return self._reopen(action.stage)
+
         if kind is ActionKind.NOTE:
             sid = action.stage
             if sid is None or sid not in self.stages:
@@ -839,6 +882,33 @@ class Engine:
             return {"stage_id": sid}
 
         raise ActionError(f"unsupported action {kind.value!r}")
+
+    def _reopen(self, sid: str | None) -> dict[str, Any]:
+        """Open a finished stage's checkpoint again: choose differently, keep it as it is, or reject to re-run.
+
+        Later stages are left alone until the decision: only a changed output makes them stale.
+        """
+        if sid is None or sid not in self.stages:
+            raise ActionError("reopen needs a valid --stage")
+        rs = self.pipeline.stage(sid)
+        st = self.stages[sid]
+        if rs.gate is None or rs.spec.gate is None:
+            raise ActionError(f"stage {sid!r} has no checkpoint to reopen")
+        if st.status is not StageStatus.DONE:
+            raise ActionError(f"stage {sid!r} is {st.status.value}; only a finished stage can be reopened")
+        summary = self._gate_summary(rs, st)
+        summary["reopened"] = True
+        selection = rs.gate.selection_artifact
+        if rs.gate.kind is GateKind.SELECT and selection in st.output_versions:
+            chosen = self.store.envelope(selection, st.output_versions[selection]).payload
+            summary["current"] = {"index": chosen.get("index"), "version": st.output_versions[selection]}
+        st.gate = GateState(gate_id=rs.spec.gate, summary=summary, nonce=new_gate_nonce())
+        st.status = StageStatus.AWAITING_GATE
+        self._save(st)
+        self.events.emit(
+            "gate_opened", stage=sid, gate=rs.spec.gate, in_stage=False, prompt=rs.gate.prompt, reopened=True
+        )
+        return {"stage_id": sid, "gate": rs.spec.gate}
 
     # ------------------------------------------------------------------- jobs
     def _poll_jobs(self) -> None:

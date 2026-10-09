@@ -27,6 +27,7 @@ class ActionKind(StrEnum):
     SELECT = "select"  # choose an option at a selection gate
     RETRY = "retry"  # re-run a failed stage (fresh, or resume from checkpoint)
     NOTE = "note"  # attach guidance to a stage's next attempt
+    REOPEN = "reopen"  # open a finished stage's checkpoint again (choose differently, or reject to re-run it)
 
 
 def _user() -> str:

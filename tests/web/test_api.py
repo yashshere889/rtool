@@ -74,7 +74,7 @@ def test_the_app_shell_never_serves_files_outside_its_folder(runs_root: Path) ->
 def test_runs_and_a_run_at_a_checkpoint(runs_root: Path) -> None:
     c = client(runs_root)
     listed = {r["run_id"]: r for r in c.get("/api/runs").json()}
-    assert set(listed) == {"1-literature", "2-hypotheses"}
+    assert set(listed) == {"1-literature", "2-hypotheses", "3-plan"}
     assert listed["1-literature"]["topic"].startswith("Closed-loop auditory stimulation")
     run = c.get("/api/runs/sleep-demo/1-literature").json()
     gate = run["open_gates"][0]

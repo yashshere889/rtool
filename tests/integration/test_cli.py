@@ -37,6 +37,10 @@ def test_toy_pipeline_through_the_cli(tmp_path: Path) -> None:
     assert '"mentions_variance": true' in invoke("show", run_dir, "toy_report")[1]
     assert "toy_numbers" in invoke("show", run_dir)[1]
     assert '"stage_finished"' in invoke("events", run_dir, "--kind", "stage_finished")[1]
+    code, out = invoke("reopen", run_dir, "--stage", "source", "--now", "--simulate-jobs")
+    assert code == 0 and "numbers_review" in out, out
+    code, out = invoke("approve", run_dir, "--stage", "source", "--now", "--simulate-jobs")
+    assert code == 0 and "done: all stages are done" in out, out  # approved as it was: nothing runs again
 
 
 def test_select_and_errors_through_the_cli(tmp_path: Path) -> None:

@@ -1,12 +1,11 @@
-import { Check, Copy, ExternalLink } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { readerPath } from "@/api/client";
 import type { ClaimView, PaperDetail, PaperRef } from "@/api/types";
+import { CopyButton, ExternalLinks } from "@/components/PaperLinks";
 import { QuoteBlock } from "@/components/QuoteBlock";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { GAP_KINDS, plainCitation } from "@/lib/literature";
 
 export type PanelKind =
@@ -87,23 +86,6 @@ function RefList({ refs, ctx, empty }: { refs: PaperRef[]; ctx: PanelContext; em
         </li>
       ))}
     </ul>
-  );
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      variant="secondary"
-      size="sm"
-      onClick={async () => {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
-      {copied ? <Check /> : <Copy />} {copied ? "Copied" : label}
-    </Button>
   );
 }
 
@@ -263,7 +245,7 @@ export function PaperPanel({ kind, detail, ctx }: { kind: PanelKind; detail: Pap
             {paper.citation_count != null ? `${paper.citation_count.toLocaleString()} citations overall. ` : ""}
             The full reference list is in the paper itself.
           </p>
-          <ExternalLinks detail={detail} />
+          <ExternalLinks links={paper.links} />
         </div>
       );
     case "cite":
@@ -280,23 +262,4 @@ export function PaperPanel({ kind, detail, ctx }: { kind: PanelKind; detail: Pap
         </div>
       );
   }
-}
-
-export function ExternalLinks({ detail }: { detail: PaperDetail }) {
-  const links = detail.paper.links;
-  const items = [
-    ["DOI", links.doi],
-    ["arXiv", links.arxiv],
-    ["OpenAlex", links.openalex],
-  ].filter((item): item is [string, string] => Boolean(item[1]));
-  if (!items.length) return null;
-  return (
-    <div className="flex flex-wrap gap-3 text-sm">
-      {items.map(([label, href]) => (
-        <a key={label} href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
-          {label} <ExternalLink className="size-3.5" />
-        </a>
-      ))}
-    </div>
-  );
 }

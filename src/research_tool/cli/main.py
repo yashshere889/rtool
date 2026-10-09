@@ -468,6 +468,23 @@ def note(
         _queue(run, Action(kind=ActionKind.NOTE, stage=stage, payload={"text": text}), now=False, simulate_jobs=False)
 
 
+@app.command()
+def reopen(
+    run_ref: str = typer.Argument(...),
+    stage: str = typer.Option(..., "--stage", help="A finished stage with a checkpoint, e.g. hypotheses."),
+    now: bool = typer.Option(False, "--now"),
+    simulate_jobs: bool = typer.Option(False, "--simulate-jobs"),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Open a finished stage's checkpoint again (choose another hypothesis, add papers, ...).
+
+    Later stages keep their results unless the decision changes this stage's outputs.
+    """
+    with _guard():
+        run = _open_run(run_ref, runs_root)
+        _queue(run, Action(kind=ActionKind.REOPEN, stage=stage), now=now, simulate_jobs=simulate_jobs)
+
+
 @app.command("list")
 def list_command(
     runs_root: Path | None = typer.Option(None, "--runs-root"),

@@ -211,6 +211,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/hypotheses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hypotheses
+         * @description The shortlist offered at the checkpoint (latest set, or ``version``), the other drafts, and the choice.
+         */
+        get: operations["hypotheses_api_runs__project___run_id__hypotheses_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/literature": {
         parameters: {
             query?: never;
@@ -277,6 +297,8 @@ export interface paths {
         /**
          * Paper Text
          * @description The text the agent read (full text by section, or the abstract), with each claim's quote located in it.
+         *
+         *     ``quote`` (e.g. a hypothesis's evidence) is located too, as ``focus``.
          */
         get: operations["paper_text_api_runs__project___run_id__literature_paper_text_get"];
         put?: never;
@@ -321,6 +343,26 @@ export interface paths {
          * @description Make sure something is advancing the run (after a pause, or if a decision was not picked up).
          */
         post: operations["resume_api_runs__project___run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/stages/{stage}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impact
+         * @description What a change to this stage's outputs would do to the later stages (shown before reopening or editing).
+         */
+        get: operations["impact_api_runs__project___run_id__stages__stage__impact_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -404,7 +446,7 @@ export interface components {
          * ActionKind
          * @enum {string}
          */
-        ActionKind: "approve" | "reject" | "select" | "retry" | "note";
+        ActionKind: "approve" | "reject" | "select" | "retry" | "note" | "reopen";
         /** ActionRequest */
         ActionRequest: {
             /** Gate */
@@ -418,7 +460,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "approve" | "reject" | "select" | "retry" | "note";
+            kind: "approve" | "reject" | "select" | "retry" | "note" | "reopen";
             /** Payload */
             payload?: {
                 [key: string]: unknown;
@@ -439,6 +481,22 @@ export interface components {
              * @enum {string}
              */
             state: "queued" | "applied" | "rejected" | "duplicate" | "invalid" | "unknown";
+        };
+        /**
+         * Affected
+         * @description A later stage, and what happens to it if a stage's outputs change.
+         */
+        Affected: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Effect */
+            effect: string;
+            /** Stage */
+            stage: string;
+            status: components["schemas"]["StageStatus"];
         };
         /** ArtifactEnvelope */
         ArtifactEnvelope: {
@@ -477,6 +535,17 @@ export interface components {
             producer: components["schemas"]["Producer"];
             /** Versions */
             versions: number[];
+        };
+        /** CheckedEvidence */
+        CheckedEvidence: {
+            /** Paper Id */
+            paper_id: string;
+            /** Quote */
+            quote: string;
+            /** Support */
+            support: number;
+            /** Verified */
+            verified: boolean;
         };
         /** ClaimView */
         ClaimView: {
@@ -535,6 +604,15 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** FieldChange */
+        FieldChange: {
+            /** After */
+            after: unknown;
+            /** Before */
+            before: unknown;
+            /** Field */
+            field: string;
+        };
         /** GapView */
         GapView: {
             /** Description */
@@ -573,6 +651,102 @@ export interface components {
             section: number;
             /** Start */
             start: number;
+        };
+        /** HypothesesView */
+        HypothesesView: {
+            /** Budget Gpu Hours */
+            budget_gpu_hours: number | null;
+            /** Markdown */
+            markdown: string;
+            /** Others */
+            others: components["schemas"]["HypothesisCard"][];
+            selection: components["schemas"]["Selection"] | null;
+            /** Shortlist */
+            shortlist: components["schemas"]["HypothesisCard"][];
+            /** Stage */
+            stage: string;
+            /** Topic */
+            topic: string;
+            /** Version */
+            version: number;
+            /** Versions */
+            versions: number[];
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * Hypothesis
+         * @description A hypothesis with everything the planner and the human need.
+         */
+        Hypothesis: {
+            /**
+             * Compute
+             * @enum {string}
+             */
+            compute: "cpu_only" | "small_gpu" | "medium_gpu" | "large_gpu";
+            /** Controls */
+            controls: string[];
+            /** Datasets */
+            datasets: string[];
+            /** Dependent Variables */
+            dependent_variables: string[];
+            /** Evidence */
+            evidence: components["schemas"]["CheckedEvidence"][];
+            /** Feasibility Notes */
+            feasibility_notes: string[];
+            /** Id */
+            id: string;
+            /** Independent Variables */
+            independent_variables: string[];
+            /** Methods */
+            methods: string[];
+            novelty: components["schemas"]["NoveltyJudgment"] | null;
+            /** Null Hypothesis */
+            null_hypothesis: string;
+            /** Rationale */
+            rationale: string;
+            /** Rejected Reason */
+            rejected_reason: string | null;
+            /** Related Paper Ids */
+            related_paper_ids: string[];
+            /** Risks */
+            risks: string[];
+            /** Rubric Comments */
+            rubric_comments: string[];
+            /** Scores */
+            scores: {
+                [key: string]: number;
+            };
+            /**
+             * Source Opportunity
+             * @default
+             */
+            source_opportunity: string;
+            /** Statement */
+            statement: string;
+            /** Success Criteria */
+            success_criteria: string;
+            /** Title */
+            title: string;
+            /**
+             * Total Score
+             * @default 0
+             */
+            total_score: number;
+        };
+        /** HypothesisCard */
+        HypothesisCard: {
+            /** Bibtex */
+            bibtex: string;
+            /** Gpu Hours */
+            gpu_hours: number;
+            hypothesis: components["schemas"]["Hypothesis"];
+            /** Index */
+            index: number | null;
+            /** Papers */
+            papers: components["schemas"]["PaperUse"][];
         };
         /** KickResult */
         KickResult: {
@@ -656,6 +830,30 @@ export interface components {
              * @description The research question or topic
              */
             topic: string;
+        };
+        /** NoveltyJudgment */
+        NoveltyJudgment: {
+            /**
+             * Closest Paper Id
+             * @description Id of the most similar listed paper, if any
+             * @default
+             */
+            closest_paper_id: string;
+            /**
+             * Novel
+             * @description False if a listed paper already tests essentially this hypothesis
+             */
+            novel: boolean;
+            /**
+             * Overlap
+             * @description One sentence on how it differs from (or repeats) the closest paper
+             */
+            overlap: string;
+            /**
+             * Score
+             * @description 10 = clearly new, 0 = already done
+             */
+            score: number;
         };
         /** OpenGate */
         OpenGate: {
@@ -803,6 +1001,7 @@ export interface components {
         };
         /** PaperText */
         PaperText: {
+            focus: components["schemas"]["Highlight"] | null;
             /** Highlights */
             highlights: components["schemas"]["Highlight"][];
             /** Sections */
@@ -812,6 +1011,12 @@ export interface components {
              * @enum {string}
              */
             source: "full_text" | "abstract" | "none";
+        };
+        /** PaperUse */
+        PaperUse: {
+            paper: components["schemas"]["PaperCard"];
+            /** Roles */
+            roles: ("evidence" | "closest" | "related")[];
         };
         /** Producer */
         Producer: {
@@ -972,6 +1177,27 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** Selection */
+        Selection: {
+            /** By */
+            by: string | null;
+            /** Changes */
+            changes: components["schemas"]["FieldChange"][];
+            /** Created At */
+            created_at: string;
+            /** Edited */
+            edited: boolean;
+            /** From Version */
+            from_version: number | null;
+            /** Index */
+            index: number;
+            /** Note */
+            note: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
         /** ServerSettings */
         ServerSettings: {
             /** Mode */
@@ -1006,6 +1232,8 @@ export interface components {
              * @default 0
              */
             attempt: number;
+            /** Checkpoint */
+            checkpoint: string | null;
             /** Finished At */
             finished_at: string | null;
             gate: components["schemas"]["OpenGate"] | null;
@@ -1013,6 +1241,8 @@ export interface components {
             id: string;
             /** Last Error */
             last_error: string | null;
+            /** Needs */
+            needs: string[];
             /** Output Versions */
             output_versions: {
                 [key: string]: number;
@@ -1508,6 +1738,40 @@ export interface operations {
             };
         };
     };
+    hypotheses_api_runs__project___run_id__hypotheses_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypothesesView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     literature_api_runs__project___run_id__literature_get: {
         parameters: {
             query?: never;
@@ -1614,6 +1878,7 @@ export interface operations {
         parameters: {
             query: {
                 id: string;
+                quote?: string | null;
             };
             header?: never;
             path: {
@@ -1698,6 +1963,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KickResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impact_api_runs__project___run_id__stages__stage__impact_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+                stage: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Affected"][];
                 };
             };
             /** @description Validation Error */

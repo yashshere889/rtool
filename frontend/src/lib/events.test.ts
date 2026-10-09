@@ -16,6 +16,9 @@ describe("activity feed wording", () => {
     expect(describeEvent(event("gate_opened", { gate: "hypothesis_selection" }, "hypotheses"))?.text).toBe(
       "Your decision needed: Choose a hypothesis",
     );
+    expect(describeEvent(event("gate_opened", { gate: "hypothesis_selection", reopened: true }))?.text).toBe(
+      "Reopened at your request: Choose a hypothesis",
+    );
     expect(describeEvent(event("stage_finished", {}, "code"))?.text).toBe("Code & runs finished");
     expect(describeEvent(event("literature_downloaded", { downloaded: 9, unavailable: 1 }))?.text).toBe(
       "Downloaded 9 papers; 1 had no open-access copy",

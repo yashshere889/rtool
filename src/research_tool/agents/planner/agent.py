@@ -62,6 +62,8 @@ class PlannerAgent(Agent):
         known = [e.name for e in km.entities if e.kind == "dataset"][:15]
         compute = compute_profile(ctx.app_config)
         feedback = [f.text for f in ctx.feedback]
+        if selected.note.strip():
+            feedback.insert(0, f"When choosing this hypothesis the researcher noted: {selected.note.strip()}")
         checker = self.checker(ctx)
 
         core_issues: list[str] = []

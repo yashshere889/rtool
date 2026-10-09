@@ -6,6 +6,7 @@ action files and submits (or cancels) Slurm jobs.
 """
 
 from .runs import (
+    Affected,
     KickResult,
     OpenGate,
     RunStatus,
@@ -13,6 +14,7 @@ from .runs import (
     StageSummary,
     StopResult,
     create_run,
+    downstream_impact,
     kick,
     list_runs,
     load_app_config,
@@ -23,6 +25,7 @@ from .runs import (
 )
 
 __all__ = [
+    "Affected",
     "KickResult",
     "OpenGate",
     "RunStatus",
@@ -30,6 +33,7 @@ __all__ = [
     "StageSummary",
     "StopResult",
     "create_run",
+    "downstream_impact",
     "kick",
     "list_runs",
     "load_app_config",

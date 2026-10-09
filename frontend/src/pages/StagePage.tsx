@@ -9,8 +9,10 @@ import { FailureCard } from "@/components/FailureCard";
 import { JsonView } from "@/components/JsonView";
 import { useRunContext } from "@/components/layout/RunLayout";
 import { NoteBox } from "@/components/NoteBox";
+import { ReopenButton } from "@/components/ReopenDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { HypothesesPage } from "@/pages/hypotheses/HypothesesPage";
 import { LiteraturePage } from "@/pages/literature/LiteraturePage";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { dateTime, humanize, timeAgo } from "@/lib/format";
@@ -76,6 +78,7 @@ export function StagePage() {
   const stage = run.stages.find((s) => s.id === stageId);
   if (!stage) return <Empty title="No such stage">This run has no stage called “{stageId}”.</Empty>;
   if (stage.agent === "literature") return <LiteraturePage run={run} stage={stage} />;
+  if (stage.agent === "hypothesis") return <HypothesesPage run={run} stage={stage} />;
   const outputs = Object.entries(stage.output_versions);
   return (
     <div className="space-y-6">
@@ -84,6 +87,15 @@ export function StagePage() {
           <h1 className="text-2xl font-semibold">{stageTitle(stage.id)}</h1>
           <StatusBadge stage={stage} run={run} />
           {stage.attempt > 1 && <span className="text-sm text-ink-soft">attempt {stage.attempt}</span>}
+          <div className="ml-auto">
+            <ReopenButton
+              run={run}
+              stage={stage}
+              label="Reopen the checkpoint"
+              title={`Reopen the ${stageTitle(stage.id)} checkpoint?`}
+              description="Approve it again as it is, or request changes to have this stage run again."
+            />
+          </div>
         </div>
         {STAGES[stage.id] && <p className="mt-2 max-w-3xl text-sm text-ink-soft">{STAGES[stage.id].description}</p>}
       </header>

@@ -6,6 +6,7 @@ import { fileUrl, runPath } from "@/api/client";
 import { usePaper, usePaperText } from "@/api/hooks";
 import type { PaperText } from "@/api/types";
 import { useRunContext } from "@/components/layout/RunLayout";
+import { ExternalLinks } from "@/components/PaperLinks";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -13,23 +14,31 @@ import { ErrorNote, Loading } from "@/components/ui/states";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/cn";
 import { authorsShort, paperStatus } from "@/lib/literature";
+import { stageTitle } from "@/lib/stages";
 
-import { ExternalLinks, PaperPanel } from "./PaperPanels";
+import { PaperPanel } from "./PaperPanels";
 import { UploadDialog } from "./UploadDialog";
 
-/** The text the agent read, with each verified claim's quote marked where it occurs. */
+const FOCUS = -1; // the quote asked for in the address (claim numbers start at 0)
+
+/** The text the agent read, with each verified claim's quote marked where it occurs (and the asked-for quote). */
 function HighlightedText({ text, active }: { text: PaperText; active: number | null }) {
   useEffect(() => {
     if (active === null) return;
-    document.getElementById(`claim-${active}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const id = active === FOCUS ? "quote" : `claim-${active}`;
+    document.getElementById(id)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [active, text]);
+  const focus = text.focus;
   return (
     <div className="space-y-6">
       {text.source === "abstract" && (
         <p className="rounded-lg bg-info-soft px-3 py-2 text-sm text-info">Only the abstract of this paper was available.</p>
       )}
       {text.sections.map((section, s) => {
-        const marks = text.highlights.filter((h) => h.section === s).sort((a, b) => a.start - b.start);
+        const claims = text.highlights.filter(
+          (h) => h.section === s && !(focus && focus.section === s && h.start < focus.end && focus.start < h.end),
+        );
+        const marks = [...claims, ...(focus && focus.section === s ? [focus] : [])].sort((a, b) => a.start - b.start);
         const nodes = [];
         let cursor = 0;
         for (const mark of marks) {
@@ -38,7 +47,7 @@ function HighlightedText({ text, active }: { text: PaperText; active: number | n
           nodes.push(
             <mark
               key={`m${mark.claim}`}
-              id={`claim-${mark.claim}`}
+              id={mark.claim === FOCUS ? "quote" : `claim-${mark.claim}`}
               className={cn(
                 "rounded px-0.5 text-ink",
                 active === mark.claim ? "bg-warn/40 ring-2 ring-warn" : "bg-warn-soft",
@@ -67,18 +76,22 @@ export function PaperReader() {
   const [params] = useSearchParams();
   const paperId = params.get("paper") ?? "";
   const claimParam = params.get("claim");
-  const claim = claimParam === null ? null : Number(claimParam);
+  const quote = params.get("quote") ?? undefined;
+  const claim = quote ? FOCUS : claimParam === null ? null : Number(claimParam);
   const detail = usePaper(run.project, run.run_id, paperId);
-  const text = usePaperText(run.project, run.run_id, paperId);
+  const text = usePaperText(run.project, run.run_id, paperId, quote);
   const [mode, setMode] = useState<"original" | "text">(claim !== null ? "text" : "original");
   const [uploading, setUploading] = useState(false);
   useEffect(() => {
     if (claim !== null) setMode("text");
   }, [claim]);
+  // opened from another page (e.g. a hypothesis's citations): go back there; uploads still go to the literature
+  const from = run.stages.find((s) => s.id === stageId);
+  const literatureStage = run.stages.find((s) => s.agent === "literature")?.id ?? stageId;
 
   const back = (
     <Link to={`${runPath(run.project, run.run_id)}/${stageId}`} className="inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">
-      <ChevronLeft className="size-4" /> All papers
+      <ChevronLeft className="size-4" /> {from && from.agent !== "literature" ? `Back to ${stageTitle(stageId)}` : "All papers"}
     </Link>
   );
   if (detail.isPending) return <div className="space-y-4">{back}<Loading label="Opening the paper" /></div>;
@@ -102,7 +115,7 @@ export function PaperReader() {
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone={status.tone}>{status.label}</Badge>
-          <ExternalLinks detail={detail.data} />
+          <ExternalLinks links={paper.links} />
         </div>
       </header>
 
@@ -152,6 +165,11 @@ export function PaperReader() {
               <CardBody className="max-h-[78vh] overflow-y-auto py-5">
                 {text.isPending && <Loading label="Loading the text" />}
                 {text.isError && <ErrorNote error={text.error} />}
+                {text.data && quote && !text.data.focus && (
+                  <p className="mb-4 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+                    The quoted passage could not be found in the text the agent read: “{quote}”
+                  </p>
+                )}
                 {text.data && <HighlightedText text={text.data} active={claim} />}
               </CardBody>
             </Card>
@@ -161,7 +179,7 @@ export function PaperReader() {
         <aside className="min-w-0">
           <Card className="xl:sticky xl:top-20">
             <CardBody>
-              <Tabs defaultValue={claim !== null ? "findings" : "summary"}>
+              <Tabs defaultValue={claim !== null && claim !== FOCUS ? "findings" : "summary"}>
                 <TabsList>
                   <TabsTrigger value="summary">Summary</TabsTrigger>
                   <TabsTrigger value="findings">Findings</TabsTrigger>
@@ -190,7 +208,14 @@ export function PaperReader() {
         </aside>
       </div>
       {uploading && (
-        <UploadDialog run={run} stage={stageId} open={uploading} onOpenChange={setUploading} paperId={paper.id} initialTitle={paper.title} />
+        <UploadDialog
+          run={run}
+          stage={literatureStage}
+          open={uploading}
+          onOpenChange={setUploading}
+          paperId={paper.id}
+          initialTitle={paper.title}
+        />
       )}
     </div>
   );

@@ -90,6 +90,23 @@ describe("CheckpointCard", () => {
     expect(JSON.parse(fetch.mock.calls[0][1].body).payload.feedback).toBe("Drop the modelling papers");
   });
 
+  it("can keep the current choice at a reopened selection", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    const reopened = {
+      ...gate,
+      actions: ["select", "approve", "reject"],
+      summary: { ...gate.summary, reopened: true, current: { index: 1, version: 3 } },
+    };
+    render(wrap(<CheckpointCard run={run} gate={reopened} />));
+    expect(screen.getByText(/You reopened this checkpoint\. Keep your current choice \(option 2\)/)).toBeInTheDocument();
+    expect(screen.getByText("(your current choice)")).toBeInTheDocument();
+    expect(screen.queryByText(/Reopened/)).not.toBeInTheDocument(); // not listed again among the details
+    await userEvent.click(screen.getByRole("button", { name: "Keep my current choice" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ kind: "approve", gate: "hypothesis_selection" });
+  });
+
   it("offers undo instead of buttons while a decision is queued", () => {
     const queued = { ...run, queued_actions: [{ id: "q1", kind: "approve", stage: "hypotheses", gate: "hypothesis_selection" }] };
     render(wrap(<CheckpointCard run={queued as unknown as RunDetail} gate={gate} />));

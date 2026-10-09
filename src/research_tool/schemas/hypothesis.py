@@ -84,9 +84,12 @@ class Hypothesis(BaseModel):
     risks: list[str] = Field(default_factory=list)
     compute: ComputeClass
     source_opportunity: str = ""
+    # the papers behind the gap it addresses, then the nearest papers found in the novelty check
+    related_paper_ids: list[str] = Field(default_factory=list)
     novelty: NoveltyJudgment | None = None
     feasibility_notes: list[str] = Field(default_factory=list)
     scores: dict[str, float] = Field(default_factory=dict)
+    rubric_comments: list[str] = Field(default_factory=list)  # the judges' one-line verdicts, without repeats
     total_score: float = 0.0
     rejected_reason: str | None = None
 

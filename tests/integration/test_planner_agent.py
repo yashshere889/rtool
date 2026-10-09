@@ -217,7 +217,11 @@ def test_rejection_feedback_reaches_every_planning_step(runs_root: Path, tmp_pat
         lambda r: schema(r) == "ComputeEstimate",
         {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 1.5, "justification": "BERT base fits"},
     )
+    store = ArtifactStore(run.artifacts_dir)
+    noted = store.get("selected_hypothesis").model_copy(update={"note": "Prefer public datasets"})
+    store.put("selected_hypothesis", noted, producer=Producer(stage="hypotheses", agent="test"))
     Engine(run, services(run, llm)).advance()
+    assert llm.calls and all("Prefer public datasets" in r.messages[-1].content for r in llm.calls)  # the choice's note
     queue(run, ActionKind.REJECT, payload={"feedback": "Use DistilBERT and keep each run under an hour"})
     first = len(llm.calls)
     assert Engine(run, services(run, llm)).advance().outcome is Outcome.WAITING_GATE

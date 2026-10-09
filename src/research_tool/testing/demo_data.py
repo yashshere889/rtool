@@ -937,6 +937,7 @@ HYPOTHESES: tuple[dict[str, Any], ...] = (
         "risks": ["simulated recall is only a proxy for human memory"],
         "compute": "small_gpu",
         "scores": {"novelty": 4, "feasibility": 5, "testability": 5, "significance": 4, "clarity": 5},
+        "comment": "A clean comparison with an obvious baseline; the main weakness is that recall is simulated.",
     },
     {
         "title": "Adaptive thresholds rescue the stimulation effect in ageing",
@@ -958,6 +959,7 @@ HYPOTHESES: tuple[dict[str, Any], ...] = (
         "risks": ["amplitude response is simulated from recordings, not measured during stimulation"],
         "compute": "small_gpu",
         "scores": {"novelty": 5, "feasibility": 3, "testability": 4, "significance": 5, "clarity": 4},
+        "comment": "Addresses the ageing gap directly, but the amplitude response can only be approximated offline.",
     },
     {
         "title": "Coupling, not spindle density, carries the memory benefit",
@@ -979,6 +981,7 @@ HYPOTHESES: tuple[dict[str, Any], ...] = (
         "risks": ["mediation analysis needs many participants"],
         "compute": "cpu_only",
         "scores": {"novelty": 4, "feasibility": 4, "testability": 3, "significance": 4, "clarity": 3},
+        "comment": "Mechanistically interesting; a mediation analysis needs more recordings than are likely available.",
     },
     {
         "title": "Two clicks per slow wave are optimal in home recordings",
@@ -997,6 +1000,7 @@ HYPOTHESES: tuple[dict[str, Any], ...] = (
         "risks": ["home recordings are noisy"],
         "compute": "small_gpu",
         "scores": {"novelty": 3, "feasibility": 4, "testability": 4, "significance": 3, "clarity": 4},
+        "comment": "Practical, but laboratory dose-response work already covers most of it.",
     },
 )
 

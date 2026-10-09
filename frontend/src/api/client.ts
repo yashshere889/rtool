@@ -109,8 +109,16 @@ export async function uploadPaper<T>(
 }
 
 /** In-app reader for one paper (optionally scrolled to one of its claims). */
-export function readerPath(project: string, runId: string, stage: string, paperId: string, claim?: number): string {
+/** The in-app reader for a paper, optionally at one of its claims or at a quote (e.g. a hypothesis's evidence). */
+export function readerPath(
+  project: string,
+  runId: string,
+  stage: string,
+  paperId: string,
+  at?: number | { quote: string },
+): string {
   const query = new URLSearchParams({ paper: paperId });
-  if (claim !== undefined) query.set("claim", String(claim));
+  if (typeof at === "number") query.set("claim", String(at));
+  else if (at) query.set("quote", at.quote);
   return `${runPath(project, runId)}/${encodeURIComponent(stage)}/reader?${query}`;
 }

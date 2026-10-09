@@ -26,7 +26,10 @@ const DESCRIBE: Record<string, (data: Data, stage: string) => Described | null> 
     text: `${s} is waiting for revisions of ${(d.targets as string[] | undefined)?.map(stageTitle).join(", ")}`,
     tone: "stale",
   }),
-  gate_opened: (d) => ({ text: `Your decision needed: ${gateInfo(str(d.gate)).title}`, tone: "warn" }),
+  gate_opened: (d) => ({
+    text: `${d.reopened ? "Reopened at your request" : "Your decision needed"}: ${gateInfo(str(d.gate)).title}`,
+    tone: "warn",
+  }),
   gate_resolved: (d) => ({
     text: `${gateInfo(str(d.gate)).title}: ${d.approved ? "approved" : "changes requested"}${d.auto ? " (automatic)" : ""}`,
     tone: d.approved ? "ok" : "stale",

@@ -312,6 +312,7 @@ class DemoModel:
         with self._lock:
             template = dict(data.HYPOTHESES[next(self._drafts) % len(data.HYPOTHESES)])
         template.pop("scores")
+        template.pop("comment")
         template["evidence"] = [{"paper_id": pid, "quote": quote} for pid, quote in evidence[:2]]
         return {"hypotheses": [template]}
 
@@ -333,7 +334,7 @@ class DemoModel:
         name = match.group(1).strip() if match else ""
         for template in data.HYPOTHESES:
             if template["title"] == name:
-                return {**template["scores"], "comment": "Clear and testable within the available compute."}
+                return {**template["scores"], "comment": template["comment"]}
         return {"novelty": 3, "feasibility": 3, "testability": 3, "significance": 3, "clarity": 3, "comment": "ok"}
 
     # ---- report

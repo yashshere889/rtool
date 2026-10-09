@@ -10,6 +10,8 @@ function stage(id: string, status: StageSummary["status"], extra: Partial<StageS
     agent: id,
     status,
     attempt: 1,
+    checkpoint: null,
+    needs: [],
     gate: null,
     stale_reason: null,
     last_error: null,

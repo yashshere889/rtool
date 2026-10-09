@@ -15,7 +15,17 @@ import { Textarea } from "./ui/field";
 
 type Summary = Record<string, unknown>;
 
-const SHOWN_ELSEWHERE = new Set(["prompt", "message", "artifacts", "options", "review_files", "requests", "pending_revisions"]);
+const SHOWN_ELSEWHERE = new Set([
+  "prompt",
+  "message",
+  "artifacts",
+  "options",
+  "review_files",
+  "requests",
+  "pending_revisions",
+  "reopened",
+  "current",
+]);
 
 interface Option {
   index: number;
@@ -28,28 +38,59 @@ interface Request {
   reason: string;
 }
 
-/** A checkpoint (gate) waiting for the researcher: what to look at, and the decision buttons. */
-export function CheckpointCard({ run, gate, showStageLink = true }: { run: RunDetail; gate: OpenGate; showStageLink?: boolean }) {
-  const info = gateInfo(gate.gate);
-  const summary = gate.summary as Summary;
+/** Decisions at one open checkpoint, bound to the gate as the page shows it (a stale page cannot decide). */
+export function useGateDecision(run: RunDetail, gate: OpenGate) {
   const decide = useDecide(run.project, run.run_id);
   const undo = useUndo(run.project, run.run_id);
+  const summary = gate.summary as Summary;
+  const expect = { gate_nonce: gate.nonce, artifacts: (summary.artifacts as Record<string, number>) ?? {} };
+  const queued = run.queued_actions.find((a) => a.stage === gate.stage && a.gate === gate.gate);
+  function send(
+    kind: ActionRequest["kind"],
+    payload: Record<string, unknown>,
+    label: string,
+    options?: { onSuccess?: () => void },
+  ) {
+    decide.mutate(
+      { request: { kind, stage: gate.stage, gate: gate.gate, payload: { ...payload, expect } }, label },
+      { onSuccess: () => options?.onSuccess?.() },
+    );
+  }
+  return { send, queued, decide, undo };
+}
+
+/** A checkpoint (gate) waiting for the researcher: what to look at, and the decision buttons.
+ *
+ * ``choiceElsewhere``: the page shows the options with their own buttons (e.g. the hypotheses), so the card
+ * leaves out its option list. */
+export function CheckpointCard({
+  run,
+  gate,
+  showStageLink = true,
+  choiceElsewhere = false,
+}: {
+  run: RunDetail;
+  gate: OpenGate;
+  showStageLink?: boolean;
+  choiceElsewhere?: boolean;
+}) {
+  const info = gateInfo(gate.gate);
+  const summary = gate.summary as Summary;
+  const { send, queued, decide, undo } = useGateDecision(run, gate);
   const [choice, setChoice] = useState<number | null>(null);
   const [feedback, setFeedback] = useState("");
   const [asking, setAsking] = useState(false);
   const feedbackId = useId();
 
-  const queued = run.queued_actions.find((a) => a.stage === gate.stage && a.gate === gate.gate);
   const options = (summary.options as Option[] | undefined) ?? [];
   const requests = (summary.requests as Request[] | undefined) ?? [];
   const files = (summary.review_files as string[] | undefined) ?? [];
   const text = String(summary.prompt ?? summary.message ?? "");
   const details = Object.entries(summary).filter(([key, value]) => !SHOWN_ELSEWHERE.has(key) && value !== "");
-  const expect = { gate_nonce: gate.nonce, artifacts: (summary.artifacts as Record<string, number>) ?? {} };
-
-  function send(kind: ActionRequest["kind"], payload: Record<string, unknown>, label: string) {
-    decide.mutate({ request: { kind, stage: gate.stage, gate: gate.gate, payload: { ...payload, expect } }, label });
-  }
+  const reopened = Boolean(summary.reopened);
+  const current = (summary.current as { index: number } | undefined)?.index;
+  const canKeep = gate.kind === "select" && gate.actions.includes("approve");
+  const showOptions = gate.kind === "select" && options.length > 0 && !choiceElsewhere;
 
   const approve = () =>
     gate.kind === "select"
@@ -78,8 +119,17 @@ export function CheckpointCard({ run, gate, showStageLink = true }: { run: RunDe
         )}
       </div>
 
+      {reopened && (
+        <p className="mt-3 rounded-lg bg-surface/70 px-3 py-2 text-sm">
+          You reopened this checkpoint.{" "}
+          {canKeep
+            ? `Keep your current choice${current !== undefined ? ` (option ${current + 1})` : ""}, choose another, or ask for new options.`
+            : "Approving keeps the current results; requesting changes runs this stage again."}{" "}
+          Later stages only run again if the outcome changes.
+        </p>
+      )}
       {text && <p className="mt-3 text-sm leading-relaxed">{text}</p>}
-      <p className="mt-2 text-sm text-ink-soft">{info.help}</p>
+      <p className="mt-2 text-sm text-ink-soft">{choiceElsewhere ? `${info.help} Choose below.` : info.help}</p>
 
       {details.length > 0 && (
         <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">
@@ -119,7 +169,7 @@ export function CheckpointCard({ run, gate, showStageLink = true }: { run: RunDe
         </div>
       )}
 
-      {gate.kind === "select" && options.length > 0 && (
+      {showOptions && (
         <fieldset className="mt-4 space-y-2" disabled={Boolean(queued)}>
           <legend className="mb-1 text-sm font-medium">Options</legend>
           {options.map((option) => (
@@ -139,6 +189,7 @@ export function CheckpointCard({ run, gate, showStageLink = true }: { run: RunDe
               />
               <span>
                 <span className="font-medium">Option {option.index + 1}.</span> {option.title}
+                {option.index === current && <span className="text-ink-soft"> (your current choice)</span>}
               </span>
             </label>
           ))}
@@ -157,9 +208,20 @@ export function CheckpointCard({ run, gate, showStageLink = true }: { run: RunDe
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={approve} busy={decide.isPending} disabled={gate.kind === "select" && choice === null}>
-            {info.approve}
-          </Button>
+          {(gate.kind !== "select" || showOptions) && (
+            <Button onClick={approve} busy={decide.isPending} disabled={gate.kind === "select" && choice === null}>
+              {info.approve}
+            </Button>
+          )}
+          {canKeep && (
+            <Button
+              variant={showOptions ? "secondary" : "primary"}
+              onClick={() => send("approve", {}, `${info.title}: keep the current choice`)}
+              disabled={decide.isPending}
+            >
+              Keep my current choice
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => setAsking(true)} disabled={decide.isPending}>
             {info.reject}
           </Button>

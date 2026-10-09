@@ -83,7 +83,10 @@ export function UploadDialog({
               </>
             ) : (
               <>
-                <p className="text-ink-soft">The agent reads it the next time the literature stage runs.</p>
+                <p className="text-ink-soft">
+                  The agent reads it the next time the literature stage runs. To have it read now, use “Reopen the
+                  literature” at the top of the Literature page, then “Request changes”.
+                </p>
                 <div className="flex justify-end">
                   <Button onClick={close}>Done</Button>
                 </div>

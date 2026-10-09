@@ -64,7 +64,8 @@
      "reject",
      "select",
      "retry",
-     "note"
+     "note",
+     "reopen"
     ],
     "title": "ActionKind",
     "type": "string"
@@ -101,7 +102,8 @@
        "reject",
        "select",
        "retry",
-       "note"
+       "note",
+       "reopen"
       ],
       "title": "Kind",
       "type": "string"
@@ -173,6 +175,35 @@
      "state"
     ],
     "title": "ActionState",
+    "type": "object"
+   },
+   "Affected": {
+    "description": "A later stage, and what happens to it if a stage's outputs change.",
+    "properties": {
+     "detail": {
+      "default": "",
+      "title": "Detail",
+      "type": "string"
+     },
+     "effect": {
+      "title": "Effect",
+      "type": "string"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/StageStatus"
+     }
+    },
+    "required": [
+     "detail",
+     "effect",
+     "stage",
+     "status"
+    ],
+    "title": "Affected",
     "type": "object"
    },
    "ArtifactEnvelope": {
@@ -265,6 +296,34 @@
      "versions"
     ],
     "title": "ArtifactInfo",
+    "type": "object"
+   },
+   "CheckedEvidence": {
+    "properties": {
+     "paper_id": {
+      "title": "Paper Id",
+      "type": "string"
+     },
+     "quote": {
+      "title": "Quote",
+      "type": "string"
+     },
+     "support": {
+      "title": "Support",
+      "type": "number"
+     },
+     "verified": {
+      "title": "Verified",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "paper_id",
+     "quote",
+     "support",
+     "verified"
+    ],
+    "title": "CheckedEvidence",
     "type": "object"
    },
    "ClaimView": {
@@ -423,6 +482,27 @@
     "title": "EventPage",
     "type": "object"
    },
+   "FieldChange": {
+    "properties": {
+     "after": {
+      "title": "After"
+     },
+     "before": {
+      "title": "Before"
+     },
+     "field": {
+      "title": "Field",
+      "type": "string"
+     }
+    },
+    "required": [
+     "after",
+     "before",
+     "field"
+    ],
+    "title": "FieldChange",
+    "type": "object"
+   },
    "GapView": {
     "properties": {
      "description": {
@@ -520,6 +600,304 @@
      "start"
     ],
     "title": "Highlight",
+    "type": "object"
+   },
+   "HypothesesView": {
+    "properties": {
+     "budget_gpu_hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Budget Gpu Hours"
+     },
+     "markdown": {
+      "title": "Markdown",
+      "type": "string"
+     },
+     "others": {
+      "items": {
+       "$ref": "#/components/schemas/HypothesisCard"
+      },
+      "title": "Others",
+      "type": "array"
+     },
+     "selection": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Selection"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "shortlist": {
+      "items": {
+       "$ref": "#/components/schemas/HypothesisCard"
+      },
+      "title": "Shortlist",
+      "type": "array"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "topic": {
+      "title": "Topic",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     },
+     "weights": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Weights",
+      "type": "object"
+     }
+    },
+    "required": [
+     "budget_gpu_hours",
+     "markdown",
+     "others",
+     "selection",
+     "shortlist",
+     "stage",
+     "topic",
+     "version",
+     "versions",
+     "weights"
+    ],
+    "title": "HypothesesView",
+    "type": "object"
+   },
+   "Hypothesis": {
+    "description": "A hypothesis with everything the planner and the human need.",
+    "properties": {
+     "compute": {
+      "enum": [
+       "cpu_only",
+       "small_gpu",
+       "medium_gpu",
+       "large_gpu"
+      ],
+      "title": "Compute",
+      "type": "string"
+     },
+     "controls": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Controls",
+      "type": "array"
+     },
+     "datasets": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Datasets",
+      "type": "array"
+     },
+     "dependent_variables": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Dependent Variables",
+      "type": "array"
+     },
+     "evidence": {
+      "items": {
+       "$ref": "#/components/schemas/CheckedEvidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+     },
+     "feasibility_notes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Feasibility Notes",
+      "type": "array"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "independent_variables": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Independent Variables",
+      "type": "array"
+     },
+     "methods": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Methods",
+      "type": "array"
+     },
+     "novelty": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/NoveltyJudgment"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "null_hypothesis": {
+      "title": "Null Hypothesis",
+      "type": "string"
+     },
+     "rationale": {
+      "title": "Rationale",
+      "type": "string"
+     },
+     "rejected_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rejected Reason"
+     },
+     "related_paper_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Related Paper Ids",
+      "type": "array"
+     },
+     "risks": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+     },
+     "rubric_comments": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Rubric Comments",
+      "type": "array"
+     },
+     "scores": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Scores",
+      "type": "object"
+     },
+     "source_opportunity": {
+      "default": "",
+      "title": "Source Opportunity",
+      "type": "string"
+     },
+     "statement": {
+      "title": "Statement",
+      "type": "string"
+     },
+     "success_criteria": {
+      "title": "Success Criteria",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "total_score": {
+      "default": 0.0,
+      "title": "Total Score",
+      "type": "number"
+     }
+    },
+    "required": [
+     "compute",
+     "controls",
+     "datasets",
+     "dependent_variables",
+     "evidence",
+     "feasibility_notes",
+     "id",
+     "independent_variables",
+     "methods",
+     "novelty",
+     "null_hypothesis",
+     "rationale",
+     "rejected_reason",
+     "related_paper_ids",
+     "risks",
+     "rubric_comments",
+     "scores",
+     "source_opportunity",
+     "statement",
+     "success_criteria",
+     "title",
+     "total_score"
+    ],
+    "title": "Hypothesis",
+    "type": "object"
+   },
+   "HypothesisCard": {
+    "properties": {
+     "bibtex": {
+      "title": "Bibtex",
+      "type": "string"
+     },
+     "gpu_hours": {
+      "title": "Gpu Hours",
+      "type": "integer"
+     },
+     "hypothesis": {
+      "$ref": "#/components/schemas/Hypothesis"
+     },
+     "index": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Index"
+     },
+     "papers": {
+      "items": {
+       "$ref": "#/components/schemas/PaperUse"
+      },
+      "title": "Papers",
+      "type": "array"
+     }
+    },
+    "required": [
+     "bibtex",
+     "gpu_hours",
+     "hypothesis",
+     "index",
+     "papers"
+    ],
+    "title": "HypothesisCard",
     "type": "object"
    },
    "KickResult": {
@@ -751,6 +1129,41 @@
      "topic"
     ],
     "title": "NewRun",
+    "type": "object"
+   },
+   "NoveltyJudgment": {
+    "properties": {
+     "closest_paper_id": {
+      "default": "",
+      "description": "Id of the most similar listed paper, if any",
+      "title": "Closest Paper Id",
+      "type": "string"
+     },
+     "novel": {
+      "description": "False if a listed paper already tests essentially this hypothesis",
+      "title": "Novel",
+      "type": "boolean"
+     },
+     "overlap": {
+      "description": "One sentence on how it differs from (or repeats) the closest paper",
+      "title": "Overlap",
+      "type": "string"
+     },
+     "score": {
+      "description": "10 = clearly new, 0 = already done",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "title": "Score",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "closest_paper_id",
+     "novel",
+     "overlap",
+     "score"
+    ],
+    "title": "NoveltyJudgment",
     "type": "object"
    },
    "OpenGate": {
@@ -1215,6 +1628,16 @@
    },
    "PaperText": {
     "properties": {
+     "focus": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Highlight"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "highlights": {
       "items": {
        "$ref": "#/components/schemas/Highlight"
@@ -1240,11 +1663,37 @@
      }
     },
     "required": [
+     "focus",
      "highlights",
      "sections",
      "source"
     ],
     "title": "PaperText",
+    "type": "object"
+   },
+   "PaperUse": {
+    "properties": {
+     "paper": {
+      "$ref": "#/components/schemas/PaperCard"
+     },
+     "roles": {
+      "items": {
+       "enum": [
+        "evidence",
+        "closest",
+        "related"
+       ],
+       "type": "string"
+      },
+      "title": "Roles",
+      "type": "array"
+     }
+    },
+    "required": [
+     "paper",
+     "roles"
+    ],
+    "title": "PaperUse",
     "type": "object"
    },
    "Producer": {
@@ -1601,6 +2050,76 @@
     "title": "SearchHit",
     "type": "object"
    },
+   "Selection": {
+    "properties": {
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "changes": {
+      "items": {
+       "$ref": "#/components/schemas/FieldChange"
+      },
+      "title": "Changes",
+      "type": "array"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "edited": {
+      "title": "Edited",
+      "type": "boolean"
+     },
+     "from_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Version"
+     },
+     "index": {
+      "title": "Index",
+      "type": "integer"
+     },
+     "note": {
+      "title": "Note",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "by",
+     "changes",
+     "created_at",
+     "edited",
+     "from_version",
+     "index",
+     "note",
+     "title",
+     "version"
+    ],
+    "title": "Selection",
+    "type": "object"
+   },
    "ServerSettings": {
     "properties": {
      "mode": {
@@ -1674,6 +2193,17 @@
       "title": "Attempt",
       "type": "integer"
      },
+     "checkpoint": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Checkpoint"
+     },
      "finished_at": {
       "anyOf": [
        {
@@ -1709,6 +2239,13 @@
        }
       ],
       "title": "Last Error"
+     },
+     "needs": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Needs",
+      "type": "array"
      },
      "output_versions": {
       "additionalProperties": {
@@ -1765,10 +2302,12 @@
     "required": [
      "agent",
      "attempt",
+     "checkpoint",
      "finished_at",
      "gate",
      "id",
      "last_error",
+     "needs",
      "output_versions",
      "pending_feedback",
      "stale_reason",
@@ -2657,6 +3196,74 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/hypotheses": {
+   "get": {
+    "description": "The shortlist offered at the checkpoint (latest set, or ``version``), the other drafts, and the choice.",
+    "operationId": "hypotheses_api_runs__project___run_id__hypotheses_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HypothesesView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Hypotheses",
+    "tags": [
+     "hypotheses"
+    ]
+   }
+  },
   "/api/runs/{project}/{run_id}/literature": {
    "get": {
     "operationId": "literature_api_runs__project___run_id__literature_get",
@@ -2863,7 +3470,7 @@
   },
   "/api/runs/{project}/{run_id}/literature/paper/text": {
    "get": {
-    "description": "The text the agent read (full text by section, or the abstract), with each claim's quote located in it.",
+    "description": "The text the agent read (full text by section, or the abstract), with each claim's quote located in it.\n\n``quote`` (e.g. a hypothesis's evidence) is located too, as ``focus``.",
     "operationId": "paper_text_api_runs__project___run_id__literature_paper_text_get",
     "parameters": [
      {
@@ -2891,6 +3498,23 @@
       "schema": {
        "title": "Id",
        "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "quote",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 2000,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Quote"
       }
      }
     ],
@@ -3046,6 +3670,71 @@
     "summary": "Resume",
     "tags": [
      "runs"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/stages/{stage}/impact": {
+   "get": {
+    "description": "What a change to this stage's outputs would do to the later stages (shown before reopening or editing).",
+    "operationId": "impact_api_runs__project___run_id__stages__stage__impact_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "stage",
+      "required": true,
+      "schema": {
+       "title": "Stage",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Affected"
+         },
+         "title": "Response Impact Api Runs  Project   Run Id  Stages  Stage  Impact Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Impact",
+    "tags": [
+     "actions"
     ]
    }
   },

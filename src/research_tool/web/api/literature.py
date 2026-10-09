@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from ...core.artifacts import ArtifactStore
@@ -171,6 +171,7 @@ class PaperText(BaseModel):
     source: Read
     sections: list[TextSection]
     highlights: list[Highlight]
+    focus: Highlight | None = None  # where the ``quote`` asked about was found (claim = -1)
 
 
 class SearchHit(BaseModel):
@@ -189,10 +190,11 @@ class Uploaded(BaseModel):
 
 # ------------------------------------------------------------------ loading
 class _Literature:
-    def __init__(self, run: RunHandle) -> None:
+    def __init__(self, run: RunHandle, corpus_version: int | None = None) -> None:
+        """The latest corpus, or ``corpus_version`` (e.g. the one a set of hypotheses was drawn from)."""
         store = ArtifactStore(run.artifacts_dir)
         try:
-            corpus_env = store.envelope("corpus")
+            corpus_env = store.envelope("corpus", corpus_version)
         except ArtifactError:
             raise HTTPException(404, "the literature stage has not produced a corpus yet") from None
         self.run = run
@@ -368,8 +370,17 @@ def paper_detail(project: str, run_id: str, id: str, request: Request) -> PaperD
 
 
 @router.get("/runs/{project}/{run_id}/literature/paper/text", response_model=PaperText)
-def paper_text(project: str, run_id: str, id: str, request: Request) -> PaperText:  # noqa: A002
-    """The text the agent read (full text by section, or the abstract), with each claim's quote located in it."""
+def paper_text(
+    project: str,
+    run_id: str,
+    id: str,  # noqa: A002
+    request: Request,
+    quote: str | None = Query(default=None, max_length=2000),
+) -> PaperText:
+    """The text the agent read (full text by section, or the abstract), with each claim's quote located in it.
+
+    ``quote`` (e.g. a hypothesis's evidence) is located too, as ``focus``.
+    """
     lit = _Literature(get_run(request, project, run_id))
     paper = _paper(lit, id)
     with lit.kb() as kb:
@@ -389,7 +400,13 @@ def paper_text(project: str, run_id: str, id: str, request: Request) -> PaperTex
                 start, end, score = found
                 highlights.append(Highlight(claim=i, section=s, start=start, end=end, score=score))
                 break
-    return PaperText(source=source, sections=sections_out, highlights=highlights)
+    focus = None
+    for s, section in enumerate(sections_out if quote and quote.strip() else []):
+        found = locate_quote(quote or "", section.text)
+        if found is not None:
+            focus = Highlight(claim=-1, section=s, start=found[0], end=found[1], score=found[2])
+            break
+    return PaperText(source=source, sections=sections_out, highlights=highlights, focus=focus)
 
 
 @router.get("/runs/{project}/{run_id}/literature/search", response_model=list[SearchHit])

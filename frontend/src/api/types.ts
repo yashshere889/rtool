@@ -45,3 +45,10 @@ export type OpenProblemView = Schemas["OpenProblemView"];
 export type CoverageView = Schemas["CoverageView"];
 export type SearchHit = Schemas["SearchHit"];
 export type Uploaded = Schemas["Uploaded"];
+
+export type HypothesesView = Schemas["HypothesesView"];
+export type HypothesisCardData = Schemas["HypothesisCard"];
+export type Hypothesis = Schemas["Hypothesis"];
+export type PaperUse = Schemas["PaperUse"];
+export type Selection = Schemas["Selection"];
+export type Affected = Schemas["Affected"];
