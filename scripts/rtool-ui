@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Open the Research Tool UI that runs on Barkla in this Mac's browser (University VPN on).
+# Open the Research Tool UI that runs on Barkla in this computer's browser (macOS or Linux;
+# on campus, or off campus with the University VPN on).
 #
 #     scripts/rtool-ui            start the UI job (or reuse the running one), tunnel, open the browser
 #     scripts/rtool-ui status     is a UI job queued or running, and where?
@@ -117,8 +118,15 @@ done
 curl -sf --max-time 3 "http://127.0.0.1:$PORT/api/health" >/dev/null || { echo "the UI did not answer" >&2; exit 1; }
 
 url="http://127.0.0.1:$PORT/"
-if [ "$BROWSER" = 1 ] && command -v open >/dev/null; then
-  open "${url}#token=${token}"
+opener=""
+if [ "$BROWSER" = 1 ]; then
+  case "$(uname -s)" in
+    Darwin) opener=open ;;
+    Linux) command -v xdg-open >/dev/null && opener=xdg-open ;; # Linux's `open` is openvt
+  esac
+fi
+if [ -n "$opener" ] && "$opener" "${url}#token=${token}" >/dev/null 2>&1; then
+  :
 else
   echo "open $url and sign in with the token: ssh $HOST cat $dir/token"
 fi
