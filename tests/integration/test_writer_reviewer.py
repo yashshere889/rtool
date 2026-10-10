@@ -232,3 +232,54 @@ def test_issues_need_a_majority() -> None:
     scores, issues, summary = reviewing.consensus(drafts)
     assert scores["soundness"] == 4 and summary == "score 4"  # median, and the median review's summary
     assert [i.problem for i in issues] == ["The test is not named"]  # raised by two of three
+
+
+def section_value(report: Any, section_id: str, template: str) -> dict:
+    value = report.model_dump(mode="json")
+    next(s for s in value["sections"] if s["id"] == section_id)["template"] = template
+    return value
+
+
+def test_hand_edits_are_checked_reviewed_again_and_kept_by_the_writer(runs_root: Path) -> None:
+    from research_tool.core.actions import ActionInbox
+    from research_tool.core.engine import load_status
+
+    run = seed(runs_root)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    store = ArtifactStore(run.artifacts_dir)
+    report = store.get("report")
+    mine = "In our hands {{mean:acc:new}} beat the baseline, as expected [@smith2020].\n\nLimitations. Only 12 nights."
+    edit = {"artifact": "report", "base_version": 1, "value": section_value(report, "discussion", mine)}
+    queue(run, ActionKind.EDIT, payload={**edit, "value": section_value(report, "methods", "My methods")})
+    queue(run, ActionKind.EDIT, payload={**edit, "value": section_value(report, "discussion", "See [@nobody].")})
+    queue(run, ActionKind.EDIT, payload=edit)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    outcomes = [p["outcome"] for p in ActionInbox(run.actions_dir).processed()]
+    assert "written by rtool" in outcomes[0]["error"] and "unknown citation key @nobody" in outcomes[1]["error"]
+    assert outcomes[2]["status"] == "applied" and outcomes[2]["stale"] == ["review"]
+
+    edited = store.get("report")
+    discussion = edited.section("discussion")
+    assert discussion is not None and discussion.origin == "human" and discussion.template == mine
+    assert any(f.kind == "number" and "12" in f.detail for f in edited.findings)
+    markdown = (run.root / edited.markdown_path).read_text()
+    assert "In our hands" in markdown and "{{" not in markdown  # rendered again, numbers filled in
+    _, stages, _ = load_status(run)
+    assert stages["review"].attempt == 2  # the edited report was reviewed again
+    assert not next(c for c in store.get("review").checks if c.name == "numbers trace to the results").ok
+
+    final = store.get("final_report")  # the researcher's last word, at the open checkpoint
+    value = section_value(final, "conclusion", "We conclude that {{mean:acc:new}} is better.")
+    queue(run, ActionKind.EDIT, payload={"artifact": "final_report", "base_version": 2, "value": value})
+    Engine(run, services(run, writer_llm())).advance()
+    _, stages, _ = load_status(run)
+    assert stages["review"].gate.summary["artifacts"]["final_report"] == 3  # type: ignore[union-attr]
+
+    queue(run, ActionKind.REJECT, payload={"feedback": "Tighten the introduction"})  # back to the Writer
+    llm = writer_llm()
+    assert Engine(run, services(run, llm)).advance().outcome is Outcome.WAITING_GATE
+    again = store.get("report")
+    assert again.section("discussion").template == mine and again.section("discussion").origin == "human"  # type: ignore[union-attr]
+    drafted = [r.messages[-1].content for r in llm.calls if "section of a research report" in r.messages[-1].content]
+    assert drafted and not any('"Discussion"' in text for text in drafted)  # the researcher's section was not redrafted
+    assert "report_human_sections_kept" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]

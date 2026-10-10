@@ -525,6 +525,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report
+         * @description The report (``which=report``) or the final report after the review, as sections with what they render to.
+         */
+        get: operations["report_api_runs__project___run_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/report/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bundle
+         * @description The final report (or the report) with its references, figures, review and results, as a zip file.
+         */
+        get: operations["bundle_api_runs__project___run_id__report_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/report/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check
+         * @description What an edited report would become (rendered, checked), without storing anything.
+         */
+        post: operations["check_api_runs__project___run_id__report_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/results": {
         parameters: {
             query?: never;
@@ -559,6 +619,26 @@ export interface paths {
          * @description Make sure something is advancing the run (after a pause, or if a decision was not picked up).
          */
         post: operations["resume_api_runs__project___run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review
+         * @description The review: verdict, rubric scores, automated checks, issues, the Reviewer's edits, revision rounds.
+         */
+        get: operations["review_api_runs__project___run_id__review_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -751,6 +831,18 @@ export interface components {
             producer: components["schemas"]["Producer"];
             /** Versions */
             versions: number[];
+        };
+        /** Check */
+        Check: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Name */
+            name: string;
+            /** Ok */
+            ok: boolean;
         };
         /** CheckedEvidence */
         CheckedEvidence: {
@@ -1141,6 +1233,33 @@ export interface components {
             path: string;
             /** Sha */
             sha: string;
+        };
+        /**
+         * Finding
+         * @description Something the Writer's audit or the Reviewer's checks found.
+         */
+        Finding: {
+            /** Detail */
+            detail: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Section
+             * @default
+             */
+            section: string;
+            /**
+             * Severity
+             * @default major
+             * @enum {string}
+             */
+            severity: "minor" | "major";
+            /**
+             * Target
+             * @default report
+             * @enum {string}
+             */
+            target: "report" | "experiment_results" | "code_bundle" | "experiment_plan";
         };
         /** FixView */
         FixView: {
@@ -1591,6 +1710,21 @@ export interface components {
             /** Section Titles */
             section_titles: string[];
         };
+        /** PaperInfo */
+        PaperInfo: {
+            /** Authors */
+            authors: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Paper Id */
+            paper_id: string;
+            /** Title */
+            title: string;
+            /** Year */
+            year: number | null;
+        };
         /** PaperLinks */
         PaperLinks: {
             /** Arxiv */
@@ -1652,6 +1786,15 @@ export interface components {
             note: string;
             /** Preemptible */
             preemptible: boolean;
+        };
+        /** PlaceholderInfo */
+        PlaceholderInfo: {
+            /** Key */
+            key: string;
+            /** Meaning */
+            meaning: string;
+            /** Text */
+            text: string;
         };
         /** PlanCheck */
         PlanCheck: {
@@ -1717,6 +1860,73 @@ export interface components {
             action: components["schemas"]["Action"];
             kick: components["schemas"]["KickResult"];
         };
+        /** ReportCheck */
+        ReportCheck: {
+            /** Changed */
+            changed: string[];
+            /** Error */
+            error: string;
+            /** Findings */
+            findings: components["schemas"]["Finding"][];
+            /** Ok */
+            ok: boolean;
+            /** Sections */
+            sections: components["schemas"]["SectionView"][];
+            /** Title */
+            title: string;
+        };
+        /** ReportView */
+        ReportView: {
+            /**
+             * Artifact
+             * @enum {string}
+             */
+            artifact: "report" | "final_report";
+            /** Base Dir */
+            base_dir: string;
+            /** Bibtex Path */
+            bibtex_path: string;
+            /** By */
+            by: string | null;
+            /** Citations */
+            citations: string[];
+            /** Created At */
+            created_at: string;
+            /** Edit Note */
+            edit_note: string;
+            /** Editable */
+            editable: boolean;
+            /** Edited From */
+            edited_from: number | null;
+            /** Figures */
+            figures: string[];
+            /** Findings */
+            findings: components["schemas"]["Finding"][];
+            /** Head */
+            head: number;
+            /** Markdown Path */
+            markdown_path: string;
+            /** Papers */
+            papers: components["schemas"]["PaperInfo"][];
+            /** Placeholders */
+            placeholders: components["schemas"]["PlaceholderInfo"][];
+            /** References */
+            references: components["schemas"]["PaperInfo"][];
+            /** Sections */
+            sections: components["schemas"]["SectionView"][];
+            /** Stage */
+            stage: string;
+            /** Title */
+            title: string;
+            /** Title Origin */
+            title_origin: string;
+            /** Version */
+            version: number;
+            /** Versions */
+            versions: number[];
+            /** Why Not Editable */
+            why_not_editable: string;
+        };
         /** ResourceSpec */
         ResourceSpec: {
             /**
@@ -1772,6 +1982,88 @@ export interface components {
             /** Metrics */
             metrics: components["schemas"]["MetricInfo"][];
             results: components["schemas"]["ExperimentResults"];
+            /** Version */
+            version: number;
+        };
+        /** Review */
+        Review: {
+            /** Change Requests */
+            change_requests: string[];
+            /** Checks */
+            checks: components["schemas"]["Check"][];
+            /**
+             * Diff Path
+             * @default
+             */
+            diff_path: string;
+            /** Edited Sections */
+            edited_sections: string[];
+            /** Issues */
+            issues: components["schemas"]["ReviewIssue"][];
+            /**
+             * Review Path
+             * @default
+             */
+            review_path: string;
+            /** Scores */
+            scores: {
+                [key: string]: number;
+            };
+            /** Summary */
+            summary: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "accept" | "needs_human";
+        };
+        /** ReviewIssue */
+        ReviewIssue: {
+            /** Problem */
+            problem: string;
+            /**
+             * Section
+             * @description Section id, e.g. 'results' or 'discussion'
+             */
+            section: string;
+            /**
+             * Severity
+             * @default minor
+             * @enum {string}
+             */
+            severity: "minor" | "major";
+            /**
+             * Suggestion
+             * @description What to change, concretely
+             */
+            suggestion: string;
+            /**
+             * Target
+             * @description 'report' if editing the text fixes it; otherwise the artifact that must change
+             * @default report
+             * @enum {string}
+             */
+            target: "report" | "experiment_results" | "code_bundle" | "experiment_plan";
+        };
+        /** ReviewView */
+        ReviewView: {
+            /** Diff */
+            diff: string;
+            /** Final Edited */
+            final_edited: boolean;
+            /** Final Version */
+            final_version: number | null;
+            /** Min Score */
+            min_score: number;
+            /** Report Stage */
+            report_stage: string | null;
+            review: components["schemas"]["Review"];
+            /** Rounds Max */
+            rounds_max: number;
+            /** Rounds Used */
+            rounds_used: number;
+            /** Stage */
+            stage: string;
             /** Version */
             version: number;
         };
@@ -1957,6 +2249,23 @@ export interface components {
             section: string;
             /** Snippet */
             snippet: string;
+            /** Title */
+            title: string;
+        };
+        /** SectionView */
+        SectionView: {
+            /** Editable */
+            editable: boolean;
+            /** Id */
+            id: string;
+            /** Origin */
+            origin: string;
+            /** Problems */
+            problems: string[];
+            /** Rendered */
+            rendered: string;
+            /** Template */
+            template: string;
             /** Title */
             title: string;
         };
@@ -2174,6 +2483,20 @@ export interface components {
         };
         /** CheckRequest */
         research_tool__web__api__plan__CheckRequest: {
+            /** Base Version */
+            base_version: number;
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
+        };
+        /** CheckRequest */
+        research_tool__web__api__report__CheckRequest: {
+            /**
+             * Artifact
+             * @enum {string}
+             */
+            artifact: "report" | "final_report";
             /** Base Version */
             base_version: number;
             /** Value */
@@ -3198,6 +3521,109 @@ export interface operations {
             };
         };
     };
+    report_api_runs__project___run_id__report_get: {
+        parameters: {
+            query?: {
+                which?: "report" | "final_report";
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bundle_api_runs__project___run_id__report_bundle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_api_runs__project___run_id__report_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["research_tool__web__api__report__CheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     results_api_runs__project___run_id__results_get: {
         parameters: {
             query?: {
@@ -3251,6 +3677,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KickResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_api_runs__project___run_id__review_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewView"];
                 };
             };
             /** @description Validation Error */

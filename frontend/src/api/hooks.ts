@@ -18,6 +18,10 @@ import type {
   HypothesesView,
   PlanCheck,
   PlanView,
+  ReportCheck,
+  ReportView,
+  ReportWhich,
+  ReviewView,
   ArtifactEnvelope,
   ArtifactInfo,
   Created,
@@ -377,5 +381,43 @@ export function useResults(project: string, runId: string, enabled = true) {
     queryKey: ["artifact", project, runId, "results"],
     queryFn: () => api<ResultsView>(`${base(project, runId)}/results`),
     enabled,
+  });
+}
+
+// ------------------------------------------------------------- report & review
+export function useReport(project: string, runId: string, which: ReportWhich, version?: number) {
+  const query = `which=${which}${version ? `&version=${version}` : ""}`;
+  return useQuery({
+    queryKey: ["artifact", project, runId, "report", which, version ?? "head"],
+    queryFn: () => api<ReportView>(`${base(project, runId)}/report?${query}`),
+  });
+}
+
+/** What an edited report would become (rendered and checked by the agents' rules); nothing is stored. */
+export function useReportCheck(
+  project: string,
+  runId: string,
+  which: ReportWhich,
+  baseVersion: number,
+  value: unknown,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["report-check", project, runId, which, baseVersion, JSON.stringify(value)],
+    queryFn: () =>
+      api<ReportCheck>(`${base(project, runId)}/report/check`, {
+        method: "POST",
+        body: { artifact: which, base_version: baseVersion, value },
+      }),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+}
+
+export function useReview(project: string, runId: string) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "review"],
+    queryFn: () => api<ReviewView>(`${base(project, runId)}/review`),
   });
 }

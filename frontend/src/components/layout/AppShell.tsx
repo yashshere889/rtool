@@ -47,7 +47,7 @@ export function AppShell() {
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50">
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur print:hidden">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-1 px-3 sm:gap-2 sm:px-4">
           <Link to="/" className="mr-1 flex shrink-0 items-center gap-2 font-semibold sm:mr-3" aria-label="Research Tool">
             <img src="/favicon.svg" alt="" className="size-6" />

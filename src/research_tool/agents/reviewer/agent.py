@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from ...core.agent import Agent
 from ...core.context import AgentContext
+from ...core.editing import EditContext, EditResult, artifact_editor
 from ...core.fs import atomic_write_text
 from ...core.registry import register_agent
 from ...core.state import FeedbackKind
@@ -36,6 +37,7 @@ from ...schemas.common import ResearchBrief
 from ...schemas.literature import Corpus, KnowledgeMap
 from ...schemas.plan import ExperimentPlan
 from ...schemas.report import Check, Report, ReportSection, Review, ReviewDraft, ReviewIssue, Rubric
+from ...tools.report.editing import edit_report
 from ...tools.report.render import (
     assemble,
     bib_keys,
@@ -80,6 +82,12 @@ class ReviewerAgent(Agent):
 
     def run(self, ctx: AgentContext) -> None:
         Reviewing(ctx, self.config).review()
+
+
+@artifact_editor("final_report")
+def edit(value: dict[str, Any], ctx: EditContext) -> EditResult:
+    """The researcher's last word on the final report (it is not reviewed again)."""
+    return edit_report(value, ctx)
 
 
 class Reviewing:
@@ -276,7 +284,14 @@ class Reviewing:
 
         sections = {s.id: s for s in self.report.sections}
         textual = [i for i in issues if i.target == "report"]
-        to_edit = sorted({i.section for i in textual if i.section in EDITABLE and i.section in sections})
+        # sections the researcher wrote are not rewritten: their issues stay open for them
+        to_edit = sorted(
+            {
+                i.section
+                for i in textual
+                if i.section in EDITABLE and i.section in sections and sections[i.section].origin != "human"
+            }
+        )
         rewrites = ctx.llm.parallel(
             lambda sid: self.edit(sections[sid], [i for i in textual if i.section == sid]), to_edit
         )

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -34,6 +35,7 @@ class EditContext:
     app_config: AppConfig
     store: ArtifactStore  # to read the previous version's inputs; editors never write
     previous: ArtifactEnvelope
+    run_root: Path  # to read files the inputs point to (run-relative paths); editors never write
 
 
 @dataclass
@@ -72,6 +74,7 @@ def run_editor(
     name: str,
     value: Any,
     base_version: Any,
+    run_root: Path,
 ) -> tuple[str, ArtifactEnvelope, EditResult]:
     """Check an edit of ``name`` made on ``base_version`` and normalise it. Raises ActionError if it is refused."""
     editor = EDITORS.get(name)
@@ -86,7 +89,7 @@ def run_editor(
     if not isinstance(value, dict):
         raise ActionError("the edit must contain the whole edited value")
     previous = store.envelope(name, head)
-    context = EditContext(owner, pipeline.stage(owner).config, app_config, store, previous)
+    context = EditContext(owner, pipeline.stage(owner).config, app_config, store, previous, run_root)
     try:
         return owner, previous, EDITORS[name](value, context)
     except ValidationError as exc:

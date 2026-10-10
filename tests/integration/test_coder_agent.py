@@ -363,3 +363,22 @@ def test_a_failed_stage_resumes_after_a_rewrite(runs_root: Path, tmp_path: Path)
     queue(run, ActionKind.WRITE_FILE, stage="code", payload=fixed)
     assert advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["gate"] == "gpu_runs"
     assert processed(run)[-1]["resumed"]
+
+
+def test_a_cosmetic_plan_change_keeps_the_code(runs_root: Path, tmp_path: Path) -> None:
+    from research_tool.agents.coder.agent import plan_hash
+
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    advance(run, svc, Outcome.WAITING_GATE)
+    store = ArtifactStore(run.artifacts_dir)
+    plan = store.get("experiment_plan")
+    reworded = plan.model_copy(update={"expected_results": "new wins clearly", "risks": ["few seeds"]})
+    assert plan_hash(reworded) == plan_hash(plan)
+    assert plan_hash(plan.model_copy(update={"seeds": [0, 1]})) != plan_hash(plan)
+    store.put("experiment_plan", reworded, producer=Producer(stage="user", agent="human:me"))
+    writes = len([r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content])
+    advance(run, svc, Outcome.WAITING_GATE)  # the stage ran again for the new plan version...
+    again = len([r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content])
+    assert again == writes  # ...but kept experiment.py instead of having it written again

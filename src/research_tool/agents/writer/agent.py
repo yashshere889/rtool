@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from ...core.agent import Agent
 from ...core.context import AgentContext
+from ...core.editing import EditContext, EditResult, artifact_editor
 from ...core.fs import atomic_write_text
 from ...core.registry import register_agent
 from ...llm.client import CONCISE, LOOP_BREAKER, LLMOutputError
@@ -31,6 +32,7 @@ from ...schemas.common import ResearchBrief, SelectedItem
 from ...schemas.literature import Corpus, KnowledgeMap
 from ...schemas.plan import ExperimentPlan
 from ...schemas.report import Contradictions, Finding, Report, ReportSection, TitleAbstract
+from ...tools.report.editing import edit_report
 from ...tools.report.numbers import fmt, fmt_ci, fmt_p
 from ...tools.report.render import (
     Value,
@@ -115,12 +117,18 @@ def clean_prose(text: str) -> str:
 class WriterAgent(Agent):
     description = "Writes the full report with checked citations and numbers filled in from the results."
     consumes = ("research_brief", "corpus", "knowledge_map", "experiment_plan", "experiment_results", "code_bundle")
-    optional_inputs = ("selected_hypothesis",)
+    # its own last report: sections the researcher wrote (origin "human") are kept when it writes again
+    optional_inputs = ("selected_hypothesis", "report")
     produces = ("report",)
     config_model = WriterConfig
 
     def run(self, ctx: AgentContext) -> None:
         Drafting(ctx, self.config).write()
+
+
+@artifact_editor("report")
+def edit(value: dict[str, Any], ctx: EditContext) -> EditResult:
+    return edit_report(value, ctx)
 
 
 class Drafting:
@@ -141,6 +149,9 @@ class Drafting:
         self.prompts = PromptLibrary.for_agent(__package__, "writer", pack=self.brief.domain_pack)
         self.provenance: dict[str, str] = {}
         self.findings: list[Finding] = []
+        previous: Report | None = ctx.inputs.get("report") if ctx.inputs.has("report") else None
+        self.kept = {s.id: s for s in previous.sections if s.origin == "human"} if previous else {}
+        self.kept_title = previous.title if previous is not None and previous.title_origin == "human" else None
 
     # --------------------------------------------------------------- llm
     def render_prompt(self, name: str, **variables: Any) -> str:
@@ -439,10 +450,12 @@ class Drafting:
             )
 
     def consistency(self, sections: dict[str, str]) -> dict[str, str]:
-        """Rewrite sentences that contradict the computed results (one round)."""
+        """Rewrite sentences that contradict the computed results (one round; the researcher's sections are left)."""
         if not self.cfg.consistency_check:
             return sections
-        checked = [s for s in ("abstract", "results", "discussion", "conclusion") if s in sections]
+        checked = [
+            s for s in ("abstract", "results", "discussion", "conclusion") if s in sections and s not in self.kept
+        ]
         prompt = self.render_prompt(
             "consistency.j2",
             facts=render(self.facts(), self.values),
@@ -468,30 +481,51 @@ class Drafting:
         return sections
 
     # ------------------------------------------------------------------ main
+    def keep_human_sections(self) -> dict[str, str]:
+        """The researcher's sections, unchanged; what no longer fits the results is reported, not rewritten."""
+        kept = {}
+        for sid, section in self.kept.items():
+            keys = self.keys if sid != "abstract" else set()
+            for problem in problems(section.template, self.values, keys, allowed_numbers=None):
+                self.findings.append(
+                    Finding(kind="placeholder", section=sid, severity="minor", detail=f"in your text: {problem}")
+                )
+            kept[sid] = section.template
+        if kept:
+            self.ctx.emit("report_human_sections_kept", sections=sorted(kept))
+        return kept
+
     def write(self) -> None:
         ctx = self.ctx
-        drafts = ctx.llm.parallel(self.draft, list(PROSE))
-        prose: dict[str, str] = {}
-        for section, text in zip(PROSE, drafts, strict=True):
+        prose: dict[str, str] = self.keep_human_sections()
+        todo = [s for s in PROSE if s not in prose]
+        drafts = ctx.llm.parallel(self.draft, todo)
+        for section, text in zip(todo, drafts, strict=True):
             if isinstance(text, Exception):
                 raise text
             prose[section] = text
         report_text = "\n\n".join(f"## {TITLES[s]}\n{prose[s]}" for s in PROSE)
-        try:
-            head = ctx.llm.structured(
-                TitleAbstract, self.render_prompt("abstract.j2", report=report_text), profile="write", system=SYSTEM
-            )
-            title = head.title.strip().strip("#").strip() or self.plan.hypothesis
-            abstract, remaining = settle(
-                clean_prose(head.abstract),
-                lambda t: self.check("abstract", t),
-                lambda t, found: self.fix("abstract", t, found),
-                self.cfg.repair_rounds,
-            )
-            prose["abstract"] = self.give_up_on("abstract", abstract, remaining)
-        except LLMOutputError:
-            title, prose["abstract"] = self.plan.hypothesis, ""
-            self.findings.append(Finding(kind="abstract", detail="no abstract could be written", severity="minor"))
+        if "abstract" in prose:  # written by the researcher: keep it (and any title they chose)
+            title = self.kept_title or self.plan.hypothesis
+        else:
+            try:
+                head = ctx.llm.structured(
+                    TitleAbstract,
+                    self.render_prompt("abstract.j2", report=report_text),
+                    profile="write",
+                    system=SYSTEM,
+                )
+                title = self.kept_title or head.title.strip().strip("#").strip() or self.plan.hypothesis
+                abstract, remaining = settle(
+                    clean_prose(head.abstract),
+                    lambda t: self.check("abstract", t),
+                    lambda t, found: self.fix("abstract", t, found),
+                    self.cfg.repair_rounds,
+                )
+                prose["abstract"] = self.give_up_on("abstract", abstract, remaining)
+            except LLMOutputError:
+                title, prose["abstract"] = self.kept_title or self.plan.hypothesis, ""
+                self.findings.append(Finding(kind="abstract", detail="no abstract could be written", severity="minor"))
         prose = self.consistency(prose)
         self.audit()
 
@@ -504,8 +538,14 @@ class Drafting:
             "reproducibility": self.reproducibility(),
         }
         origin = {"methods": "rtool", "results_tables": "rtool", "reproducibility": "rtool"}
+        origin |= {s: "human" for s in self.kept}
         sections = [
-            ReportSection(id=s, title=TITLES[s], template=texts[s], origin=origin.get(s, "llm"))  # type: ignore[arg-type]
+            ReportSection(
+                id=s,
+                title=self.kept[s].title if s in self.kept else TITLES[s],
+                template=texts[s],
+                origin=origin.get(s, "llm"),  # type: ignore[arg-type]
+            )
             for s in ORDER
             if texts.get(s)
         ]
@@ -522,6 +562,7 @@ class Drafting:
             "report",
             Report(
                 title=title,
+                title_origin="human" if self.kept_title else "llm",
                 sections=sections,
                 markdown_path=ctx.relative(report_path),
                 bibtex_path=ctx.relative(bib_path),

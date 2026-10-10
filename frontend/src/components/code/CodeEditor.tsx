@@ -1,11 +1,12 @@
-/** A Python editor (CodeMirror 6). Loaded on demand: it is the largest part of the app. */
+/** Code and Markdown editors (CodeMirror 6). Loaded on demand: they are the largest part of the app. */
+import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { unifiedMergeView } from "@codemirror/merge";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { Decoration, EditorView, MatchDecorator, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { basicSetup } from "codemirror";
-import { useEffect, useRef, type RefObject } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, type RefObject } from "react";
 
 import { useDark } from "@/lib/useDark";
 
@@ -47,6 +48,7 @@ function useEditor(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
   useEffect(() => {
     view.current?.dispatch({ effects: theme.current.reconfigure(dark ? oneDark : []) });
   }, [dark]);
@@ -57,6 +59,7 @@ function useEditor(
       current.dispatch({ changes: { from: 0, to: current.state.doc.length, insert: doc } });
     }
   }, [doc]);
+  return view;
 }
 
 export default function CodeEditor({
@@ -108,3 +111,104 @@ export function CodeDiff({ original, value, label }: { original: string; value: 
   );
   return <div ref={parent} className="max-h-[75vh] overflow-auto rounded-xl" />;
 }
+
+const chipTheme = EditorView.baseTheme({
+  ".cm-rt-placeholder": {
+    backgroundColor: "color-mix(in srgb, var(--info) 16%, transparent)",
+    borderRadius: "4px",
+    padding: "0 2px",
+  },
+  ".cm-rt-citation": {
+    backgroundColor: "color-mix(in srgb, var(--ok) 16%, transparent)",
+    borderRadius: "4px",
+    padding: "0 2px",
+  },
+  ".cm-rt-unknown": {
+    backgroundColor: "color-mix(in srgb, var(--bad) 20%, transparent)",
+    textDecoration: "underline wavy var(--bad)",
+  },
+});
+
+function highlighter(decorator: MatchDecorator) {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = decorator.createDeco(view);
+      }
+      update(update: ViewUpdate) {
+        this.decorations = decorator.updateDeco(update, this.decorations);
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  );
+}
+
+/** {{placeholders}} and [@citations] as chips; the tooltip says what they stand for, unknown ones are marked. */
+function chips(placeholders: Map<string, string>, papers: Map<string, string>) {
+  const placeholder = new MatchDecorator({
+    regexp: /\{\{\s*([A-Za-z_]+(?::[A-Za-z0-9_.-]+)*)\s*\}\}/g,
+    decoration: (match) =>
+      Decoration.mark({
+        class: placeholders.has(match[1]) ? "cm-rt-placeholder" : "cm-rt-unknown",
+        attributes: { title: placeholders.get(match[1]) ?? "Unknown placeholder: it would not render" },
+      }),
+  });
+  const citation = new MatchDecorator({
+    regexp: /\[\s*@[^\]]+?\]/g,
+    decoration: (match) => {
+      const keys = [...match[0].matchAll(/@([A-Za-z0-9_:.-]+)/g)].map((k) => k[1]);
+      return Decoration.mark({
+        class: keys.every((k) => papers.has(k)) ? "cm-rt-citation" : "cm-rt-unknown",
+        attributes: { title: keys.map((k) => papers.get(k) ?? `${k}: not a paper in this collection`).join("\n") },
+      });
+    },
+  });
+  return [highlighter(placeholder), highlighter(citation), chipTheme];
+}
+
+export interface MarkdownEditorHandle {
+  insert: (text: string) => void;
+}
+
+/** A Markdown editor for a report section, with placeholders and citations shown as chips. */
+export const MarkdownEditor = forwardRef<
+  MarkdownEditorHandle,
+  {
+    value: string;
+    onChange: (text: string) => void;
+    label: string;
+    placeholders: Map<string, string>;
+    papers: Map<string, string>;
+    onFocus?: () => void;
+  }
+>(function MarkdownEditor({ value, onChange, label, placeholders, papers, onFocus }, ref) {
+  const parent = useRef<HTMLDivElement>(null);
+  const focused = useRef(onFocus);
+  focused.current = onFocus;
+  const view = useEditor(
+    parent,
+    [
+      basicSetup,
+      markdown(),
+      frame,
+      EditorView.lineWrapping,
+      EditorView.theme({ ".cm-content, .cm-gutter": { minHeight: "8rem" } }),
+      EditorView.contentAttributes.of({ "aria-label": label }),
+      EditorView.domEventHandlers({ focus: () => void focused.current?.() }),
+      chips(placeholders, papers),
+    ],
+    value,
+    onChange,
+  );
+  useImperativeHandle(ref, () => ({
+    insert(text: string) {
+      const current = view.current;
+      if (!current) return;
+      const { from, to } = current.state.selection.main;
+      current.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
+      current.focus();
+    },
+  }));
+  return <div ref={parent} className="max-h-[60vh] overflow-auto rounded-xl" />;
+});

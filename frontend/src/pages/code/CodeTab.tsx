@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, Download, FileCode2, GitCompare, Pencil, Undo2 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { useCodeCheck, useCodeFile, useDecide, useDiscardDraft, useDraft, useGeneratedCode, useSaveDraft, useUndo } from "@/api/hooks";
 import type { CodeView, RunDetail } from "@/api/types";
@@ -82,7 +82,11 @@ function ExperimentEditor({ run, view }: { run: RunDetail; view: CodeView }) {
   const stale = Boolean(file.data && base && file.data.sha !== base.sha && dirty);
   const settled = useDebounced(text, 700);
   const check = useCodeCheck(run.project, run.run_id, canEdit && settled !== null ? settled : null);
-  const toSave = useDebounced(canEdit && dirty && base ? { base_version: 0, value: { content: text, base_sha: base.sha }, note: "" } : null, 1200);
+  const pending = useMemo(
+    () => (canEdit && dirty && base ? { base_version: 0, value: { content: text, base_sha: base.sha }, note: "" } : null),
+    [canEdit, dirty, base, text],
+  );
+  const toSave = useDebounced(pending, 1200);
   useEffect(() => {
     if (toSave) saveDraft(toSave);
   }, [toSave, saveDraft]);

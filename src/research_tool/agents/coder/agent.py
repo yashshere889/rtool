@@ -139,6 +139,28 @@ def file_listing(path: Path, limit: int) -> str:
     return ", ".join(found)
 
 
+# what the experiment code depends on: a change elsewhere (wording, expected results, risks, statistics, which
+# rtool computes itself) keeps the existing experiment.py instead of having it written again
+CODE_FIELDS = {
+    "hypothesis": True,
+    "design": True,
+    "independent_variables": True,
+    "dependent_variables": True,
+    "controls": True,
+    "conditions": True,
+    "ablations": True,
+    "metrics": True,
+    "seeds": True,
+    "procedure": True,
+    "resources": {"__all__": {"kind", "name", "source", "identifier", "subset", "split"}},
+    "compute": {"gpus_per_run", "gpu_memory_gb", "gpu_type"},
+}
+
+
+def plan_hash(plan: ExperimentPlan) -> str:
+    return sha256_text(canonical_json(plan.model_dump(mode="json", include=CODE_FIELDS)))
+
+
 @register_agent("coder")
 class CoderAgent(Agent):
     description = "Writes the experiment code, smoke-tests and debugs it, runs it on Slurm and analyses the results."
@@ -180,7 +202,7 @@ class CoderSession:
         )
         self.metric_names = [m.name for m in self.plan.metrics]
         self.conditions = [c.name for c in self.plan.run_conditions()]
-        self.plan_hash = sha256_text(canonical_json(self.plan.model_dump(mode="json")))
+        self.plan_hash = plan_hash(self.plan)
 
     # ------------------------------------------------------------------ driver
     def drive(self) -> None:

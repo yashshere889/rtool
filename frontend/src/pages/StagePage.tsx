@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { lazy, Suspense, useState, type ComponentType } from "react";
 import { useParams } from "react-router";
 
 import { useArtifact, useArtifacts } from "@/api/hooks";
-import type { RunDetail } from "@/api/types";
+import type { RunDetail, StageSummary } from "@/api/types";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { CheckpointCard } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
@@ -12,13 +12,21 @@ import { NoteBox } from "@/components/NoteBox";
 import { ReopenButton } from "@/components/ReopenDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { CodePage } from "@/pages/code/CodePage";
-import { HypothesesPage } from "@/pages/hypotheses/HypothesesPage";
-import { LiteraturePage } from "@/pages/literature/LiteraturePage";
-import { PlanPage } from "@/pages/plan/PlanPage";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { dateTime, humanize, timeAgo } from "@/lib/format";
 import { STAGES, stageTitle } from "@/lib/stages";
+
+type StageView = ComponentType<{ run: RunDetail; stage: StageSummary }>;
+
+// each agent's own page, loaded when first opened (they bring their own libraries: editors, Markdown)
+const PAGES: Record<string, StageView> = {
+  literature: lazy(() => import("@/pages/literature/LiteraturePage").then((m) => ({ default: m.LiteraturePage }))),
+  hypothesis: lazy(() => import("@/pages/hypotheses/HypothesesPage").then((m) => ({ default: m.HypothesesPage }))),
+  planner: lazy(() => import("@/pages/plan/PlanPage").then((m) => ({ default: m.PlanPage }))),
+  coder: lazy(() => import("@/pages/code/CodePage").then((m) => ({ default: m.CodePage }))),
+  writer: lazy(() => import("@/pages/report/ReportPage").then((m) => ({ default: m.ReportPage }))),
+  reviewer: lazy(() => import("@/pages/report/ReviewPage").then((m) => ({ default: m.ReviewPage }))),
+};
 
 function ArtifactPanel({ run, name, current }: { run: RunDetail; name: string; current: number }) {
   const artifacts = useArtifacts(run.project, run.run_id);
@@ -79,10 +87,14 @@ export function StagePage() {
   const { run } = useRunContext();
   const stage = run.stages.find((s) => s.id === stageId);
   if (!stage) return <Empty title="No such stage">This run has no stage called “{stageId}”.</Empty>;
-  if (stage.agent === "literature") return <LiteraturePage run={run} stage={stage} />;
-  if (stage.agent === "hypothesis") return <HypothesesPage run={run} stage={stage} />;
-  if (stage.agent === "planner") return <PlanPage run={run} stage={stage} />;
-  if (stage.agent === "coder") return <CodePage run={run} stage={stage} />;
+  const Page = PAGES[stage.agent];
+  if (Page) {
+    return (
+      <Suspense fallback={<Loading label={`Opening ${stageTitle(stage.id)}`} />}>
+        <Page run={run} stage={stage} />
+      </Suspense>
+    );
+  }
   const outputs = Object.entries(stage.output_versions);
   return (
     <div className="space-y-6">

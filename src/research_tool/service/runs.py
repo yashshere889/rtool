@@ -268,7 +268,7 @@ def check_edit(run: RunHandle, artifact: str, base_version: Any, value: Any) -> 
     """
     _, stages, pipeline = load_status(run)
     owner, previous, result = run_editor(
-        pipeline, ArtifactStore(run.artifacts_dir), run.config, artifact, value, base_version
+        pipeline, ArtifactStore(run.artifacts_dir), run.config, artifact, value, base_version, run.root
     )
     refusal = edit_refusal(owner, stages[owner])
     if refusal:

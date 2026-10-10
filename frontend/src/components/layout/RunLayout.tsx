@@ -81,8 +81,8 @@ export function RunLayout() {
     );
   }
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8">
-      <aside className="mb-6 lg:mb-0">
+    <div className="mx-auto max-w-7xl px-4 py-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8 print:block print:p-0">
+      <aside className="mb-6 lg:mb-0 print:hidden">
         <RunNav run={run.data} />
       </aside>
       <div className="min-w-0">

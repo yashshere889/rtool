@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..core.artifacts import artifact_type, register_artifact_type
 
-Origin = Literal["rtool", "llm", "reviewer"]
+Origin = Literal["rtool", "llm", "reviewer", "human"]
 Severity = Literal["minor", "major"]
 Target = Literal["report", "experiment_results", "code_bundle", "experiment_plan"]
 
@@ -39,6 +39,7 @@ class Finding(BaseModel):
 @artifact_type("report")
 class Report(BaseModel):
     title: str
+    title_origin: Origin = "llm"  # "human" once the researcher retitles it (the Writer then keeps it)
     sections: list[ReportSection]
     markdown_path: str  # rendered report, run-relative
     bibtex_path: str  # entries for the cited papers only

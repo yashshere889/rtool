@@ -71,3 +71,12 @@ export type CodeCheck = Schemas["CodeCheck"];
 export type LogText = Schemas["LogText"];
 export type ResultsView = Schemas["ResultsView"];
 export type ExperimentResults = Schemas["ExperimentResults"];
+
+export type ReportView = Schemas["ReportView"];
+export type SectionView = Schemas["SectionView"];
+export type ReportCheck = Schemas["ReportCheck"];
+export type ReviewView = Schemas["ReviewView"];
+export type PaperInfo = Schemas["PaperInfo"];
+export type PlaceholderInfo = Schemas["PlaceholderInfo"];
+export type Finding = Schemas["Finding"];
+export type ReportWhich = ReportView["artifact"];

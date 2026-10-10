@@ -985,9 +985,8 @@ class Engine:
         """
         payload = action.payload
         name = str(payload.get("artifact") or "")
-        owner, previous, result = run_editor(
-            self.pipeline, self.store, self.config, name, payload.get("value"), payload.get("base_version")
-        )
+        value, base = payload.get("value"), payload.get("base_version")
+        owner, previous, result = run_editor(self.pipeline, self.store, self.config, name, value, base, self.run.root)
         st = self.stages[owner]
         refusal = edit_refusal(owner, st)
         if refusal:

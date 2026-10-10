@@ -302,6 +302,30 @@
     "title": "ArtifactInfo",
     "type": "object"
    },
+   "Check": {
+    "properties": {
+     "detail": {
+      "default": "",
+      "title": "Detail",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "detail",
+     "name",
+     "ok"
+    ],
+    "title": "Check",
+    "type": "object"
+   },
    "CheckedEvidence": {
     "properties": {
      "paper_id": {
@@ -1426,6 +1450,53 @@
      "sha"
     ],
     "title": "FileText",
+    "type": "object"
+   },
+   "Finding": {
+    "description": "Something the Writer's audit or the Reviewer's checks found.",
+    "properties": {
+     "detail": {
+      "title": "Detail",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "section": {
+      "default": "",
+      "title": "Section",
+      "type": "string"
+     },
+     "severity": {
+      "default": "major",
+      "enum": [
+       "minor",
+       "major"
+      ],
+      "title": "Severity",
+      "type": "string"
+     },
+     "target": {
+      "default": "report",
+      "enum": [
+       "report",
+       "experiment_results",
+       "code_bundle",
+       "experiment_plan"
+      ],
+      "title": "Target",
+      "type": "string"
+     }
+    },
+    "required": [
+     "detail",
+     "kind",
+     "section",
+     "severity",
+     "target"
+    ],
+    "title": "Finding",
     "type": "object"
    },
    "FixView": {
@@ -2667,6 +2738,51 @@
     "title": "PaperDetail",
     "type": "object"
    },
+   "PaperInfo": {
+    "properties": {
+     "authors": {
+      "title": "Authors",
+      "type": "string"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "paper_id": {
+      "title": "Paper Id",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "year": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Year"
+     }
+    },
+    "required": [
+     "authors",
+     "key",
+     "label",
+     "paper_id",
+     "title",
+     "year"
+    ],
+    "title": "PaperInfo",
+    "type": "object"
+   },
    "PaperLinks": {
     "properties": {
      "arxiv": {
@@ -2898,6 +3014,29 @@
     "title": "PartitionView",
     "type": "object"
    },
+   "PlaceholderInfo": {
+    "properties": {
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "meaning": {
+      "title": "Meaning",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "key",
+     "meaning",
+     "text"
+    ],
+    "title": "PlaceholderInfo",
+    "type": "object"
+   },
    "PlanCheck": {
     "properties": {
      "changed": {
@@ -3075,6 +3214,218 @@
     "title": "Queued",
     "type": "object"
    },
+   "ReportCheck": {
+    "properties": {
+     "changed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Changed",
+      "type": "array"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "findings": {
+      "items": {
+       "$ref": "#/components/schemas/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "sections": {
+      "items": {
+       "$ref": "#/components/schemas/SectionView"
+      },
+      "title": "Sections",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "changed",
+     "error",
+     "findings",
+     "ok",
+     "sections",
+     "title"
+    ],
+    "title": "ReportCheck",
+    "type": "object"
+   },
+   "ReportView": {
+    "properties": {
+     "artifact": {
+      "enum": [
+       "report",
+       "final_report"
+      ],
+      "title": "Artifact",
+      "type": "string"
+     },
+     "base_dir": {
+      "title": "Base Dir",
+      "type": "string"
+     },
+     "bibtex_path": {
+      "title": "Bibtex Path",
+      "type": "string"
+     },
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "citations": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Citations",
+      "type": "array"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "edit_note": {
+      "title": "Edit Note",
+      "type": "string"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "edited_from": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edited From"
+     },
+     "figures": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Figures",
+      "type": "array"
+     },
+     "findings": {
+      "items": {
+       "$ref": "#/components/schemas/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+     },
+     "head": {
+      "title": "Head",
+      "type": "integer"
+     },
+     "markdown_path": {
+      "title": "Markdown Path",
+      "type": "string"
+     },
+     "papers": {
+      "items": {
+       "$ref": "#/components/schemas/PaperInfo"
+      },
+      "title": "Papers",
+      "type": "array"
+     },
+     "placeholders": {
+      "items": {
+       "$ref": "#/components/schemas/PlaceholderInfo"
+      },
+      "title": "Placeholders",
+      "type": "array"
+     },
+     "references": {
+      "items": {
+       "$ref": "#/components/schemas/PaperInfo"
+      },
+      "title": "References",
+      "type": "array"
+     },
+     "sections": {
+      "items": {
+       "$ref": "#/components/schemas/SectionView"
+      },
+      "title": "Sections",
+      "type": "array"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "title_origin": {
+      "title": "Title Origin",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     },
+     "why_not_editable": {
+      "title": "Why Not Editable",
+      "type": "string"
+     }
+    },
+    "required": [
+     "artifact",
+     "base_dir",
+     "bibtex_path",
+     "by",
+     "citations",
+     "created_at",
+     "edit_note",
+     "editable",
+     "edited_from",
+     "figures",
+     "findings",
+     "head",
+     "markdown_path",
+     "papers",
+     "placeholders",
+     "references",
+     "sections",
+     "stage",
+     "title",
+     "title_origin",
+     "version",
+     "versions",
+     "why_not_editable"
+    ],
+    "title": "ReportView",
+    "type": "object"
+   },
    "ResourceSpec": {
     "properties": {
      "identifier": {
@@ -3220,6 +3571,199 @@
      "version"
     ],
     "title": "ResultsView",
+    "type": "object"
+   },
+   "Review": {
+    "properties": {
+     "change_requests": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Change Requests",
+      "type": "array"
+     },
+     "checks": {
+      "items": {
+       "$ref": "#/components/schemas/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+     },
+     "diff_path": {
+      "default": "",
+      "title": "Diff Path",
+      "type": "string"
+     },
+     "edited_sections": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Edited Sections",
+      "type": "array"
+     },
+     "issues": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+     },
+     "review_path": {
+      "default": "",
+      "title": "Review Path",
+      "type": "string"
+     },
+     "scores": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Scores",
+      "type": "object"
+     },
+     "summary": {
+      "title": "Summary",
+      "type": "string"
+     },
+     "verdict": {
+      "enum": [
+       "accept",
+       "needs_human"
+      ],
+      "title": "Verdict",
+      "type": "string"
+     }
+    },
+    "required": [
+     "change_requests",
+     "checks",
+     "diff_path",
+     "edited_sections",
+     "issues",
+     "review_path",
+     "scores",
+     "summary",
+     "verdict"
+    ],
+    "title": "Review",
+    "type": "object"
+   },
+   "ReviewIssue": {
+    "properties": {
+     "problem": {
+      "title": "Problem",
+      "type": "string"
+     },
+     "section": {
+      "description": "Section id, e.g. 'results' or 'discussion'",
+      "title": "Section",
+      "type": "string"
+     },
+     "severity": {
+      "default": "minor",
+      "enum": [
+       "minor",
+       "major"
+      ],
+      "title": "Severity",
+      "type": "string"
+     },
+     "suggestion": {
+      "description": "What to change, concretely",
+      "title": "Suggestion",
+      "type": "string"
+     },
+     "target": {
+      "default": "report",
+      "description": "'report' if editing the text fixes it; otherwise the artifact that must change",
+      "enum": [
+       "report",
+       "experiment_results",
+       "code_bundle",
+       "experiment_plan"
+      ],
+      "title": "Target",
+      "type": "string"
+     }
+    },
+    "required": [
+     "problem",
+     "section",
+     "severity",
+     "suggestion",
+     "target"
+    ],
+    "title": "ReviewIssue",
+    "type": "object"
+   },
+   "ReviewView": {
+    "properties": {
+     "diff": {
+      "title": "Diff",
+      "type": "string"
+     },
+     "final_edited": {
+      "title": "Final Edited",
+      "type": "boolean"
+     },
+     "final_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Final Version"
+     },
+     "min_score": {
+      "title": "Min Score",
+      "type": "number"
+     },
+     "report_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Report Stage"
+     },
+     "review": {
+      "$ref": "#/components/schemas/Review"
+     },
+     "rounds_max": {
+      "title": "Rounds Max",
+      "type": "integer"
+     },
+     "rounds_used": {
+      "title": "Rounds Used",
+      "type": "integer"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "diff",
+     "final_edited",
+     "final_version",
+     "min_score",
+     "report_stage",
+     "review",
+     "rounds_max",
+     "rounds_used",
+     "stage",
+     "version"
+    ],
+    "title": "ReviewView",
     "type": "object"
    },
    "RunCell": {
@@ -3650,6 +4194,52 @@
      "title"
     ],
     "title": "SearchHit",
+    "type": "object"
+   },
+   "SectionView": {
+    "properties": {
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "origin": {
+      "title": "Origin",
+      "type": "string"
+     },
+     "problems": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Problems",
+      "type": "array"
+     },
+     "rendered": {
+      "title": "Rendered",
+      "type": "string"
+     },
+     "template": {
+      "title": "Template",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "editable",
+     "id",
+     "origin",
+     "problems",
+     "rendered",
+     "template",
+     "title"
+    ],
+    "title": "SectionView",
     "type": "object"
    },
    "Selection": {
@@ -4217,6 +4807,34 @@
      }
     },
     "required": [
+     "base_version",
+     "value"
+    ],
+    "title": "CheckRequest",
+    "type": "object"
+   },
+   "research_tool__web__api__report__CheckRequest": {
+    "properties": {
+     "artifact": {
+      "enum": [
+       "report",
+       "final_report"
+      ],
+      "title": "Artifact",
+      "type": "string"
+     },
+     "base_version": {
+      "title": "Base Version",
+      "type": "integer"
+     },
+     "value": {
+      "additionalProperties": true,
+      "title": "Value",
+      "type": "object"
+     }
+    },
+    "required": [
+     "artifact",
      "base_version",
      "value"
     ],
@@ -6051,6 +6669,200 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/report": {
+   "get": {
+    "description": "The report (``which=report``) or the final report after the review, as sections with what they render to.",
+    "operationId": "report_api_runs__project___run_id__report_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "which",
+      "required": false,
+      "schema": {
+       "default": "report",
+       "enum": [
+        "report",
+        "final_report"
+       ],
+       "title": "Which",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReportView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Report",
+    "tags": [
+     "report"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/report/bundle": {
+   "get": {
+    "description": "The final report (or the report) with its references, figures, review and results, as a zip file.",
+    "operationId": "bundle_api_runs__project___run_id__report_bundle_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Bundle",
+    "tags": [
+     "report"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/report/check": {
+   "post": {
+    "description": "What an edited report would become (rendered, checked), without storing anything.",
+    "operationId": "check_api_runs__project___run_id__report_check_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/research_tool__web__api__report__CheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReportCheck"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Check",
+    "tags": [
+     "report"
+    ]
+   }
+  },
   "/api/runs/{project}/{run_id}/results": {
    "get": {
     "description": "The analysed results: per-condition summaries, comparisons with the baseline, figures, notes.",
@@ -6168,6 +6980,74 @@
     "summary": "Resume",
     "tags": [
      "runs"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/review": {
+   "get": {
+    "description": "The review: verdict, rubric scores, automated checks, issues, the Reviewer's edits, revision rounds.",
+    "operationId": "review_api_runs__project___run_id__review_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Review",
+    "tags": [
+     "report"
     ]
    }
   },

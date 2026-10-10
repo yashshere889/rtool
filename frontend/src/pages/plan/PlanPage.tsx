@@ -162,7 +162,11 @@ export function PlanPage({ run, stage }: { run: RunDetail; stage: StageSummary }
   const changes = useMemo(() => (draft && view ? planChanges(view.plan, draft) : []), [draft, view]);
 
   // keep the draft on the server as it is typed, so a reload or another device loses nothing
-  const toSave = useDebounced(editing && dirty && view ? { base_version: view.head, value: draft, note } : null, 1000);
+  const pending = useMemo(
+    () => (editing && dirty && view ? { base_version: view.head, value: draft, note } : null),
+    [editing, dirty, view, draft, note],
+  );
+  const toSave = useDebounced(pending, 1000);
   const { mutate: save } = saveDraft;
   useEffect(() => {
     if (toSave) save(toSave as never);
