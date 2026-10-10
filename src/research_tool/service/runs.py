@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field
 from ..core.actions import Action, ActionInbox
 from ..core.artifacts import ArtifactStore, Producer
 from ..core.config import AppConfig, deep_merge, default_config_files, load_config, parse_set_overrides
+from ..core.editing import edit_refusal, run_editor
 from ..core.engine import REVISION_LIMIT_GATE, load_status
-from ..core.errors import RToolError
+from ..core.errors import ActionError, RToolError
 from ..core.events import EventLog
 from ..core.pipeline import ResolvedPipeline, find_pipeline, resolve_pipeline
 from ..core.run import RunHandle, is_valid_name
@@ -89,6 +90,16 @@ class KickResult(BaseModel):
 
 class StopResult(BaseModel):
     cancelled: list[str] = Field(default_factory=list)
+
+
+class EditCheck(BaseModel):
+    """What an edit would store: the value as the owning agent normalised it, and what changed."""
+
+    stage: str
+    artifact: str
+    base_version: int
+    value: dict[str, Any]
+    changed: list[str]  # top-level fields the edit changes (as submitted, before recomputing)
 
 
 class Affected(BaseModel):
@@ -248,6 +259,24 @@ def run_status(run: RunHandle) -> RunStatus:
         run_state=run_state,
         queued_actions=[action for _, action in ActionInbox(run.actions_dir).pending()],
     )
+
+
+def check_edit(run: RunHandle, artifact: str, base_version: Any, value: Any) -> EditCheck:
+    """Check and normalise a hand edit without storing it (the engine repeats this when it applies the edit).
+
+    Raises ActionError (an RToolError) when the edit would be refused.
+    """
+    _, stages, pipeline = load_status(run)
+    owner, previous, result = run_editor(
+        pipeline, ArtifactStore(run.artifacts_dir), run.config, artifact, value, base_version
+    )
+    refusal = edit_refusal(owner, stages[owner])
+    if refusal:
+        raise ActionError(refusal)
+    # what the researcher changed (derived fields such as the issues list do not count)
+    changed = [key for key, old in previous.payload.items() if key in value and value[key] != old]
+    new = result.value.model_dump(mode="json")
+    return EditCheck(stage=owner, artifact=artifact, base_version=previous.version, value=new, changed=changed)
 
 
 def downstream_impact(run: RunHandle, stage: str) -> list[Affected]:

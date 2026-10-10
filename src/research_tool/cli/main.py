@@ -47,7 +47,7 @@ from ..hpc.episode import SAFETY_MARGIN_S, llm_needed, run_episode, schedule_nex
 from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
 from ..llm.server import VLLMServer
-from ..service import create_run, kick, load_app_config, queue_action, run_status, stop_run
+from ..service import check_edit, create_run, kick, load_app_config, queue_action, run_status, stop_run
 from ..service import list_runs as list_all_runs
 
 app = typer.Typer(
@@ -466,6 +466,36 @@ def note(
     with _guard():
         run = _open_run(run_ref, runs_root)
         _queue(run, Action(kind=ActionKind.NOTE, stage=stage, payload={"text": text}), now=False, simulate_jobs=False)
+
+
+@app.command()
+def edit(
+    run_ref: str = typer.Argument(...),
+    artifact: str = typer.Argument(..., help="The output to replace, e.g. experiment_plan."),
+    source: Path = typer.Option(
+        ..., "--from", help="JSON or YAML file with the whole edited value (start from `rtool show <run> <artifact>`)."
+    ),
+    note: str = typer.Option("", "--note", "-n", help="Why you changed it (kept with the new version)."),
+    now: bool = typer.Option(False, "--now"),
+    simulate_jobs: bool = typer.Option(False, "--simulate-jobs"),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Replace an output (e.g. the experiment plan) with your edited version.
+
+    The owning agent recomputes what follows from your changes and lists remaining problems;
+    later stages that used the old version run again.
+    """
+    with _guard():
+        run = _open_run(run_ref, runs_root)
+        value = yaml.safe_load(source.read_text(encoding="utf-8"))
+        base = ArtifactStore(run.artifacts_dir).head(artifact)
+        checked = check_edit(run, artifact, base, value)  # refuse a bad edit now, not in the next episode
+        if not checked.changed:
+            raise RToolError(f"{source} is the same as {artifact} v{base}; nothing to change")
+        console.print(f"changes: {', '.join(checked.changed)}")
+        payload = {"artifact": artifact, "base_version": base, "value": value, "note": note}
+        action = Action(kind=ActionKind.EDIT, stage=checked.stage, payload=payload)
+        _queue(run, action, now=now, simulate_jobs=simulate_jobs)
 
 
 @app.command()

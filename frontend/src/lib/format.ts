@@ -36,3 +36,16 @@ export function humanize(id: string): string {
   const words = id.replace(/[_-]+/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/** 1234567 -> "1.2 MB" */
+export function fileSize(bytes: number): string {
+  if (bytes < 1000) return `${bytes} B`;
+  const units = ["kB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = -1;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}

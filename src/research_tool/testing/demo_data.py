@@ -1090,8 +1090,9 @@ def run(condition, seed, resources, smoke, workdir):
     gains, amplitudes = [], []
     for _ in range(nights):
         baseline = rng.gauss(1.0, 0.6)
-        gains.append(baseline + EFFECT[condition] + rng.gauss(0.0, 0.5))
-        amplitudes.append(70.0 + AMPLITUDE[condition] + rng.gauss(0.0, 3.0))
+        # conditions added to the plan by hand get a middling effect
+        gains.append(baseline + EFFECT.get(condition, 1.2) + rng.gauss(0.0, 0.5))
+        amplitudes.append(70.0 + AMPLITUDE.get(condition, 5.0) + rng.gauss(0.0, 3.0))
     return {"recall_gain": sum(gains) / nights, "so_amplitude": sum(amplitudes) / nights}
 '''
 

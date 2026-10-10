@@ -148,6 +148,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Downloads
+         * @description The datasets and models the approved plan needs, as the download step got (or is getting) them.
+         */
+        get: operations["downloads_api_runs__project___run_id__downloads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/drafts/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Draft */
+        get: operations["get_draft_api_runs__project___run_id__drafts__key__get"];
+        /** Put Draft */
+        put: operations["put_draft_api_runs__project___run_id__drafts__key__put"];
+        post?: never;
+        /** Delete Draft */
+        delete: operations["delete_draft_api_runs__project___run_id__drafts__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/events": {
         parameters: {
             query?: never;
@@ -329,6 +368,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan
+         * @description The experiment plan (latest, or ``version``) with what the editor needs to know about the cluster.
+         */
+        get: operations["plan_api_runs__project___run_id__plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/plan/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check
+         * @description What an edited plan would become (recomputed, checked), without storing anything.
+         */
+        post: operations["check_api_runs__project___run_id__plan_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -446,7 +525,7 @@ export interface components {
          * ActionKind
          * @enum {string}
          */
-        ActionKind: "approve" | "reject" | "select" | "retry" | "note" | "reopen";
+        ActionKind: "approve" | "reject" | "select" | "retry" | "note" | "reopen" | "edit";
         /** ActionRequest */
         ActionRequest: {
             /** Gate */
@@ -460,7 +539,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "approve" | "reject" | "select" | "retry" | "note" | "reopen";
+            kind: "approve" | "reject" | "select" | "retry" | "note" | "reopen" | "edit";
             /** Payload */
             payload?: {
                 [key: string]: unknown;
@@ -536,6 +615,15 @@ export interface components {
             /** Versions */
             versions: number[];
         };
+        /** CheckRequest */
+        CheckRequest: {
+            /** Base Version */
+            base_version: number;
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
+        };
         /** CheckedEvidence */
         CheckedEvidence: {
             /** Paper Id */
@@ -570,6 +658,62 @@ export interface components {
             /** Verified */
             verified: boolean;
         };
+        /** ClusterView */
+        ClusterView: {
+            /** Budget Gpu Hours */
+            budget_gpu_hours: number | null;
+            /** Max Dataset Gb */
+            max_dataset_gb: number;
+            /** Min Seeds */
+            min_seeds: number;
+            /** Partitions */
+            partitions: components["schemas"]["PartitionView"][];
+        };
+        /** ComputeRequest */
+        ComputeRequest: {
+            /** Gpu Hours Total */
+            gpu_hours_total: number;
+            /**
+             * Gpu Memory Gb
+             * @default 0
+             */
+            gpu_memory_gb: number;
+            /** Gpu Type */
+            gpu_type: string | null;
+            /**
+             * Gpus Per Run
+             * @default 0
+             */
+            gpus_per_run: number;
+            /** Hours Per Run */
+            hours_per_run: number;
+            /**
+             * Justification
+             * @default
+             */
+            justification: string;
+            /** Partition */
+            partition: string;
+            /** Runs */
+            runs: number;
+            /** Time Limit */
+            time_limit: string;
+        };
+        /** Condition */
+        Condition: {
+            /** Description */
+            description: string;
+            /**
+             * Is Baseline
+             * @default false
+             */
+            is_baseline: boolean;
+            /**
+             * Name
+             * @description Short identifier, e.g. 'baseline' or 'with_stimulation'
+             */
+            name: string;
+        };
         /** CoverageView */
         CoverageView: {
             /** Dataset */
@@ -585,6 +729,65 @@ export interface components {
         Created: {
             kick: components["schemas"]["KickResult"];
             run: components["schemas"]["RunDetail"];
+        };
+        /** DownloadItem */
+        DownloadItem: {
+            /** Bytes */
+            bytes: number;
+            /** Files */
+            files: number;
+            /** Identifier */
+            identifier: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string;
+            /** Path */
+            path: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "ready" | "deferred" | "manual" | "failed";
+        };
+        /** DownloadsView */
+        DownloadsView: {
+            /** Items */
+            items: components["schemas"]["DownloadItem"][];
+            /** Last Error */
+            last_error: string | null;
+            /** Plan Version */
+            plan_version: number | null;
+            /** Root */
+            root: string;
+            /** Stage */
+            stage: string | null;
+            /** Started */
+            started: boolean;
+            status: components["schemas"]["StageStatus"] | null;
+        };
+        /** Draft */
+        Draft: {
+            /** Base Version */
+            base_version: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /**
+             * Saved At
+             * @default
+             */
+            saved_at: string;
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
         };
         /** EntityView */
         EntityView: {
@@ -603,6 +806,55 @@ export interface components {
             events: {
                 [key: string]: unknown;
             }[];
+        };
+        /** ExperimentPlan */
+        ExperimentPlan: {
+            /** Ablations */
+            ablations: components["schemas"]["Condition"][];
+            compute: components["schemas"]["ComputeRequest"];
+            /** Conditions */
+            conditions: components["schemas"]["Condition"][];
+            /** Controls */
+            controls: string[];
+            /** Dependent Variables */
+            dependent_variables: components["schemas"]["Variable"][];
+            /** Design */
+            design: string;
+            /** Expected Results */
+            expected_results: string;
+            /** Hypothesis */
+            hypothesis: string;
+            /** Hypothesis Id */
+            hypothesis_id: string;
+            /** Independent Variables */
+            independent_variables: components["schemas"]["Variable"][];
+            /** Issues */
+            issues: string[];
+            /**
+             * Markdown Path
+             * @default
+             */
+            markdown_path: string;
+            /** Metrics */
+            metrics: components["schemas"]["Metric"][];
+            /** Null Hypothesis */
+            null_hypothesis: string;
+            /** Objective */
+            objective: string;
+            /** Procedure */
+            procedure: string[];
+            /** Resources */
+            resources: components["schemas"]["ResourceSpec"][];
+            /** Results Schema */
+            results_schema: {
+                [key: string]: unknown;
+            };
+            /** Risks */
+            risks: string[];
+            /** Seeds */
+            seeds: number[];
+            /** Statistical Tests */
+            statistical_tests: components["schemas"]["StatisticalTest"][];
         };
         /** FieldChange */
         FieldChange: {
@@ -798,6 +1050,21 @@ export interface components {
             topic: string;
             /** Topics */
             topics: components["schemas"]["TopicView"][];
+        };
+        /** Metric */
+        Metric: {
+            /** Definition */
+            definition: string;
+            /**
+             * Higher Is Better
+             * @default true
+             */
+            higher_is_better: boolean;
+            /**
+             * Name
+             * @description Short identifier, e.g. 'accuracy' or 'recall_gain'
+             */
+            name: string;
         };
         /** NewRun */
         NewRun: {
@@ -1018,6 +1285,62 @@ export interface components {
             /** Roles */
             roles: ("evidence" | "closest" | "related")[];
         };
+        /** PartitionView */
+        PartitionView: {
+            /** Allowed */
+            allowed: boolean;
+            /** Gpu Memory Gb */
+            gpu_memory_gb: number | null;
+            /** Gpu Type */
+            gpu_type: string | null;
+            /** Gpus Per Node */
+            gpus_per_node: number;
+            /** Max Time */
+            max_time: string;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string;
+            /** Preemptible */
+            preemptible: boolean;
+        };
+        /** PlanCheck */
+        PlanCheck: {
+            /** Changed */
+            changed: string[];
+            /** Error */
+            error: string;
+            /** Ok */
+            ok: boolean;
+            plan: components["schemas"]["ExperimentPlan"] | null;
+        };
+        /** PlanView */
+        PlanView: {
+            /** By */
+            by: string | null;
+            cluster: components["schemas"]["ClusterView"];
+            /** Created At */
+            created_at: string;
+            /** Edit Note */
+            edit_note: string;
+            /** Editable */
+            editable: boolean;
+            /** Edited From */
+            edited_from: number | null;
+            /** Head */
+            head: number;
+            /** Hypothesis Title */
+            hypothesis_title: string;
+            plan: components["schemas"]["ExperimentPlan"];
+            /** Stage */
+            stage: string;
+            /** Version */
+            version: number;
+            /** Versions */
+            versions: number[];
+            /** Why Not Editable */
+            why_not_editable: string;
+        };
         /** Producer */
         Producer: {
             /** Agent */
@@ -1044,6 +1367,52 @@ export interface components {
         Queued: {
             action: components["schemas"]["Action"];
             kick: components["schemas"]["KickResult"];
+        };
+        /** ResourceSpec */
+        ResourceSpec: {
+            /**
+             * Identifier
+             * @description Hugging Face repo id, URL, torchvision name or pip package
+             */
+            identifier: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "dataset" | "model" | "code" | "other";
+            /**
+             * License
+             * @default
+             */
+            license: string;
+            /** Name */
+            name: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Purpose */
+            purpose: string;
+            /** Size Gb */
+            size_gb: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "huggingface" | "url" | "torchvision" | "pip" | "manual";
+            /** Split */
+            split: string | null;
+            /**
+             * Subset
+             * @description Hugging Face config name, if any
+             */
+            subset: string | null;
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
         };
         /**
          * RunDetail
@@ -1264,6 +1633,30 @@ export interface components {
             /** Waiting On */
             waiting_on: string[];
         };
+        /** StatisticalTest */
+        StatisticalTest: {
+            /**
+             * Alpha
+             * @default 0.05
+             */
+            alpha: number;
+            /**
+             * Comparison
+             * @description Which conditions or groups are compared, on which metric
+             */
+            comparison: string;
+            /**
+             * Correction
+             * @description Multiple-comparison correction, if several tests
+             * @default none
+             */
+            correction: string;
+            /**
+             * Test
+             * @description e.g. 'paired t-test', 'Wilcoxon signed-rank', 'bootstrap 95% CI'
+             */
+            test: string;
+        };
         /** StopRequest */
         StopRequest: {
             /**
@@ -1309,6 +1702,18 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** Variable */
+        Variable: {
+            /** Description */
+            description: string;
+            /** Name */
+            name: string;
+            /**
+             * Values
+             * @description Levels or settings, for independent variables
+             */
+            values: string[];
         };
         /**
          * WorkerState
@@ -1633,6 +2038,139 @@ export interface operations {
             };
         };
     };
+    downloads_api_runs__project___run_id__downloads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_api_runs__project___run_id__drafts__key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_draft_api_runs__project___run_id__drafts__key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Draft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_runs__project___run_id__drafts__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     events_api_runs__project___run_id__events_get: {
         parameters: {
             query?: {
@@ -1931,6 +2469,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchHit"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_api_runs__project___run_id__plan_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_api_runs__project___run_id__plan_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanCheck"];
                 };
             };
             /** @description Validation Error */

@@ -15,8 +15,9 @@ from ...core.errors import RToolError
 from ...core.pipeline import get_by_path
 from ...core.run import RunHandle
 from ...core.state import StageStatus
-from ...service import Affected, KickResult, OpenGate, RunStatus, downstream_impact, run_status
+from ...service import Affected, KickResult, OpenGate, RunStatus, check_edit, downstream_impact, run_status
 from ..deps import get_run, runner_of
+from .drafts import Draft, read_draft, remove_draft, write_draft
 
 router = APIRouter(tags=["actions"])
 
@@ -25,7 +26,7 @@ GATE_DECISIONS = {"approve", "reject", "select"}
 
 class ActionRequest(BaseModel):
     id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$", description="Client-chosen id (idempotency)")
-    kind: Literal["approve", "reject", "select", "retry", "note", "reopen"]
+    kind: Literal["approve", "reject", "select", "retry", "note", "reopen", "edit"]
     stage: str | None = None
     gate: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -49,7 +50,7 @@ def _user() -> str:
         return "web"
 
 
-def check_edit(run: RunHandle, gate: OpenGate, index: int, edit: Any) -> None:
+def check_choice_edit(run: RunHandle, gate: OpenGate, index: int, edit: Any) -> None:
     """An edited choice must still be a valid option (the engine checks again when it applies it)."""
     spec = run.spec.pipeline.gates.get(gate.gate)
     if spec is None or not spec.options_artifact or not spec.options_path:
@@ -74,13 +75,15 @@ def check(status: RunStatus, body: ActionRequest, run: RunHandle) -> dict[str, A
             raise HTTPException(422, f"checkpoint {gate.gate} takes {' or '.join(gate.actions)}, not {body.kind}")
         if any(a.stage == body.stage and a.gate == body.gate for a in queued):
             raise HTTPException(409, "a decision for this checkpoint is already queued; undo it first to change it")
+        if any(a.kind is ActionKind.EDIT and a.stage == body.stage for a in status.queued_actions):
+            raise HTTPException(409, "your edits to this stage are still on their way; decide once they are applied")
         if body.kind == "select":
             index = payload.get("index")
             options = gate.summary.get("options") or []
             if not isinstance(index, int) or not 0 <= index < len(options):
                 raise HTTPException(422, f"choose an option between 0 and {len(options) - 1}")
             if payload.get("edit"):
-                check_edit(run, gate, index, payload["edit"])
+                check_choice_edit(run, gate, index, payload["edit"])
         if body.kind == "reject" and not str(payload.get("feedback") or "").strip():
             raise HTTPException(422, "say what should change: the stage re-runs with your feedback")
         # bind the decision to the gate as the user saw it (the server's view, if the page did not send its own)
@@ -97,6 +100,17 @@ def check(status: RunStatus, body: ActionRequest, run: RunHandle) -> dict[str, A
             raise HTTPException(409, "only a finished stage can be reopened")
         if any(a.kind is ActionKind.REOPEN and a.stage == body.stage for a in status.queued_actions):
             raise HTTPException(409, "reopening this checkpoint is already on its way")
+    elif body.kind == "edit":
+        artifact = str(payload.get("artifact") or "")
+        if any(a.kind is ActionKind.EDIT and a.payload.get("artifact") == artifact for a in status.queued_actions):
+            raise HTTPException(409, "an edit of this output is already on its way; undo it first to change it")
+        try:
+            checked = check_edit(run, artifact, payload.get("base_version"), payload.get("value"))
+        except RToolError as exc:
+            raise HTTPException(422, str(exc)) from None
+        if not checked.changed:
+            raise HTTPException(422, "nothing was changed")
+        body.stage = checked.stage
     elif body.kind == "note":
         if body.stage not in {s.id for s in status.stages}:
             raise HTTPException(422, "a note needs the stage it is for")
@@ -115,6 +129,8 @@ def submit(project: str, run_id: str, body: ActionRequest, request: Request) -> 
     if state != "unknown":
         raise HTTPException(409, "this decision was already sent")
     ActionInbox(run.actions_dir).submit(action)
+    if action.kind is ActionKind.EDIT:
+        remove_draft(run, str(payload["artifact"]))  # the queued action holds the edit now
     return Queued(action=action, kick=runner_of(request).wake(run, f"action:{body.kind}"))
 
 
@@ -134,8 +150,15 @@ def action_state(project: str, run_id: str, action_id: str, request: Request) ->
 @router.delete("/runs/{project}/{run_id}/actions/{action_id}", status_code=204)
 def undo(project: str, run_id: str, action_id: str, request: Request) -> Response:
     run = get_run(request, project, run_id)
-    if not ActionInbox(run.actions_dir).withdraw(action_id):
+    inbox = ActionInbox(run.actions_dir)
+    _, record = inbox.lookup(action_id)
+    if not inbox.withdraw(action_id):
         raise HTTPException(409, "too late to undo: the decision is no longer queued")
+    edit = (record or {}).get("payload") or {}
+    if (record or {}).get("kind") == "edit" and read_draft(run, str(edit.get("artifact"))) is None:
+        # back to editing: the withdrawn edit becomes the draft again
+        draft = Draft(base_version=edit["base_version"], value=edit["value"], note=str(edit.get("note") or ""))
+        write_draft(run, str(edit["artifact"]), draft)
     return Response(status_code=204)
 
 

@@ -1,14 +1,18 @@
 /** Server state: TanStack Query hooks, the live event stream, and following a decision until it is applied. */
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
-import { api } from "./client";
+import { api, ApiError } from "./client";
 import type {
   ActionRequest,
   ActionState,
   Affected,
+  DownloadsView,
+  Draft,
   HypothesesView,
+  PlanCheck,
+  PlanView,
   ArtifactEnvelope,
   ArtifactInfo,
   Created,
@@ -43,6 +47,9 @@ export const keys = {
     ["artifact", p, r, "paper-text", id, quote ?? ""] as const,
   hypotheses: (p: string, r: string, version?: number) => ["artifact", p, r, "hypotheses", version ?? "head"] as const,
   impact: (p: string, r: string, stage: string) => ["run", p, r, "impact", stage] as const,
+  plan: (p: string, r: string, version?: number) => ["artifact", p, r, "plan", version ?? "head"] as const,
+  downloads: (p: string, r: string) => ["artifact", p, r, "downloads"] as const,
+  draft: (p: string, r: string, key: string) => ["draft", p, r, key] as const,
 };
 
 export function useSettings() {
@@ -161,6 +168,7 @@ export function useUndo(project: string, runId: string) {
     mutationFn: (actionId: string) => api<void>(`${base(project, runId)}/actions/${actionId}`, { method: "DELETE" }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.run(project, runId) });
+      void queryClient.invalidateQueries({ queryKey: ["draft", project, runId] }); // an undone edit is a draft again
       toast("Decision withdrawn");
     },
     onError: (error) => toast.error((error as Error).message),
@@ -248,5 +256,69 @@ export function useImpact(project: string, runId: string, stage: string, enabled
     queryKey: keys.impact(project, runId, stage),
     queryFn: () => api<Affected[]>(`${base(project, runId)}/stages/${enc(stage)}/impact`),
     enabled,
+  });
+}
+
+// ------------------------------------------------------------- experiment plan
+export function usePlan(project: string, runId: string, version?: number) {
+  return useQuery({
+    queryKey: keys.plan(project, runId, version),
+    queryFn: () => api<PlanView>(`${base(project, runId)}/plan${version ? `?version=${version}` : ""}`),
+  });
+}
+
+/** What an edited plan would become (recomputed and checked by the planner's rules); nothing is stored. */
+export function usePlanCheck(project: string, runId: string, baseVersion: number, value: unknown, enabled: boolean) {
+  return useQuery({
+    queryKey: ["plan-check", project, runId, baseVersion, JSON.stringify(value)],
+    queryFn: () =>
+      api<PlanCheck>(`${base(project, runId)}/plan/check`, {
+        method: "POST",
+        body: { base_version: baseVersion, value },
+      }),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+}
+
+export function useDownloads(project: string, runId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.downloads(project, runId),
+    queryFn: () => api<DownloadsView>(`${base(project, runId)}/downloads`),
+    enabled,
+  });
+}
+
+/** The saved draft of an edit (null if there is none). */
+export function useDraft(project: string, runId: string, key: string) {
+  return useQuery({
+    queryKey: keys.draft(project, runId, key),
+    queryFn: async () => {
+      try {
+        return await api<Draft>(`${base(project, runId)}/drafts/${enc(key)}`);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    staleTime: Infinity,
+  });
+}
+
+export function useSaveDraft(project: string, runId: string, key: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (draft: Omit<Draft, "saved_at">) =>
+      api<Draft>(`${base(project, runId)}/drafts/${enc(key)}`, { method: "PUT", body: { ...draft, saved_at: "" } }),
+    onSuccess: (saved) => queryClient.setQueryData(keys.draft(project, runId, key), saved),
+  });
+}
+
+export function useDiscardDraft(project: string, runId: string, key: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<void>(`${base(project, runId)}/drafts/${enc(key)}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.setQueryData(keys.draft(project, runId, key), null),
   });
 }

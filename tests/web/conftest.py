@@ -15,7 +15,7 @@ from research_tool.testing.demo_run import build_demo_run  # noqa: E402
 @pytest.fixture(scope="session")
 def demo_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
     root = tmp_path_factory.mktemp("demo-runs")
-    for stop_at in ("literature_review", "hypothesis_selection", "experiment_plan"):
+    for stop_at in ("literature_review", "hypothesis_selection", "experiment_plan", "gpu_runs"):
         build_demo_run(root, stop_at)
     return root
 

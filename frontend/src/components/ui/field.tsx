@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useEffect, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 import { cn } from "@/lib/cn";
 
@@ -41,5 +41,32 @@ export function Field({
       {children}
       {hint && <p className="text-xs text-ink-soft">{hint}</p>}
     </div>
+  );
+}
+
+/** A number box that keeps what is typed (e.g. empty while retyping) and reports only valid numbers. */
+export function NumberInput({
+  value,
+  onValue,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type"> & {
+  value: number | null;
+  onValue: (value: number) => void;
+}) {
+  const [text, setText] = useState(value === null ? "" : String(value));
+  useEffect(() => {
+    if (Number(text) !== value) setText(value === null ? "" : String(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only follow changes made elsewhere
+  }, [value]);
+  return (
+    <Input
+      {...props}
+      type="number"
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        if (e.target.value.trim() !== "" && Number.isFinite(Number(e.target.value))) onValue(Number(e.target.value));
+      }}
+    />
   );
 }

@@ -52,3 +52,13 @@ export type Hypothesis = Schemas["Hypothesis"];
 export type PaperUse = Schemas["PaperUse"];
 export type Selection = Schemas["Selection"];
 export type Affected = Schemas["Affected"];
+
+export type PlanView = Schemas["PlanView"];
+export type ExperimentPlan = Schemas["ExperimentPlan"];
+export type PlanCheck = Schemas["PlanCheck"];
+export type ClusterView = Schemas["ClusterView"];
+export type PartitionView = Schemas["PartitionView"];
+export type DownloadsView = Schemas["DownloadsView"];
+export type DownloadItem = Schemas["DownloadItem"];
+export type Draft = Schemas["Draft"];
+export type ResourceSpec = Schemas["ResourceSpec"];

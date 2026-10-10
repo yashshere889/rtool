@@ -14,6 +14,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { HypothesesPage } from "@/pages/hypotheses/HypothesesPage";
 import { LiteraturePage } from "@/pages/literature/LiteraturePage";
+import { PlanPage } from "@/pages/plan/PlanPage";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { dateTime, humanize, timeAgo } from "@/lib/format";
 import { STAGES, stageTitle } from "@/lib/stages";
@@ -79,6 +80,7 @@ export function StagePage() {
   if (!stage) return <Empty title="No such stage">This run has no stage called “{stageId}”.</Empty>;
   if (stage.agent === "literature") return <LiteraturePage run={run} stage={stage} />;
   if (stage.agent === "hypothesis") return <HypothesesPage run={run} stage={stage} />;
+  if (stage.agent === "planner") return <PlanPage run={run} stage={stage} />;
   const outputs = Object.entries(stage.output_versions);
   return (
     <div className="space-y-6">

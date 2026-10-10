@@ -65,7 +65,8 @@
      "select",
      "retry",
      "note",
-     "reopen"
+     "reopen",
+     "edit"
     ],
     "title": "ActionKind",
     "type": "string"
@@ -103,7 +104,8 @@
        "select",
        "retry",
        "note",
-       "reopen"
+       "reopen",
+       "edit"
       ],
       "title": "Kind",
       "type": "string"
@@ -298,6 +300,25 @@
     "title": "ArtifactInfo",
     "type": "object"
    },
+   "CheckRequest": {
+    "properties": {
+     "base_version": {
+      "title": "Base Version",
+      "type": "integer"
+     },
+     "value": {
+      "additionalProperties": true,
+      "title": "Value",
+      "type": "object"
+     }
+    },
+    "required": [
+     "base_version",
+     "value"
+    ],
+    "title": "CheckRequest",
+    "type": "object"
+   },
    "CheckedEvidence": {
     "properties": {
      "paper_id": {
@@ -384,6 +405,132 @@
     "title": "ClaimView",
     "type": "object"
    },
+   "ClusterView": {
+    "properties": {
+     "budget_gpu_hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Budget Gpu Hours"
+     },
+     "max_dataset_gb": {
+      "title": "Max Dataset Gb",
+      "type": "number"
+     },
+     "min_seeds": {
+      "title": "Min Seeds",
+      "type": "integer"
+     },
+     "partitions": {
+      "items": {
+       "$ref": "#/components/schemas/PartitionView"
+      },
+      "title": "Partitions",
+      "type": "array"
+     }
+    },
+    "required": [
+     "budget_gpu_hours",
+     "max_dataset_gb",
+     "min_seeds",
+     "partitions"
+    ],
+    "title": "ClusterView",
+    "type": "object"
+   },
+   "ComputeRequest": {
+    "properties": {
+     "gpu_hours_total": {
+      "title": "Gpu Hours Total",
+      "type": "number"
+     },
+     "gpu_memory_gb": {
+      "default": 0,
+      "title": "Gpu Memory Gb",
+      "type": "number"
+     },
+     "gpu_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gpu Type"
+     },
+     "gpus_per_run": {
+      "default": 0,
+      "title": "Gpus Per Run",
+      "type": "integer"
+     },
+     "hours_per_run": {
+      "title": "Hours Per Run",
+      "type": "number"
+     },
+     "justification": {
+      "default": "",
+      "title": "Justification",
+      "type": "string"
+     },
+     "partition": {
+      "title": "Partition",
+      "type": "string"
+     },
+     "runs": {
+      "title": "Runs",
+      "type": "integer"
+     },
+     "time_limit": {
+      "title": "Time Limit",
+      "type": "string"
+     }
+    },
+    "required": [
+     "gpu_hours_total",
+     "gpu_memory_gb",
+     "gpu_type",
+     "gpus_per_run",
+     "hours_per_run",
+     "justification",
+     "partition",
+     "runs",
+     "time_limit"
+    ],
+    "title": "ComputeRequest",
+    "type": "object"
+   },
+   "Condition": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "is_baseline": {
+      "default": false,
+      "title": "Is Baseline",
+      "type": "boolean"
+     },
+     "name": {
+      "description": "Short identifier, e.g. 'baseline' or 'with_stimulation'",
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "description",
+     "is_baseline",
+     "name"
+    ],
+    "title": "Condition",
+    "type": "object"
+   },
    "CoverageView": {
     "properties": {
      "dataset": {
@@ -434,6 +581,175 @@
     "title": "Created",
     "type": "object"
    },
+   "DownloadItem": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "files": {
+      "title": "Files",
+      "type": "integer"
+     },
+     "identifier": {
+      "title": "Identifier",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "note": {
+      "title": "Note",
+      "type": "string"
+     },
+     "path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Path"
+     },
+     "source": {
+      "title": "Source",
+      "type": "string"
+     },
+     "status": {
+      "enum": [
+       "waiting",
+       "ready",
+       "deferred",
+       "manual",
+       "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bytes",
+     "files",
+     "identifier",
+     "kind",
+     "name",
+     "note",
+     "path",
+     "source",
+     "status"
+    ],
+    "title": "DownloadItem",
+    "type": "object"
+   },
+   "DownloadsView": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/DownloadItem"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "last_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Error"
+     },
+     "plan_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Plan Version"
+     },
+     "root": {
+      "title": "Root",
+      "type": "string"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "started": {
+      "title": "Started",
+      "type": "boolean"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/StageStatus"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "items",
+     "last_error",
+     "plan_version",
+     "root",
+     "stage",
+     "started",
+     "status"
+    ],
+    "title": "DownloadsView",
+    "type": "object"
+   },
+   "Draft": {
+    "properties": {
+     "base_version": {
+      "title": "Base Version",
+      "type": "integer"
+     },
+     "note": {
+      "default": "",
+      "title": "Note",
+      "type": "string"
+     },
+     "saved_at": {
+      "default": "",
+      "title": "Saved At",
+      "type": "string"
+     },
+     "value": {
+      "additionalProperties": true,
+      "title": "Value",
+      "type": "object"
+     }
+    },
+    "required": [
+     "base_version",
+     "value"
+    ],
+    "title": "Draft",
+    "type": "object"
+   },
    "EntityView": {
     "properties": {
      "kind": {
@@ -480,6 +796,156 @@
      "events"
     ],
     "title": "EventPage",
+    "type": "object"
+   },
+   "ExperimentPlan": {
+    "properties": {
+     "ablations": {
+      "items": {
+       "$ref": "#/components/schemas/Condition"
+      },
+      "title": "Ablations",
+      "type": "array"
+     },
+     "compute": {
+      "$ref": "#/components/schemas/ComputeRequest"
+     },
+     "conditions": {
+      "items": {
+       "$ref": "#/components/schemas/Condition"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "controls": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Controls",
+      "type": "array"
+     },
+     "dependent_variables": {
+      "items": {
+       "$ref": "#/components/schemas/Variable"
+      },
+      "title": "Dependent Variables",
+      "type": "array"
+     },
+     "design": {
+      "title": "Design",
+      "type": "string"
+     },
+     "expected_results": {
+      "title": "Expected Results",
+      "type": "string"
+     },
+     "hypothesis": {
+      "title": "Hypothesis",
+      "type": "string"
+     },
+     "hypothesis_id": {
+      "title": "Hypothesis Id",
+      "type": "string"
+     },
+     "independent_variables": {
+      "items": {
+       "$ref": "#/components/schemas/Variable"
+      },
+      "title": "Independent Variables",
+      "type": "array"
+     },
+     "issues": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Issues",
+      "type": "array"
+     },
+     "markdown_path": {
+      "default": "",
+      "title": "Markdown Path",
+      "type": "string"
+     },
+     "metrics": {
+      "items": {
+       "$ref": "#/components/schemas/Metric"
+      },
+      "title": "Metrics",
+      "type": "array"
+     },
+     "null_hypothesis": {
+      "title": "Null Hypothesis",
+      "type": "string"
+     },
+     "objective": {
+      "title": "Objective",
+      "type": "string"
+     },
+     "procedure": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Procedure",
+      "type": "array"
+     },
+     "resources": {
+      "items": {
+       "$ref": "#/components/schemas/ResourceSpec"
+      },
+      "title": "Resources",
+      "type": "array"
+     },
+     "results_schema": {
+      "additionalProperties": true,
+      "title": "Results Schema",
+      "type": "object"
+     },
+     "risks": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+     },
+     "seeds": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Seeds",
+      "type": "array"
+     },
+     "statistical_tests": {
+      "items": {
+       "$ref": "#/components/schemas/StatisticalTest"
+      },
+      "title": "Statistical Tests",
+      "type": "array"
+     }
+    },
+    "required": [
+     "ablations",
+     "compute",
+     "conditions",
+     "controls",
+     "dependent_variables",
+     "design",
+     "expected_results",
+     "hypothesis",
+     "hypothesis_id",
+     "independent_variables",
+     "issues",
+     "markdown_path",
+     "metrics",
+     "null_hypothesis",
+     "objective",
+     "procedure",
+     "resources",
+     "results_schema",
+     "risks",
+     "seeds",
+     "statistical_tests"
+    ],
+    "title": "ExperimentPlan",
     "type": "object"
    },
    "FieldChange": {
@@ -1049,6 +1515,31 @@
      "topics"
     ],
     "title": "LiteratureView",
+    "type": "object"
+   },
+   "Metric": {
+    "properties": {
+     "definition": {
+      "title": "Definition",
+      "type": "string"
+     },
+     "higher_is_better": {
+      "default": true,
+      "title": "Higher Is Better",
+      "type": "boolean"
+     },
+     "name": {
+      "description": "Short identifier, e.g. 'accuracy' or 'recall_gain'",
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "definition",
+     "higher_is_better",
+     "name"
+    ],
+    "title": "Metric",
     "type": "object"
    },
    "NewRun": {
@@ -1696,6 +2187,193 @@
     "title": "PaperUse",
     "type": "object"
    },
+   "PartitionView": {
+    "properties": {
+     "allowed": {
+      "title": "Allowed",
+      "type": "boolean"
+     },
+     "gpu_memory_gb": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gpu Memory Gb"
+     },
+     "gpu_type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gpu Type"
+     },
+     "gpus_per_node": {
+      "title": "Gpus Per Node",
+      "type": "integer"
+     },
+     "max_time": {
+      "title": "Max Time",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "note": {
+      "title": "Note",
+      "type": "string"
+     },
+     "preemptible": {
+      "title": "Preemptible",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "allowed",
+     "gpu_memory_gb",
+     "gpu_type",
+     "gpus_per_node",
+     "max_time",
+     "name",
+     "note",
+     "preemptible"
+    ],
+    "title": "PartitionView",
+    "type": "object"
+   },
+   "PlanCheck": {
+    "properties": {
+     "changed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Changed",
+      "type": "array"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "plan": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ExperimentPlan"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "changed",
+     "error",
+     "ok",
+     "plan"
+    ],
+    "title": "PlanCheck",
+    "type": "object"
+   },
+   "PlanView": {
+    "properties": {
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "cluster": {
+      "$ref": "#/components/schemas/ClusterView"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "edit_note": {
+      "title": "Edit Note",
+      "type": "string"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "edited_from": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edited From"
+     },
+     "head": {
+      "title": "Head",
+      "type": "integer"
+     },
+     "hypothesis_title": {
+      "title": "Hypothesis Title",
+      "type": "string"
+     },
+     "plan": {
+      "$ref": "#/components/schemas/ExperimentPlan"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     },
+     "why_not_editable": {
+      "title": "Why Not Editable",
+      "type": "string"
+     }
+    },
+    "required": [
+     "by",
+     "cluster",
+     "created_at",
+     "edit_note",
+     "editable",
+     "edited_from",
+     "head",
+     "hypothesis_title",
+     "plan",
+     "stage",
+     "version",
+     "versions",
+     "why_not_editable"
+    ],
+    "title": "PlanView",
+    "type": "object"
+   },
    "Producer": {
     "properties": {
      "agent": {
@@ -1746,6 +2424,108 @@
      "kick"
     ],
     "title": "Queued",
+    "type": "object"
+   },
+   "ResourceSpec": {
+    "properties": {
+     "identifier": {
+      "description": "Hugging Face repo id, URL, torchvision name or pip package",
+      "title": "Identifier",
+      "type": "string"
+     },
+     "kind": {
+      "enum": [
+       "dataset",
+       "model",
+       "code",
+       "other"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "license": {
+      "default": "",
+      "title": "License",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "note": {
+      "default": "",
+      "title": "Note",
+      "type": "string"
+     },
+     "purpose": {
+      "title": "Purpose",
+      "type": "string"
+     },
+     "size_gb": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Size Gb"
+     },
+     "source": {
+      "enum": [
+       "huggingface",
+       "url",
+       "torchvision",
+       "pip",
+       "manual"
+      ],
+      "title": "Source",
+      "type": "string"
+     },
+     "split": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Split"
+     },
+     "subset": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Hugging Face config name, if any",
+      "title": "Subset"
+     },
+     "verified": {
+      "default": false,
+      "title": "Verified",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "identifier",
+     "kind",
+     "license",
+     "name",
+     "note",
+     "purpose",
+     "size_gb",
+     "source",
+     "split",
+     "subset",
+     "verified"
+    ],
+    "title": "ResourceSpec",
     "type": "object"
    },
    "RunDetail": {
@@ -2319,6 +3099,39 @@
     "title": "StageSummary",
     "type": "object"
    },
+   "StatisticalTest": {
+    "properties": {
+     "alpha": {
+      "default": 0.05,
+      "title": "Alpha",
+      "type": "number"
+     },
+     "comparison": {
+      "description": "Which conditions or groups are compared, on which metric",
+      "title": "Comparison",
+      "type": "string"
+     },
+     "correction": {
+      "default": "none",
+      "description": "Multiple-comparison correction, if several tests",
+      "title": "Correction",
+      "type": "string"
+     },
+     "test": {
+      "description": "e.g. 'paired t-test', 'Wilcoxon signed-rank', 'bootstrap 95% CI'",
+      "title": "Test",
+      "type": "string"
+     }
+    },
+    "required": [
+     "alpha",
+     "comparison",
+     "correction",
+     "test"
+    ],
+    "title": "StatisticalTest",
+    "type": "object"
+   },
    "StopRequest": {
     "properties": {
      "experiments": {
@@ -2444,6 +3257,33 @@
      "type"
     ],
     "title": "ValidationError",
+    "type": "object"
+   },
+   "Variable": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "values": {
+      "description": "Levels or settings, for independent variables",
+      "items": {
+       "type": "string"
+      },
+      "title": "Values",
+      "type": "array"
+     }
+    },
+    "required": [
+     "description",
+     "name",
+     "values"
+    ],
+    "title": "Variable",
     "type": "object"
    },
    "WorkerState": {
@@ -2960,6 +3800,237 @@
     "summary": "Artifact",
     "tags": [
      "artifacts"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/downloads": {
+   "get": {
+    "description": "The datasets and models the approved plan needs, as the download step got (or is getting) them.",
+    "operationId": "downloads_api_runs__project___run_id__downloads_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DownloadsView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Downloads",
+    "tags": [
+     "plan"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/drafts/{key}": {
+   "delete": {
+    "operationId": "delete_draft_api_runs__project___run_id__drafts__key__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete Draft",
+    "tags": [
+     "drafts"
+    ]
+   },
+   "get": {
+    "operationId": "get_draft_api_runs__project___run_id__drafts__key__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Draft"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Draft",
+    "tags": [
+     "drafts"
+    ]
+   },
+   "put": {
+    "operationId": "put_draft_api_runs__project___run_id__drafts__key__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Draft"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Draft"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Draft",
+    "tags": [
+     "drafts"
     ]
    }
   },
@@ -3618,6 +4689,136 @@
     "summary": "Search",
     "tags": [
      "literature"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/plan": {
+   "get": {
+    "description": "The experiment plan (latest, or ``version``) with what the editor needs to know about the cluster.",
+    "operationId": "plan_api_runs__project___run_id__plan_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlanView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Plan",
+    "tags": [
+     "plan"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/plan/check": {
+   "post": {
+    "description": "What an edited plan would become (recomputed, checked), without storing anything.",
+    "operationId": "check_api_runs__project___run_id__plan_check_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlanCheck"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Check",
+    "tags": [
+     "plan"
     ]
    }
   },

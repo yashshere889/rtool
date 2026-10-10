@@ -28,6 +28,7 @@ class ActionKind(StrEnum):
     RETRY = "retry"  # re-run a failed stage (fresh, or resume from checkpoint)
     NOTE = "note"  # attach guidance to a stage's next attempt
     REOPEN = "reopen"  # open a finished stage's checkpoint again (choose differently, or reject to re-run it)
+    EDIT = "edit"  # replace an output with a hand-edited version (payload: artifact, base_version, value)
 
 
 def _user() -> str:

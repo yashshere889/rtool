@@ -151,7 +151,7 @@ class PlannerAgent(Agent):
             results_schema=results_schema(conditions, core.metrics, seeds),
             issues=core_issues + res_issues + cmp_issues,
         )
-        markdown = ctx.workspace.write_text("experiment_plan.md", render_markdown(plan_artifact, hypothesis))
+        markdown = ctx.workspace.write_text("experiment_plan.md", render_markdown(plan_artifact, hypothesis.title))
         plan_artifact.markdown_path = ctx.relative(markdown)
         ctx.outputs.put(
             "experiment_plan", plan_artifact, meta={"review": plan_artifact.markdown_path, "prompts": provenance}
@@ -201,10 +201,10 @@ class PlannerAgent(Agent):
         return spec
 
 
-def render_markdown(plan: ExperimentPlan, h: Hypothesis) -> str:
+def render_markdown(plan: ExperimentPlan, title: str) -> str:
     c = plan.compute
     lines = [
-        f"# Experiment plan: {h.title}",
+        f"# Experiment plan: {title}",
         "",
         "Approve with `rtool approve <run>`, or reject with feedback.",
         "",

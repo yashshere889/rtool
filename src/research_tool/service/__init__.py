@@ -7,12 +7,14 @@ action files and submits (or cancels) Slurm jobs.
 
 from .runs import (
     Affected,
+    EditCheck,
     KickResult,
     OpenGate,
     RunStatus,
     RunSummary,
     StageSummary,
     StopResult,
+    check_edit,
     create_run,
     downstream_impact,
     kick,
@@ -26,12 +28,14 @@ from .runs import (
 
 __all__ = [
     "Affected",
+    "EditCheck",
     "KickResult",
     "OpenGate",
     "RunStatus",
     "RunSummary",
     "StageSummary",
     "StopResult",
+    "check_edit",
     "create_run",
     "downstream_impact",
     "kick",

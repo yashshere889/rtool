@@ -37,6 +37,7 @@ from .artifacts import ArtifactStore, Producer, StagedOutputs, artifact_model
 from .budgets import BudgetTracker, Usage
 from .config import GateMode
 from .context import RESUME_WITHOUT_LLM, AgentContext, InputView
+from .editing import describe, edit_refusal, run_editor
 from .errors import (
     ActionError,
     ArtifactError,
@@ -135,8 +136,7 @@ def edit_option(gate: GateSpec, option: Any, edit: Any) -> dict[str, Any]:
     try:
         return model.model_validate(item | edit).model_dump(mode="json")
     except ValidationError as exc:
-        problems = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:3])
-        raise ActionError(f"the edited choice is not valid: {problems}") from None
+        raise ActionError(f"the edited choice is not valid: {describe(exc, 3)}") from None
 
 
 class Engine:
@@ -869,6 +869,9 @@ class Engine:
         if kind is ActionKind.REOPEN:
             return self._reopen(action.stage)
 
+        if kind is ActionKind.EDIT:
+            return self._edit(action)
+
         if kind is ActionKind.NOTE:
             sid = action.stage
             if sid is None or sid not in self.stages:
@@ -909,6 +912,55 @@ class Engine:
             "gate_opened", stage=sid, gate=rs.spec.gate, in_stage=False, prompt=rs.gate.prompt, reopened=True
         )
         return {"stage_id": sid, "gate": rs.spec.gate}
+
+    def _edit(self, action: Action) -> dict[str, Any]:
+        """Store a hand-edited output as a new version (normalised by the owning agent's editor).
+
+        The owning stage keeps its state (an open gate stays open, now showing the edited version); later
+        stages that used the old version become stale.
+        """
+        payload = action.payload
+        name = str(payload.get("artifact") or "")
+        owner, previous, result = run_editor(
+            self.pipeline, self.store, self.config, name, payload.get("value"), payload.get("base_version")
+        )
+        st = self.stages[owner]
+        refusal = edit_refusal(owner, st)
+        if refusal:
+            raise ActionError(refusal)
+        note = str(payload.get("note") or "").strip()
+        meta = {**previous.meta, **result.meta, "edited_from": previous.version, "edited_by": action.by}
+        if note:
+            meta["edit_note"] = note
+        version = self.store.put(
+            name,
+            result.value,
+            producer=Producer(stage=owner, agent=f"human:{action.by}", attempt=st.attempt),  # no token: a new version
+            inputs=dict(previous.inputs),
+            meta=meta,
+        )
+        if version == previous.version:
+            return {"stage_id": owner, "artifact": name, "version": version, "unchanged": True}
+        workspace = Workspace(self.run.work_dir(owner))
+        for path, text in result.files.items():
+            workspace.write_text(path, text)
+        rs = self.pipeline.stage(owner)
+        st.output_versions[name] = version
+        if name in rs.all_inputs:
+            st.input_versions[name] = version
+        if st.gate is not None and st.gate.status is GateStatus.OPEN and name in st.gate.summary.get("artifacts", {}):
+            st.gate.summary["artifacts"][name] = version  # the checkpoint now asks about the edited version
+        self._save(st)
+        self.events.emit("artifact_committed", stage=owner, artifact=name, version=version)
+        before = {sid: self.stages[sid].status for sid in self.pipeline.order}
+        self._propagate_staleness(owner)
+        stale = [
+            s
+            for s in self.pipeline.order
+            if self.stages[s].status is StageStatus.STALE and before[s] is not StageStatus.STALE
+        ]
+        self.events.emit("artifact_edited", stage=owner, artifact=name, version=version, by=action.by, stale=stale)
+        return {"stage_id": owner, "artifact": name, "version": version, "stale": stale}
 
     # ------------------------------------------------------------------- jobs
     def _poll_jobs(self) -> None:

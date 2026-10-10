@@ -45,6 +45,26 @@ from .harness import queue
 
 PROJECT = "sleep-demo"
 MARKER = "demo.json"
+# A small Barkla-like cluster and GPU budget, so the plan's compute has something real to be checked against.
+CLUSTER: dict[str, Any] = {
+    "slurm": {
+        "partitions": {
+            "gpu-l40s": {"gpu_type": "l40s", "gpus_per_node": 2, "gpu_memory_gb": 48, "note": "common"},
+            "gpu-h100": {"gpu_type": "h100", "gpus_per_node": 4, "gpu_memory_gb": 80, "note": "common"},
+            "gpu-l40s-low": {
+                "gpu_type": "l40s",
+                "gpus_per_node": 2,
+                "gpu_memory_gb": 48,
+                "max_time": "1-00:00:00",
+                "preemptible": True,
+                "note": "low priority",
+            },
+            "nodes": {"note": "CPU nodes"},
+        },
+        "experiment_partitions": ["gpu-l40s", "gpu-h100"],
+    },
+    "budgets": {"run": {"max_gpu_hours": 40}},
+}
 CHECKPOINTS = ("literature_review", "hypothesis_selection", "experiment_plan", "gpu_runs", "final_report", "done")
 RUN_IDS = {
     "literature_review": "1-literature",
@@ -502,7 +522,7 @@ def create_demo_run(
     overrides: dict[str, Any] | None = None,
 ) -> RunHandle:
     """A new research run that uses the demo fakes (any topic; the papers are always the demo papers)."""
-    settings: dict[str, Any] = deep_merge(dict(overrides or {}), {"paths": {"runs_root": str(runs_root)}})
+    settings = deep_merge(deep_merge(CLUSTER, dict(overrides or {})), {"paths": {"runs_root": str(runs_root)}})
     config = load_config(overrides=settings, env={})
     run = create_run(
         config,

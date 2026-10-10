@@ -68,11 +68,13 @@ export function CheckpointCard({
   gate,
   showStageLink = true,
   choiceElsewhere = false,
+  rejectHint,
 }: {
   run: RunDetail;
   gate: OpenGate;
   showStageLink?: boolean;
   choiceElsewhere?: boolean;
+  rejectHint?: string; // said in the "request changes" dialog, e.g. that hand edits are not kept
 }) {
   const info = gateInfo(gate.gate);
   const summary = gate.summary as Summary;
@@ -229,7 +231,10 @@ export function CheckpointCard({
       )}
 
       <Dialog open={asking} onOpenChange={setAsking}>
-        <DialogContent title={info.reject} description="The stage runs again with your comments. Be specific.">
+        <DialogContent
+          title={info.reject}
+          description={`The stage runs again with your comments. Be specific.${rejectHint ? ` ${rejectHint}` : ""}`}
+        >
           <form
             onSubmit={(event) => {
               event.preventDefault();
