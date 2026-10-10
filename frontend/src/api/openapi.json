@@ -66,7 +66,8 @@
      "retry",
      "note",
      "reopen",
-     "edit"
+     "edit",
+     "write_file"
     ],
     "title": "ActionKind",
     "type": "string"
@@ -105,7 +106,8 @@
        "retry",
        "note",
        "reopen",
-       "edit"
+       "edit",
+       "write_file"
       ],
       "title": "Kind",
       "type": "string"
@@ -300,25 +302,6 @@
     "title": "ArtifactInfo",
     "type": "object"
    },
-   "CheckRequest": {
-    "properties": {
-     "base_version": {
-      "title": "Base Version",
-      "type": "integer"
-     },
-     "value": {
-      "additionalProperties": true,
-      "title": "Value",
-      "type": "object"
-     }
-    },
-    "required": [
-     "base_version",
-     "value"
-    ],
-    "title": "CheckRequest",
-    "type": "object"
-   },
    "CheckedEvidence": {
     "properties": {
      "paper_id": {
@@ -441,6 +424,370 @@
      "partitions"
     ],
     "title": "ClusterView",
+    "type": "object"
+   },
+   "CodeCheck": {
+    "properties": {
+     "problems": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Problems",
+      "type": "array"
+     }
+    },
+    "required": [
+     "problems"
+    ],
+    "title": "CodeCheck",
+    "type": "object"
+   },
+   "CodeFileView": {
+    "properties": {
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "lines": {
+      "title": "Lines",
+      "type": "integer"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "role": {
+      "enum": [
+       "experiment",
+       "harness",
+       "config",
+       "readme",
+       "other"
+      ],
+      "title": "Role",
+      "type": "string"
+     },
+     "size": {
+      "title": "Size",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "editable",
+     "lines",
+     "path",
+     "role",
+     "size"
+    ],
+    "title": "CodeFileView",
+    "type": "object"
+   },
+   "CodeView": {
+    "properties": {
+     "baseline": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Baseline"
+     },
+     "bundle_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bundle Version"
+     },
+     "code_root": {
+      "title": "Code Root",
+      "type": "string"
+     },
+     "conditions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "experiment_sha": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Experiment Sha"
+     },
+     "files": {
+      "items": {
+       "$ref": "#/components/schemas/CodeFileView"
+      },
+      "title": "Files",
+      "type": "array"
+     },
+     "fixes": {
+      "items": {
+       "$ref": "#/components/schemas/FixView"
+      },
+      "title": "Fixes",
+      "type": "array"
+     },
+     "generated_sha": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Generated Sha"
+     },
+     "jobs": {
+      "items": {
+       "$ref": "#/components/schemas/JobView"
+      },
+      "title": "Jobs",
+      "type": "array"
+     },
+     "logs": {
+      "items": {
+       "$ref": "#/components/schemas/LogView"
+      },
+      "title": "Logs",
+      "type": "array"
+     },
+     "metrics": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Metrics",
+      "type": "array"
+     },
+     "phase": {
+      "title": "Phase",
+      "type": "string"
+     },
+     "plan_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Plan Version"
+     },
+     "results_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Results Version"
+     },
+     "runs": {
+      "items": {
+       "$ref": "#/components/schemas/RunCell"
+      },
+      "title": "Runs",
+      "type": "array"
+     },
+     "seeds": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Seeds",
+      "type": "array"
+     },
+     "smoke": {
+      "items": {
+       "$ref": "#/components/schemas/SmokeView"
+      },
+      "title": "Smoke",
+      "type": "array"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/StageStatus"
+     },
+     "tested_sha": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tested Sha"
+     },
+     "why_not_editable": {
+      "title": "Why Not Editable",
+      "type": "string"
+     }
+    },
+    "required": [
+     "baseline",
+     "bundle_version",
+     "code_root",
+     "conditions",
+     "editable",
+     "experiment_sha",
+     "files",
+     "fixes",
+     "generated_sha",
+     "jobs",
+     "logs",
+     "metrics",
+     "phase",
+     "plan_version",
+     "results_version",
+     "runs",
+     "seeds",
+     "smoke",
+     "stage",
+     "status",
+     "tested_sha",
+     "why_not_editable"
+    ],
+    "title": "CodeView",
+    "type": "object"
+   },
+   "Comparison": {
+    "description": "One condition against the baseline on one metric.",
+    "properties": {
+     "baseline": {
+      "title": "Baseline",
+      "type": "string"
+     },
+     "better": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Better"
+     },
+     "ci_high": {
+      "title": "Ci High",
+      "type": "number"
+     },
+     "ci_low": {
+      "title": "Ci Low",
+      "type": "number"
+     },
+     "condition": {
+      "title": "Condition",
+      "type": "string"
+     },
+     "difference": {
+      "title": "Difference",
+      "type": "number"
+     },
+     "effect_size": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Effect Size"
+     },
+     "metric": {
+      "title": "Metric",
+      "type": "string"
+     },
+     "n": {
+      "title": "N",
+      "type": "integer"
+     },
+     "p_adjusted": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "P Adjusted"
+     },
+     "p_value": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "P Value"
+     },
+     "significant": {
+      "default": false,
+      "title": "Significant",
+      "type": "boolean"
+     },
+     "statistic": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Statistic"
+     },
+     "test": {
+      "title": "Test",
+      "type": "string"
+     }
+    },
+    "required": [
+     "baseline",
+     "better",
+     "ci_high",
+     "ci_low",
+     "condition",
+     "difference",
+     "effect_size",
+     "metric",
+     "n",
+     "p_adjusted",
+     "p_value",
+     "significant",
+     "statistic",
+     "test"
+    ],
+    "title": "Comparison",
     "type": "object"
    },
    "ComputeRequest": {
@@ -948,6 +1295,90 @@
     "title": "ExperimentPlan",
     "type": "object"
    },
+   "ExperimentResults": {
+    "properties": {
+     "code_fingerprint": {
+      "default": "",
+      "title": "Code Fingerprint",
+      "type": "string"
+     },
+     "comparisons": {
+      "items": {
+       "$ref": "#/components/schemas/Comparison"
+      },
+      "title": "Comparisons",
+      "type": "array"
+     },
+     "complete": {
+      "title": "Complete",
+      "type": "boolean"
+     },
+     "figures": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Figures",
+      "type": "array"
+     },
+     "gpu_hours_requested": {
+      "default": 0.0,
+      "title": "Gpu Hours Requested",
+      "type": "number"
+     },
+     "jobs": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Jobs",
+      "type": "array"
+     },
+     "notes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+     },
+     "results_path": {
+      "title": "Results Path",
+      "type": "string"
+     },
+     "runs": {
+      "items": {
+       "$ref": "#/components/schemas/RunRecord"
+      },
+      "title": "Runs",
+      "type": "array"
+     },
+     "summaries": {
+      "items": {
+       "$ref": "#/components/schemas/MetricSummary"
+      },
+      "title": "Summaries",
+      "type": "array"
+     },
+     "tables_path": {
+      "default": "",
+      "title": "Tables Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "code_fingerprint",
+     "comparisons",
+     "complete",
+     "figures",
+     "gpu_hours_requested",
+     "jobs",
+     "notes",
+     "results_path",
+     "runs",
+     "summaries",
+     "tables_path"
+    ],
+    "title": "ExperimentResults",
+    "type": "object"
+   },
    "FieldChange": {
     "properties": {
      "after": {
@@ -967,6 +1398,67 @@
      "field"
     ],
     "title": "FieldChange",
+    "type": "object"
+   },
+   "FileText": {
+    "properties": {
+     "content": {
+      "title": "Content",
+      "type": "string"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "sha": {
+      "title": "Sha",
+      "type": "string"
+     }
+    },
+    "required": [
+     "content",
+     "editable",
+     "path",
+     "sha"
+    ],
+    "title": "FileText",
+    "type": "object"
+   },
+   "FixView": {
+    "properties": {
+     "action": {
+      "title": "Action",
+      "type": "string"
+     },
+     "detail": {
+      "title": "Detail",
+      "type": "string"
+     },
+     "phase": {
+      "title": "Phase",
+      "type": "string"
+     },
+     "signature": {
+      "title": "Signature",
+      "type": "string"
+     },
+     "ts": {
+      "title": "Ts",
+      "type": "string"
+     }
+    },
+    "required": [
+     "action",
+     "detail",
+     "phase",
+     "signature",
+     "ts"
+    ],
+    "title": "FixView",
     "type": "object"
    },
    "GapView": {
@@ -1366,6 +1858,51 @@
     "title": "HypothesisCard",
     "type": "object"
    },
+   "JobView": {
+    "properties": {
+     "gpu_hours": {
+      "title": "Gpu Hours",
+      "type": "number"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "partition": {
+      "title": "Partition",
+      "type": "string"
+     },
+     "runs": {
+      "title": "Runs",
+      "type": "integer"
+     },
+     "state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "State"
+     },
+     "submitted_at": {
+      "title": "Submitted At",
+      "type": "string"
+     }
+    },
+    "required": [
+     "gpu_hours",
+     "id",
+     "partition",
+     "runs",
+     "state",
+     "submitted_at"
+    ],
+    "title": "JobView",
+    "type": "object"
+   },
    "KickResult": {
     "properties": {
      "detail": {
@@ -1517,6 +2054,52 @@
     "title": "LiteratureView",
     "type": "object"
    },
+   "LogText": {
+    "properties": {
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "truncated": {
+      "title": "Truncated",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "name",
+     "text",
+     "truncated"
+    ],
+    "title": "LogText",
+    "type": "object"
+   },
+   "LogView": {
+    "properties": {
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "size": {
+      "title": "Size",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "label",
+     "name",
+     "size"
+    ],
+    "title": "LogView",
+    "type": "object"
+   },
    "Metric": {
     "properties": {
      "definition": {
@@ -1540,6 +2123,72 @@
      "name"
     ],
     "title": "Metric",
+    "type": "object"
+   },
+   "MetricInfo": {
+    "properties": {
+     "definition": {
+      "title": "Definition",
+      "type": "string"
+     },
+     "higher_is_better": {
+      "title": "Higher Is Better",
+      "type": "boolean"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "definition",
+     "higher_is_better",
+     "name"
+    ],
+    "title": "MetricInfo",
+    "type": "object"
+   },
+   "MetricSummary": {
+    "properties": {
+     "ci_high": {
+      "title": "Ci High",
+      "type": "number"
+     },
+     "ci_low": {
+      "title": "Ci Low",
+      "type": "number"
+     },
+     "condition": {
+      "title": "Condition",
+      "type": "string"
+     },
+     "mean": {
+      "title": "Mean",
+      "type": "number"
+     },
+     "metric": {
+      "title": "Metric",
+      "type": "string"
+     },
+     "n": {
+      "title": "N",
+      "type": "integer"
+     },
+     "std": {
+      "title": "Std",
+      "type": "number"
+     }
+    },
+    "required": [
+     "ci_high",
+     "ci_low",
+     "condition",
+     "mean",
+     "metric",
+     "n",
+     "std"
+    ],
+    "title": "MetricSummary",
     "type": "object"
    },
    "NewRun": {
@@ -2528,6 +3177,119 @@
     "title": "ResourceSpec",
     "type": "object"
    },
+   "ResultsView": {
+    "properties": {
+     "baseline": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Baseline"
+     },
+     "conditions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "metrics": {
+      "items": {
+       "$ref": "#/components/schemas/MetricInfo"
+      },
+      "title": "Metrics",
+      "type": "array"
+     },
+     "results": {
+      "$ref": "#/components/schemas/ExperimentResults"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "baseline",
+     "conditions",
+     "metrics",
+     "results",
+     "version"
+    ],
+    "title": "ResultsView",
+    "type": "object"
+   },
+   "RunCell": {
+    "properties": {
+     "condition": {
+      "title": "Condition",
+      "type": "string"
+     },
+     "error": {
+      "default": "",
+      "title": "Error",
+      "type": "string"
+     },
+     "log": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Log"
+     },
+     "metrics": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Metrics",
+      "type": "object"
+     },
+     "seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seconds"
+     },
+     "seed": {
+      "title": "Seed",
+      "type": "integer"
+     },
+     "status": {
+      "enum": [
+       "waiting",
+       "running",
+       "ok",
+       "failed",
+       "missing"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "condition",
+     "error",
+     "log",
+     "metrics",
+     "seconds",
+     "seed",
+     "status"
+    ],
+    "title": "RunCell",
+    "type": "object"
+   },
    "RunDetail": {
     "description": "A run as the browser sees it: no server paths, plus what is advancing it right now.",
     "properties": {
@@ -2644,6 +3406,66 @@
      "worker"
     ],
     "title": "RunDetail",
+    "type": "object"
+   },
+   "RunRecord": {
+    "properties": {
+     "condition": {
+      "title": "Condition",
+      "type": "string"
+     },
+     "error": {
+      "default": "",
+      "title": "Error",
+      "type": "string"
+     },
+     "job_id": {
+      "default": "",
+      "title": "Job Id",
+      "type": "string"
+     },
+     "metrics": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Metrics",
+      "type": "object"
+     },
+     "seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seconds"
+     },
+     "seed": {
+      "title": "Seed",
+      "type": "integer"
+     },
+     "status": {
+      "enum": [
+       "ok",
+       "failed",
+       "missing"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "condition",
+     "error",
+     "job_id",
+     "metrics",
+     "seconds",
+     "seed",
+     "status"
+    ],
+    "title": "RunRecord",
     "type": "object"
    },
    "RunState": {
@@ -2947,6 +3769,43 @@
      "token"
     ],
     "title": "SessionRequest",
+    "type": "object"
+   },
+   "SmokeView": {
+    "properties": {
+     "condition": {
+      "title": "Condition",
+      "type": "string"
+     },
+     "error": {
+      "default": "",
+      "title": "Error",
+      "type": "string"
+     },
+     "metrics": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Metrics",
+      "type": "object"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "seconds": {
+      "title": "Seconds",
+      "type": "number"
+     }
+    },
+    "required": [
+     "condition",
+     "error",
+     "metrics",
+     "ok",
+     "seconds"
+    ],
+    "title": "SmokeView",
     "type": "object"
    },
    "StageStatus": {
@@ -3329,6 +4188,39 @@
      "last_error"
     ],
     "title": "WorkerState",
+    "type": "object"
+   },
+   "research_tool__web__api__code__CheckRequest": {
+    "properties": {
+     "content": {
+      "maxLength": 1000000,
+      "title": "Content",
+      "type": "string"
+     }
+    },
+    "required": [
+     "content"
+    ],
+    "title": "CheckRequest",
+    "type": "object"
+   },
+   "research_tool__web__api__plan__CheckRequest": {
+    "properties": {
+     "base_version": {
+      "title": "Base Version",
+      "type": "integer"
+     },
+     "value": {
+      "additionalProperties": true,
+      "title": "Value",
+      "type": "object"
+     }
+    },
+    "required": [
+     "base_version",
+     "value"
+    ],
+    "title": "CheckRequest",
     "type": "object"
    }
   }
@@ -3800,6 +4692,343 @@
     "summary": "Artifact",
     "tags": [
      "artifacts"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/code": {
+   "get": {
+    "operationId": "code_view_api_runs__project___run_id__code_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CodeView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Code View",
+    "tags": [
+     "code"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/code/archive": {
+   "get": {
+    "description": "The experiment code as a zip file (without the environment and rtool's bookkeeping).",
+    "operationId": "archive_api_runs__project___run_id__code_archive_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Archive",
+    "tags": [
+     "code"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/code/check": {
+   "post": {
+    "description": "The checks the coding agent runs before a smoke test: syntax, the run() contract, undefined names.",
+    "operationId": "check_api_runs__project___run_id__code_check_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/research_tool__web__api__code__CheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CodeCheck"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Check",
+    "tags": [
+     "code"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/code/file": {
+   "get": {
+    "description": "One file of the experiment code (``path`` relative to the code folder).",
+    "operationId": "code_file_api_runs__project___run_id__code_file_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "path",
+      "required": true,
+      "schema": {
+       "title": "Path",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FileText"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Code File",
+    "tags": [
+     "code"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/code/generated": {
+   "get": {
+    "description": "experiment.py as the tool last wrote it, to compare with the current file.",
+    "operationId": "generated_api_runs__project___run_id__code_generated_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FileText"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Generated",
+    "tags": [
+     "code"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/code/log": {
+   "get": {
+    "description": "The end of a smoke-test, install or Slurm job log (``name`` from the code view).",
+    "operationId": "log_api_runs__project___run_id__code_log_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LogText"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Log",
+    "tags": [
+     "code"
     ]
    }
   },
@@ -4788,7 +6017,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/CheckRequest"
+        "$ref": "#/components/schemas/research_tool__web__api__plan__CheckRequest"
        }
       }
      },
@@ -4819,6 +6048,74 @@
     "summary": "Check",
     "tags": [
      "plan"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/results": {
+   "get": {
+    "description": "The analysed results: per-condition summaries, comparisons with the baseline, figures, notes.",
+    "operationId": "results_api_runs__project___run_id__results_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResultsView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Results",
+    "tags": [
+     "code"
     ]
    }
   },

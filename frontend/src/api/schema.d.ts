@@ -148,6 +148,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Code View */
+        get: operations["code_view_api_runs__project___run_id__code_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/code/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Archive
+         * @description The experiment code as a zip file (without the environment and rtool's bookkeeping).
+         */
+        get: operations["archive_api_runs__project___run_id__code_archive_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/code/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check
+         * @description The checks the coding agent runs before a smoke test: syntax, the run() contract, undefined names.
+         */
+        post: operations["check_api_runs__project___run_id__code_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/code/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Code File
+         * @description One file of the experiment code (``path`` relative to the code folder).
+         */
+        get: operations["code_file_api_runs__project___run_id__code_file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/code/generated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Generated
+         * @description experiment.py as the tool last wrote it, to compare with the current file.
+         */
+        get: operations["generated_api_runs__project___run_id__code_generated_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/code/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Log
+         * @description The end of a smoke-test, install or Slurm job log (``name`` from the code view).
+         */
+        get: operations["log_api_runs__project___run_id__code_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/downloads": {
         parameters: {
             query?: never;
@@ -408,6 +525,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Results
+         * @description The analysed results: per-condition summaries, comparisons with the baseline, figures, notes.
+         */
+        get: operations["results_api_runs__project___run_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -525,7 +662,7 @@ export interface components {
          * ActionKind
          * @enum {string}
          */
-        ActionKind: "approve" | "reject" | "select" | "retry" | "note" | "reopen" | "edit";
+        ActionKind: "approve" | "reject" | "select" | "retry" | "note" | "reopen" | "edit" | "write_file";
         /** ActionRequest */
         ActionRequest: {
             /** Gate */
@@ -539,7 +676,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "approve" | "reject" | "select" | "retry" | "note" | "reopen" | "edit";
+            kind: "approve" | "reject" | "select" | "retry" | "note" | "reopen" | "edit" | "write_file";
             /** Payload */
             payload?: {
                 [key: string]: unknown;
@@ -615,15 +752,6 @@ export interface components {
             /** Versions */
             versions: number[];
         };
-        /** CheckRequest */
-        CheckRequest: {
-            /** Base Version */
-            base_version: number;
-            /** Value */
-            value: {
-                [key: string]: unknown;
-            };
-        };
         /** CheckedEvidence */
         CheckedEvidence: {
             /** Paper Id */
@@ -668,6 +796,110 @@ export interface components {
             min_seeds: number;
             /** Partitions */
             partitions: components["schemas"]["PartitionView"][];
+        };
+        /** CodeCheck */
+        CodeCheck: {
+            /** Problems */
+            problems: string[];
+        };
+        /** CodeFileView */
+        CodeFileView: {
+            /** Editable */
+            editable: boolean;
+            /** Lines */
+            lines: number;
+            /** Path */
+            path: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "experiment" | "harness" | "config" | "readme" | "other";
+            /** Size */
+            size: number;
+        };
+        /** CodeView */
+        CodeView: {
+            /** Baseline */
+            baseline: string | null;
+            /** Bundle Version */
+            bundle_version: number | null;
+            /** Code Root */
+            code_root: string;
+            /** Conditions */
+            conditions: string[];
+            /** Editable */
+            editable: boolean;
+            /** Experiment Sha */
+            experiment_sha: string | null;
+            /** Files */
+            files: components["schemas"]["CodeFileView"][];
+            /** Fixes */
+            fixes: components["schemas"]["FixView"][];
+            /** Generated Sha */
+            generated_sha: string | null;
+            /** Jobs */
+            jobs: components["schemas"]["JobView"][];
+            /** Logs */
+            logs: components["schemas"]["LogView"][];
+            /** Metrics */
+            metrics: string[];
+            /** Phase */
+            phase: string;
+            /** Plan Version */
+            plan_version: number | null;
+            /** Results Version */
+            results_version: number | null;
+            /** Runs */
+            runs: components["schemas"]["RunCell"][];
+            /** Seeds */
+            seeds: number[];
+            /** Smoke */
+            smoke: components["schemas"]["SmokeView"][];
+            /** Stage */
+            stage: string;
+            status: components["schemas"]["StageStatus"];
+            /** Tested Sha */
+            tested_sha: string | null;
+            /** Why Not Editable */
+            why_not_editable: string;
+        };
+        /**
+         * Comparison
+         * @description One condition against the baseline on one metric.
+         */
+        Comparison: {
+            /** Baseline */
+            baseline: string;
+            /** Better */
+            better: boolean | null;
+            /** Ci High */
+            ci_high: number;
+            /** Ci Low */
+            ci_low: number;
+            /** Condition */
+            condition: string;
+            /** Difference */
+            difference: number;
+            /** Effect Size */
+            effect_size: number | null;
+            /** Metric */
+            metric: string;
+            /** N */
+            n: number;
+            /** P Adjusted */
+            p_adjusted: number | null;
+            /** P Value */
+            p_value: number | null;
+            /**
+             * Significant
+             * @default false
+             */
+            significant: boolean;
+            /** Statistic */
+            statistic: number | null;
+            /** Test */
+            test: string;
         };
         /** ComputeRequest */
         ComputeRequest: {
@@ -856,6 +1088,40 @@ export interface components {
             /** Statistical Tests */
             statistical_tests: components["schemas"]["StatisticalTest"][];
         };
+        /** ExperimentResults */
+        ExperimentResults: {
+            /**
+             * Code Fingerprint
+             * @default
+             */
+            code_fingerprint: string;
+            /** Comparisons */
+            comparisons: components["schemas"]["Comparison"][];
+            /** Complete */
+            complete: boolean;
+            /** Figures */
+            figures: string[];
+            /**
+             * Gpu Hours Requested
+             * @default 0
+             */
+            gpu_hours_requested: number;
+            /** Jobs */
+            jobs: string[];
+            /** Notes */
+            notes: string[];
+            /** Results Path */
+            results_path: string;
+            /** Runs */
+            runs: components["schemas"]["RunRecord"][];
+            /** Summaries */
+            summaries: components["schemas"]["MetricSummary"][];
+            /**
+             * Tables Path
+             * @default
+             */
+            tables_path: string;
+        };
         /** FieldChange */
         FieldChange: {
             /** After */
@@ -864,6 +1130,30 @@ export interface components {
             before: unknown;
             /** Field */
             field: string;
+        };
+        /** FileText */
+        FileText: {
+            /** Content */
+            content: string;
+            /** Editable */
+            editable: boolean;
+            /** Path */
+            path: string;
+            /** Sha */
+            sha: string;
+        };
+        /** FixView */
+        FixView: {
+            /** Action */
+            action: string;
+            /** Detail */
+            detail: string;
+            /** Phase */
+            phase: string;
+            /** Signature */
+            signature: string;
+            /** Ts */
+            ts: string;
         };
         /** GapView */
         GapView: {
@@ -1000,6 +1290,21 @@ export interface components {
             /** Papers */
             papers: components["schemas"]["PaperUse"][];
         };
+        /** JobView */
+        JobView: {
+            /** Gpu Hours */
+            gpu_hours: number;
+            /** Id */
+            id: string;
+            /** Partition */
+            partition: string;
+            /** Runs */
+            runs: number;
+            /** State */
+            state: string | null;
+            /** Submitted At */
+            submitted_at: string;
+        };
         /** KickResult */
         KickResult: {
             /**
@@ -1051,6 +1356,24 @@ export interface components {
             /** Topics */
             topics: components["schemas"]["TopicView"][];
         };
+        /** LogText */
+        LogText: {
+            /** Name */
+            name: string;
+            /** Text */
+            text: string;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** LogView */
+        LogView: {
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /** Size */
+            size: number;
+        };
         /** Metric */
         Metric: {
             /** Definition */
@@ -1065,6 +1388,32 @@ export interface components {
              * @description Short identifier, e.g. 'accuracy' or 'recall_gain'
              */
             name: string;
+        };
+        /** MetricInfo */
+        MetricInfo: {
+            /** Definition */
+            definition: string;
+            /** Higher Is Better */
+            higher_is_better: boolean;
+            /** Name */
+            name: string;
+        };
+        /** MetricSummary */
+        MetricSummary: {
+            /** Ci High */
+            ci_high: number;
+            /** Ci Low */
+            ci_low: number;
+            /** Condition */
+            condition: string;
+            /** Mean */
+            mean: number;
+            /** Metric */
+            metric: string;
+            /** N */
+            n: number;
+            /** Std */
+            std: number;
         };
         /** NewRun */
         NewRun: {
@@ -1414,6 +1763,43 @@ export interface components {
              */
             verified: boolean;
         };
+        /** ResultsView */
+        ResultsView: {
+            /** Baseline */
+            baseline: string | null;
+            /** Conditions */
+            conditions: string[];
+            /** Metrics */
+            metrics: components["schemas"]["MetricInfo"][];
+            results: components["schemas"]["ExperimentResults"];
+            /** Version */
+            version: number;
+        };
+        /** RunCell */
+        RunCell: {
+            /** Condition */
+            condition: string;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /** Log */
+            log: string | null;
+            /** Metrics */
+            metrics: {
+                [key: string]: number;
+            };
+            /** Seconds */
+            seconds: number | null;
+            /** Seed */
+            seed: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "waiting" | "running" | "ok" | "failed" | "missing";
+        };
         /**
          * RunDetail
          * @description A run as the browser sees it: no server paths, plus what is advancing it right now.
@@ -1465,6 +1851,34 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
             worker: components["schemas"]["WorkerState"];
+        };
+        /** RunRecord */
+        RunRecord: {
+            /** Condition */
+            condition: string;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /**
+             * Job Id
+             * @default
+             */
+            job_id: string;
+            /** Metrics */
+            metrics: {
+                [key: string]: number;
+            };
+            /** Seconds */
+            seconds: number | null;
+            /** Seed */
+            seed: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "failed" | "missing";
         };
         /** RunState */
         RunState: {
@@ -1586,6 +2000,24 @@ export interface components {
         SessionRequest: {
             /** Token */
             token: string;
+        };
+        /** SmokeView */
+        SmokeView: {
+            /** Condition */
+            condition: string;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /** Metrics */
+            metrics: {
+                [key: string]: number;
+            };
+            /** Ok */
+            ok: boolean;
+            /** Seconds */
+            seconds: number;
         };
         /**
          * StageStatus
@@ -1734,6 +2166,20 @@ export interface components {
             job_id: string | null;
             /** Last Error */
             last_error: string | null;
+        };
+        /** CheckRequest */
+        research_tool__web__api__code__CheckRequest: {
+            /** Content */
+            content: string;
+        };
+        /** CheckRequest */
+        research_tool__web__api__plan__CheckRequest: {
+            /** Base Version */
+            base_version: number;
+            /** Value */
+            value: {
+                [key: string]: unknown;
+            };
         };
     };
     responses: never;
@@ -2025,6 +2471,206 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    code_view_api_runs__project___run_id__code_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_api_runs__project___run_id__code_archive_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_api_runs__project___run_id__code_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["research_tool__web__api__code__CheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    code_file_api_runs__project___run_id__code_file_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileText"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generated_api_runs__project___run_id__code_generated_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileText"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_api_runs__project___run_id__code_log_get: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogText"];
                 };
             };
             /** @description Validation Error */
@@ -2528,7 +3174,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CheckRequest"];
+                "application/json": components["schemas"]["research_tool__web__api__plan__CheckRequest"];
             };
         };
         responses: {
@@ -2539,6 +3185,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    results_api_runs__project___run_id__results_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultsView"];
                 };
             };
             /** @description Validation Error */

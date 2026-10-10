@@ -25,7 +25,15 @@ const SHOWN_ELSEWHERE = new Set([
   "pending_revisions",
   "reopened",
   "current",
+  "tested_sha",
 ]);
+
+// labels for facts agents put in a checkpoint summary (anything else is shown humanised)
+const LABELS: Record<string, string> = {
+  gpu_hours: "GPU-hours (at most)",
+  time_limit: "Time limit per run",
+  smoke: "Smoke tests",
+};
 
 interface Option {
   index: number;
@@ -137,7 +145,7 @@ export function CheckpointCard({
         <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">
           {details.map(([key, value]) => (
             <div key={key} className="contents">
-              <dt className="font-medium text-ink-soft">{humanize(key)}</dt>
+              <dt className="font-medium text-ink-soft">{LABELS[key] ?? humanize(key)}</dt>
               <dd className="break-words">{typeof value === "string" ? value : JSON.stringify(value)}</dd>
             </div>
           ))}

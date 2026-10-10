@@ -8,7 +8,12 @@ import type {
   ActionRequest,
   ActionState,
   Affected,
+  CodeCheck,
+  CodeView,
   DownloadsView,
+  FileText,
+  LogText,
+  ResultsView,
   Draft,
   HypothesesView,
   PlanCheck,
@@ -50,6 +55,8 @@ export const keys = {
   plan: (p: string, r: string, version?: number) => ["artifact", p, r, "plan", version ?? "head"] as const,
   downloads: (p: string, r: string) => ["artifact", p, r, "downloads"] as const,
   draft: (p: string, r: string, key: string) => ["draft", p, r, key] as const,
+  code: (p: string, r: string) => ["artifact", p, r, "code"] as const,
+  codeFile: (p: string, r: string, path: string) => ["artifact", p, r, "code-file", path] as const,
 };
 
 export function useSettings() {
@@ -320,5 +327,55 @@ export function useDiscardDraft(project: string, runId: string, key: string) {
   return useMutation({
     mutationFn: () => api<void>(`${base(project, runId)}/drafts/${enc(key)}`, { method: "DELETE" }),
     onSuccess: () => queryClient.setQueryData(keys.draft(project, runId, key), null),
+  });
+}
+
+// ------------------------------------------------------------- code & runs
+// (keys start with "artifact": the event stream refreshes them as the coding agent works)
+export function useCode(project: string, runId: string) {
+  return useQuery({ queryKey: keys.code(project, runId), queryFn: () => api<CodeView>(`${base(project, runId)}/code`) });
+}
+
+export function useCodeFile(project: string, runId: string, path: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.codeFile(project, runId, path),
+    queryFn: () => api<FileText>(`${base(project, runId)}/code/file?path=${enc(path)}`),
+    enabled,
+  });
+}
+
+export function useGeneratedCode(project: string, runId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "code-generated"],
+    queryFn: () => api<FileText>(`${base(project, runId)}/code/generated`),
+    enabled,
+    retry: false,
+  });
+}
+
+/** The coding agent's checks of a source text (syntax, the run() contract, undefined names). */
+export function useCodeCheck(project: string, runId: string, content: string | null) {
+  return useQuery({
+    queryKey: ["code-check", project, runId, content],
+    queryFn: () => api<CodeCheck>(`${base(project, runId)}/code/check`, { method: "POST", body: { content } }),
+    enabled: content !== null,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+}
+
+export function useCodeLog(project: string, runId: string, name: string | null) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "code-log", name],
+    queryFn: () => api<LogText>(`${base(project, runId)}/code/log?name=${enc(name ?? "")}`),
+    enabled: name !== null,
+  });
+}
+
+export function useResults(project: string, runId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "results"],
+    queryFn: () => api<ResultsView>(`${base(project, runId)}/results`),
+    enabled,
   });
 }

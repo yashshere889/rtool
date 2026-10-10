@@ -1,7 +1,8 @@
-"""Drafts of hand edits, saved as the researcher types (one per run and output), so nothing is lost on reload.
+"""Drafts of hand edits, saved as the researcher types (one per run and output or file), so nothing is lost.
 
 They live in ``<run>/ui/drafts/``, outside everything the engine reads. Sending an
-edit removes its draft; taking the edit back while it is queued restores it.
+edit removes its draft; taking the edit back while it is queued restores it. A
+file's draft keeps ``{"content", "base_sha"}`` as its value.
 """
 
 from __future__ import annotations
@@ -28,6 +29,11 @@ class Draft(BaseModel):
     value: dict[str, Any]
     note: str = ""
     saved_at: str = ""
+
+
+def file_draft_key(path: str) -> str:
+    """The draft name for an edited file, e.g. code/experiment.py -> file_code_experiment_py."""
+    return "file_" + re.sub(r"[^a-z0-9]+", "_", path.lower()).strip("_")[:58]
 
 
 def draft_path(run: RunHandle, key: str) -> Path:

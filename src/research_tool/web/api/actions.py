@@ -10,14 +10,15 @@ from pydantic import BaseModel, Field
 
 from ...core.actions import Action, ActionInbox, ActionKind
 from ...core.artifacts import ArtifactStore
-from ...core.engine import edit_option
+from ...core.engine import MAX_EDITED_FILE_BYTES, edit_option
 from ...core.errors import RToolError
-from ...core.pipeline import get_by_path
+from ...core.fs import sha256_text
+from ...core.pipeline import get_by_path, resolve_pipeline
 from ...core.run import RunHandle
 from ...core.state import StageStatus
 from ...service import Affected, KickResult, OpenGate, RunStatus, check_edit, downstream_impact, run_status
 from ..deps import get_run, runner_of
-from .drafts import Draft, read_draft, remove_draft, write_draft
+from .drafts import Draft, file_draft_key, read_draft, remove_draft, write_draft
 
 router = APIRouter(tags=["actions"])
 
@@ -26,7 +27,7 @@ GATE_DECISIONS = {"approve", "reject", "select"}
 
 class ActionRequest(BaseModel):
     id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$", description="Client-chosen id (idempotency)")
-    kind: Literal["approve", "reject", "select", "retry", "note", "reopen", "edit"]
+    kind: Literal["approve", "reject", "select", "retry", "note", "reopen", "edit", "write_file"]
     stage: str | None = None
     gate: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -63,6 +64,30 @@ def check_choice_edit(run: RunHandle, gate: OpenGate, index: int, edit: Any) -> 
         raise HTTPException(422, str(exc)) from None
 
 
+def check_write(run: RunHandle, status: RunStatus, stage_id: str | None, payload: dict[str, Any]) -> None:
+    """A rewrite of a file the stage allows editing, at the right moment, of the version the page showed."""
+    stage = next((s for s in status.stages if s.id == stage_id), None)
+    if stage is None:
+        raise HTTPException(422, "say which stage the file belongs to")
+    path = str(payload.get("path") or "")
+    if path not in resolve_pipeline(run.spec.pipeline).stage(stage.id).agent_cls.editable_files:
+        raise HTTPException(422, f"{path or 'this file'} cannot be edited")
+    at_gate = stage.gate is not None and stage.gate.in_stage
+    if not (at_gate or stage.status is StageStatus.FAILED):
+        raise HTTPException(409, "the file can be edited while the stage waits for your decision or after it failed")
+    content = payload.get("content")
+    if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_EDITED_FILE_BYTES:
+        raise HTTPException(422, "the file must be text of at most 1 MB")
+    if any(a.kind is ActionKind.WRITE_FILE and a.stage == stage.id for a in status.queued_actions):
+        raise HTTPException(409, "a change to this file is already on its way; undo it first to change it again")
+    if payload.get("retest") and at_gate and any(a.stage == stage.id for a in status.queued_actions):
+        raise HTTPException(409, "a decision for this checkpoint is already queued; undo it first")
+    target = run.work_dir(stage.id) / path
+    current = target.read_text(encoding="utf-8") if target.is_file() else ""
+    if payload.get("base_sha") is not None and sha256_text(current) != payload["base_sha"]:
+        raise HTTPException(409, "the file changed since you opened it; reload it (your text is kept) and save again")
+
+
 def check(status: RunStatus, body: ActionRequest, run: RunHandle) -> dict[str, Any]:
     """Refuse decisions the engine would refuse, now rather than in the next episode. Returns the payload."""
     payload = dict(body.payload)
@@ -84,7 +109,7 @@ def check(status: RunStatus, body: ActionRequest, run: RunHandle) -> dict[str, A
                 raise HTTPException(422, f"choose an option between 0 and {len(options) - 1}")
             if payload.get("edit"):
                 check_choice_edit(run, gate, index, payload["edit"])
-        if body.kind == "reject" and not str(payload.get("feedback") or "").strip():
+        if body.kind == "reject" and not payload.get("retest") and not str(payload.get("feedback") or "").strip():
             raise HTTPException(422, "say what should change: the stage re-runs with your feedback")
         # bind the decision to the gate as the user saw it (the server's view, if the page did not send its own)
         payload.setdefault("expect", {"gate_nonce": gate.nonce, "artifacts": gate.summary.get("artifacts", {})})
@@ -111,6 +136,8 @@ def check(status: RunStatus, body: ActionRequest, run: RunHandle) -> dict[str, A
         if not checked.changed:
             raise HTTPException(422, "nothing was changed")
         body.stage = checked.stage
+    elif body.kind == "write_file":
+        check_write(run, status, body.stage, payload)
     elif body.kind == "note":
         if body.stage not in {s.id for s in status.stages}:
             raise HTTPException(422, "a note needs the stage it is for")
@@ -131,6 +158,8 @@ def submit(project: str, run_id: str, body: ActionRequest, request: Request) -> 
     ActionInbox(run.actions_dir).submit(action)
     if action.kind is ActionKind.EDIT:
         remove_draft(run, str(payload["artifact"]))  # the queued action holds the edit now
+    elif action.kind is ActionKind.WRITE_FILE:
+        remove_draft(run, file_draft_key(str(payload["path"])))
     return Queued(action=action, kick=runner_of(request).wake(run, f"action:{body.kind}"))
 
 
@@ -155,10 +184,14 @@ def undo(project: str, run_id: str, action_id: str, request: Request) -> Respons
     if not inbox.withdraw(action_id):
         raise HTTPException(409, "too late to undo: the decision is no longer queued")
     edit = (record or {}).get("payload") or {}
-    if (record or {}).get("kind") == "edit" and read_draft(run, str(edit.get("artifact"))) is None:
-        # back to editing: the withdrawn edit becomes the draft again
+    kind = (record or {}).get("kind")
+    # back to editing: the withdrawn edit becomes the draft again
+    if kind == "edit" and read_draft(run, str(edit.get("artifact"))) is None:
         draft = Draft(base_version=edit["base_version"], value=edit["value"], note=str(edit.get("note") or ""))
         write_draft(run, str(edit["artifact"]), draft)
+    elif kind == "write_file" and read_draft(run, key := file_draft_key(str(edit.get("path")))) is None:
+        value = {"content": edit.get("content", ""), "base_sha": edit.get("base_sha")}
+        write_draft(run, key, Draft(base_version=0, value=value))
     return Response(status_code=204)
 
 

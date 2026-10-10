@@ -62,3 +62,12 @@ export type DownloadsView = Schemas["DownloadsView"];
 export type DownloadItem = Schemas["DownloadItem"];
 export type Draft = Schemas["Draft"];
 export type ResourceSpec = Schemas["ResourceSpec"];
+
+export type CodeView = Schemas["CodeView"];
+export type CodeFileView = Schemas["CodeFileView"];
+export type RunCell = Schemas["RunCell"];
+export type FileText = Schemas["FileText"];
+export type CodeCheck = Schemas["CodeCheck"];
+export type LogText = Schemas["LogText"];
+export type ResultsView = Schemas["ResultsView"];
+export type ExperimentResults = Schemas["ExperimentResults"];

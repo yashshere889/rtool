@@ -49,7 +49,7 @@ from .errors import (
     SuspendRequested,
 )
 from .events import EventLog
-from .fs import FileLease, now_iso
+from .fs import FileLease, now_iso, sha256_text
 from .pipeline import GateKind, GateSpec, ResolvedPipeline, ResolvedStage, get_by_path, resolve_pipeline
 from .registry import AgentRegistry
 from .registry import registry as default_registry
@@ -71,6 +71,7 @@ from .state import (
 from .workspace import Workspace
 
 REVISION_LIMIT_GATE = "revision_limit"
+MAX_EDITED_FILE_BYTES = 1_000_000
 
 
 class Outcome(StrEnum):
@@ -823,18 +824,7 @@ class Engine:
             if gate_state.in_stage:
                 if kind is ActionKind.SELECT:
                     raise ActionError("in-stage gates take approve or reject, not select")
-                decisions = st.agent_state.setdefault("_gates", {})
-                decisions[gate_state.gate_id] = GateResolution(
-                    approved=approved, feedback=feedback, data=dict(action.payload)
-                ).model_dump()
-                gate_state.status = GateStatus.APPROVED if approved else GateStatus.REJECTED
-                gate_state.resolved_at = now_iso()
-                gate_state.resolution = {"approved": approved, "feedback": feedback, "by": action.by}
-                st.status = StageStatus.PENDING
-                st.resume = True
-                self._save(st)
-                self.events.emit("gate_resolved", stage=sid, gate=gate_state.gate_id, approved=approved, in_stage=True)
-                return {"stage_id": sid, "gate": gate_state.gate_id, "approved": approved}
+                return self._resolve_in_stage_gate(sid, approved, feedback, dict(action.payload), action.by)
             index = action.payload.get("index")
             if kind is ActionKind.SELECT and index is None:
                 raise ActionError("select needs an index")
@@ -872,6 +862,9 @@ class Engine:
         if kind is ActionKind.EDIT:
             return self._edit(action)
 
+        if kind is ActionKind.WRITE_FILE:
+            return self._write_file(action)
+
         if kind is ActionKind.NOTE:
             sid = action.stage
             if sid is None or sid not in self.stages:
@@ -885,6 +878,77 @@ class Engine:
             return {"stage_id": sid}
 
         raise ActionError(f"unsupported action {kind.value!r}")
+
+    def _resolve_in_stage_gate(
+        self, sid: str, approved: bool, feedback: str, data: dict[str, Any], by: str
+    ) -> dict[str, Any]:
+        """Record the decision for the agent (it reads it from ctx.gate when it resumes) and let it resume."""
+        st = self.stages[sid]
+        gate_state = st.gate
+        assert gate_state is not None
+        decisions = st.agent_state.setdefault("_gates", {})
+        decisions[gate_state.gate_id] = GateResolution(approved=approved, feedback=feedback, data=data).model_dump()
+        gate_state.status = GateStatus.APPROVED if approved else GateStatus.REJECTED
+        gate_state.resolved_at = now_iso()
+        gate_state.resolution = {"approved": approved, "feedback": feedback, "by": by}
+        st.status = StageStatus.PENDING
+        st.resume = True
+        self._save(st)
+        self.events.emit("gate_resolved", stage=sid, gate=gate_state.gate_id, approved=approved, in_stage=True)
+        return {"stage_id": sid, "gate": gate_state.gate_id, "approved": approved}
+
+    def _write_file(self, action: Action) -> dict[str, Any]:
+        """Rewrite a file the stage's agent lets researchers edit (e.g. the Coder's experiment.py).
+
+        Allowed while the stage waits at its own checkpoint or after it failed. With ``retest`` the stage
+        then continues: the checkpoint is answered with "test it again", a failed stage resumes.
+        """
+        sid = action.stage
+        if sid is None or sid not in self.stages:
+            raise ActionError("write_file needs a valid --stage")
+        rs = self.pipeline.stage(sid)
+        st = self.stages[sid]
+        payload = action.payload
+        path = str(payload.get("path") or "")
+        if path not in rs.agent_cls.editable_files:
+            allowed = ", ".join(rs.agent_cls.editable_files) or "no file"
+            raise ActionError(f"in stage {sid!r} you can edit {allowed}, not {path!r}")
+        at_gate = (
+            st.status is StageStatus.AWAITING_GATE
+            and st.gate is not None
+            and st.gate.in_stage
+            and st.gate.status is GateStatus.OPEN
+        )
+        if not (at_gate or st.status is StageStatus.FAILED):
+            raise ActionError(
+                f"{path} can be edited while stage {sid!r} waits for your decision or after it failed "
+                f"(it is {st.status.value})"
+            )
+        content = payload.get("content")
+        if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_EDITED_FILE_BYTES:
+            raise ActionError(f"{path} must be text of at most {MAX_EDITED_FILE_BYTES // 1_000_000} MB")
+        workspace = Workspace(self.run.work_dir(sid))
+        target = workspace.path(path)
+        current = target.read_text(encoding="utf-8") if target.exists() else ""
+        base = payload.get("base_sha")
+        if base is not None and sha256_text(current) != base:
+            raise ActionError(f"{path} changed since you opened it; reload it and edit again")
+        changed = content != current
+        if changed:
+            workspace.write_text(path, content)
+            self.events.emit("file_written", stage=sid, path=path, by=action.by, sha=sha256_text(content))
+        outcome: dict[str, Any] = {"stage_id": sid, "path": path, "changed": changed}
+        if payload.get("retest"):
+            if at_gate:
+                outcome.update(self._resolve_in_stage_gate(sid, False, "", {"retest": True}, action.by))
+            else:  # failed: resume where it stopped (the agent re-tests what it finds)
+                st.status = StageStatus.PENDING
+                st.resume = True
+                st.failures = 0
+                st.last_error = None
+                self._save(st)
+                outcome["resumed"] = True
+        return outcome
 
     def _reopen(self, sid: str | None) -> dict[str, Any]:
         """Open a finished stage's checkpoint again: choose differently, keep it as it is, or reject to re-run.

@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from research_tool.agents.planner.checks import results_schema
-from research_tool.core.actions import ActionKind
+from research_tool.core.actions import ActionInbox, ActionKind
 from research_tool.core.artifacts import ArtifactStore, Producer
 from research_tool.core.engine import Engine, Outcome, load_status
 from research_tool.core.events import EventLog
+from research_tool.core.fs import sha256_text
 from research_tool.core.run import RunHandle
 from research_tool.core.services import Services
 from research_tool.core.state import StageStatus
@@ -307,3 +308,58 @@ def test_runs_that_never_ran_are_resubmitted_unchanged(runs_root: Path, tmp_path
     assert (
         bundle.fixes[-1].signature == "not_run" and ArtifactStore(run.artifacts_dir).get("experiment_results").complete
     )
+
+
+def processed(run: RunHandle) -> list[dict[str, Any]]:
+    return [p["outcome"] for p in ActionInbox(run.actions_dir).processed()]
+
+
+def test_experiment_py_is_rewritten_through_the_inbox_and_tested_again(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    gate = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["summary"]
+    code_dir = run.work_dir("code")
+    generated = (code_dir / "generated" / "experiment.py").read_text()
+    assert generated == GOOD and gate["tested_sha"] == sha256_text(GOOD)
+    assert (gate["runs"], gate["partition"]) == (6, "gpu-l40s") and gate["gpu_hours"] > 0
+    kinds = [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+    assert [e["data"]["phase"] for e in EventLog(run.events_path, run.run_id) if e["kind"] == "phase_changed"] == [
+        "write",
+        "smoke",
+        "approve",
+    ]
+    assert kinds.count("smoke_result") == 2
+
+    edited = GOOD + "\n# tuned by hand\n"
+    write = {"path": "code/experiment.py", "content": edited, "base_sha": sha256_text(GOOD), "retest": True}
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload={**write, "path": "code/run.py"})  # rtool's harness
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload={**write, "base_sha": "0" * 64})  # seen an older file
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload=write)
+    calls = len(llm.calls)
+    again = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["summary"]
+    outcomes = processed(run)
+    assert "you can edit code/experiment.py, not 'code/run.py'" in outcomes[0]["error"]
+    assert "changed since you opened it" in outcomes[1]["error"]
+    assert outcomes[2]["status"] == "applied" and outcomes[2]["changed"] and outcomes[2]["approved"] is False
+    assert again["tested_sha"] == sha256_text(edited) and len(llm.calls) == calls  # re-tested, no model
+    assert (code_dir / "generated" / "experiment.py").read_text() == GOOD  # still the tool's version, for the diff
+    marker = json.loads((code_dir / "code" / ".rtool.json").read_text())
+    assert marker["sha"] == sha256_text(GOOD)  # the origin of the edit stays "human"
+
+    queue(run, ActionKind.APPROVE)
+    advance(run, svc, Outcome.WAITING_JOB)
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload={**write, "base_sha": None})  # jobs are running now
+    svc.slurm.finish_all()  # type: ignore[union-attr]
+    advance(run, svc, Outcome.DONE)
+    assert "waits for your decision or after it failed" in processed(run)[-1]["error"]
+
+
+def test_a_failed_stage_resumes_after_a_rewrite(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path, config={"max_fix_rounds": 1})
+    svc = services(run, coder_llm(CRASHES_IN_SMOKE, fix=CRASHES_IN_SMOKE))
+    advance(run, svc, Outcome.NEEDS_HUMAN)
+    fixed = {"path": "code/experiment.py", "content": GOOD, "retest": True}
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload=fixed)
+    assert advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["gate"] == "gpu_runs"
+    assert processed(run)[-1]["resumed"]

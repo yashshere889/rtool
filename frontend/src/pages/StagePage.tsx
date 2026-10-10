@@ -12,6 +12,7 @@ import { NoteBox } from "@/components/NoteBox";
 import { ReopenButton } from "@/components/ReopenDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { CodePage } from "@/pages/code/CodePage";
 import { HypothesesPage } from "@/pages/hypotheses/HypothesesPage";
 import { LiteraturePage } from "@/pages/literature/LiteraturePage";
 import { PlanPage } from "@/pages/plan/PlanPage";
@@ -81,6 +82,7 @@ export function StagePage() {
   if (stage.agent === "literature") return <LiteraturePage run={run} stage={stage} />;
   if (stage.agent === "hypothesis") return <HypothesesPage run={run} stage={stage} />;
   if (stage.agent === "planner") return <PlanPage run={run} stage={stage} />;
+  if (stage.agent === "coder") return <CodePage run={run} stage={stage} />;
   const outputs = Object.entries(stage.output_versions);
   return (
     <div className="space-y-6">

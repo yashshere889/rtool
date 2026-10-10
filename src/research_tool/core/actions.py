@@ -29,6 +29,7 @@ class ActionKind(StrEnum):
     NOTE = "note"  # attach guidance to a stage's next attempt
     REOPEN = "reopen"  # open a finished stage's checkpoint again (choose differently, or reject to re-run it)
     EDIT = "edit"  # replace an output with a hand-edited version (payload: artifact, base_version, value)
+    WRITE_FILE = "write_file"  # rewrite a file the stage lets researchers edit (payload: path, content, base_sha)
 
 
 def _user() -> str:

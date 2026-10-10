@@ -59,6 +59,8 @@ SYSTEM = (
 )
 GATE = "gpu_runs"
 HARNESS = ("run.py", "launch.py")
+EDITABLE = "code/experiment.py"  # workspace-relative: the one file researchers may edit
+GENERATED = "generated/experiment.py"  # the latest version the tool wrote (outside the code: for the diff)
 _BLOCK = re.compile(r"```(?:python|py)?[ \t]*\r?\n(.*?)```", re.S)
 RUN_ARGS = ("condition", "seed", "resources", "smoke", "workdir")
 
@@ -143,6 +145,7 @@ class CoderAgent(Agent):
     consumes = ("research_brief", "experiment_plan", "resource_manifest")
     produces = ("code_bundle", "experiment_results")
     config_model = CoderConfig
+    editable_files = (EDITABLE,)  # rtool rewrites every other file on each attempt
 
     def run(self, ctx: AgentContext) -> None:
         CoderSession(ctx, self.config).drive()
@@ -188,11 +191,15 @@ class CoderSession:
             "submit": self.submit,
             "collect": self.collect,
         }
-        while (phase := self.state.setdefault("phase", "write")) != "finish":
+        if "phase" not in self.state:
+            self.goto("write")
+        while (phase := self.state["phase"]) != "finish":
             steps[phase]()
         self.finish()
 
     def goto(self, phase: str) -> None:
+        if self.state.get("phase") != phase:
+            self.ctx.emit("phase_changed", phase=phase)  # the web UI follows the stage through these
         self.state["phase"] = phase
         # waiting for the GPU-runs decision, submitting, collecting and analysing need no model: they
         # can resume on a CPU node instead of queueing for a GPU (and hand over if a fix needs the LLM)
@@ -265,6 +272,7 @@ class CoderSession:
 
     def save_source(self, source: str, origin: str) -> None:
         atomic_write_text(self.code / "experiment.py", source)
+        atomic_write_text(self.ctx.workspace.path(GENERATED), source)  # what a hand edit is compared with
         atomic_write_json(
             self.code / ".rtool.json", {"plan": self.plan_hash, "sha": sha256_text(source), "origin": origin}
         )
@@ -388,6 +396,7 @@ class CoderSession:
             data, problem = read_output(out, self.metric_names)
             if run.ok and data is not None:
                 results.append(SmokeResult(condition=condition, ok=True, seconds=run.seconds, metrics=data["metrics"]))
+                self.ctx.emit("smoke_result", **results[-1].model_dump())
                 continue
             log = run.tail(200)
             found = diagnose(log, exit_code=run.exit_code, timed_out=run.timed_out)
@@ -400,6 +409,7 @@ class CoderSession:
             elif run.ok:
                 found = Diagnosis("contract", problem)
             results.append(SmokeResult(condition=condition, ok=False, seconds=run.seconds, error=found.summary))
+            self.ctx.emit("smoke_result", **results[-1].model_dump())
             failure = (condition, found, "\n".join(log.splitlines()[-80:]))
             break
         self.state["smoke"] = [r.model_dump() for r in results]
@@ -417,7 +427,7 @@ class CoderSession:
                 detail=detail[:300],
             ).model_dump()
         )
-        self.ctx.emit("code_fix", phase=phase, signature=signature, action=action)
+        self.ctx.emit("code_fix", phase=phase, signature=signature, action=action, detail=detail[:300])
 
     def repair(self, diagnosis: Diagnosis, *, log: str, condition: str, phase: str) -> None:
         """One repair round: the playbook if it knows the failure, else the LLM. Bounded."""
@@ -502,6 +512,11 @@ class CoderSession:
                 "Reject with feedback to have the code revised first."
             ),
             "smoke": ", ".join(f"{r.condition} ok in {r.seconds:g}s" for r in smoke),
+            "runs": len(runs),
+            "partition": c.partition,
+            "gpu_hours": hours,
+            "time_limit": c.time_limit,
+            "tested_sha": tested,  # the experiment.py these smoke tests ran (a later edit is tested again first)
             "review_files": [str(self.code / "experiment.py"), str(self.code / "config.json")],
         }
         decision = self.ctx.gate(GATE, summary)
