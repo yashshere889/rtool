@@ -10,6 +10,7 @@ What `scripts/probe_barkla.sh` found on 2026-10-08, and how rtool is set up on B
 | Python environment | `/mnt/fastscratch/users/$USER/rtool/venv` (+ `pip-cache/`) | home quota is 150k files; ~8k files |
 | Runs (one folder per run) | `/mnt/scratch/users/$USER/rtool/projects` | jobs must be submitted from scratch |
 | Datasets / models for experiments | `/mnt/scratch/users/$USER/rtool/resources` | shared by runs |
+| Web UI job (socket, token, log) | `/mnt/scratch/users/$USER/rtool/ui` (mode 0700) | jobs run from scratch; only you can open it |
 | Nemotron weights (23 GB) | `/mnt/scratch/users/$USER/rtool/hf` | read offline by vLLM |
 | vLLM's home inside the container | `/mnt/scratch/users/$USER/rtool/vllm-home` | caches; hides `~/.local` |
 | Secrets (you create, `chmod 600`) | `~/.config/rtool/secrets.env` | never printed |
@@ -109,3 +110,48 @@ stops cleanly within the 180 s grace period, the job is requeued with the same
 id and resumes the run (it reclaims its own lease). `rtool events <run>` shows
 which partition each episode went to and when it was expected to start.
 Experiments stay on the common partitions (gpu-l40s, gpu-h100, gpu-v100).
+
+## The web UI
+
+The UI server runs as a small CPU job in your own account (login nodes forbid resident
+processes): partition `nodes`, one core, 8 h by default (`--hours`, up to the partition's
+3 days), no requeue. It listens on a Unix socket in `~/scratch/rtool/ui/` (mode 0700), so
+only your account can reach it; it decides, submits episode jobs and cancels them exactly like
+the CLI.
+
+On the Mac (University VPN on):
+
+```bash
+scripts/sync_to_barkla.sh && ssh barkla 'bash -l ~/"Research tool"/scripts/setup_barkla_env.sh'  # once, and after updates
+scripts/rtool-ui                 # start or find the UI job, tunnel, open the browser (signed in)
+scripts/rtool-ui status          # where it runs and until when
+scripts/rtool-ui stop            # end it; runs keep going without it
+```
+
+Ctrl-C closes only the tunnel; run `scripts/rtool-ui` again to reconnect (same job, same
+token). Options: `--hours`, `--port` (on the Mac, default 8780), `--bind cluster`.
+
+The launcher reads the compute node's host key through the login node into
+`~/.config/rtool/barkla_known_hosts` on the Mac (your `~/.ssh/known_hosts` is not touched)
+and the token from the job's 0600 token file; the token reaches the browser only in the
+address's `#fragment`. By hand, on a login node `rtool ui` prints the same route:
+
+```bash
+ssh -N -L 8765:/mnt/scratch/users/$USER/rtool/ui/ui.sock -J barkla $USER@<node>   # on the Mac
+```
+
+then open http://127.0.0.1:8765 and paste the token from `~/scratch/rtool/ui/token`.
+
+**Which route works** was checked with `scripts/probe_ui_access.sh` (2026-10-10, job on
+node041): ssh from the Mac to the job's node through the login node works once the node's
+host key is known (the login node's ssh trusts nodes on first use, the Mac's did not);
+forwarding to a Unix socket on the node works with the socket in scratch or in the node's
+`/tmp`; plain TCP forwarding through the login node to the node's port works too. Any user can
+ssh to any compute node, so a server on the node's 127.0.0.1 would be no more private than one
+on the cluster network; the socket is. `--bind cluster` (TCP, token only) stays as a fallback
+for sites without ssh to nodes, and `rtool ui --mode login` as a session-bound last resort.
+
+**Checked end to end** (2026-10-10): UI job 10838291 on node006; the smoke pipeline driven
+from the UI's API: Resume submitted a GPU episode from inside the UI job (nested sbatch,
+gpu-l40s-low, started within a minute), the checkpoint was approved through the UI, the CPU
+episode ran the stage's Slurm job, and the last GPU episode finished the run.

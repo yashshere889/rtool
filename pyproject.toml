@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]  # httpx: FastAPI's TestClient (tests/web)
 # Installed on Barkla only (the code falls back to the standard library without them).
 barkla = [
   "numpy>=1.26",         # fast vector math for embeddings / clustering

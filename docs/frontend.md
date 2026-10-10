@@ -58,11 +58,14 @@ browser ──POST /api/runs/<p>/<r>/actions──▶ checks (now, against the r
 
 ## Security
 
-The server runs on shared machines and is reached through an ssh tunnel.
+The server runs on shared machines and is reached through an ssh tunnel. On Barkla it listens
+on a Unix socket in a folder only your account can open (`--bind socket`, the default), so
+nobody else on the cluster can reach it at all; the token below is a second lock.
 
-* A random token, printed at start-up (and written to `--token-file`, mode 0600), is traded once
-  for an HttpOnly, SameSite=Strict session cookie named after the port; the token never sits in
-  a cookie or a URL query.
+* A random token, printed at start-up (and written to `--token-file`, mode 0600; the Barkla
+  job writes it only to its 0600 token file, never to its log), is traded once for an HttpOnly,
+  SameSite=Strict session cookie named after the port; the token never sits in a cookie or a URL
+  query. The launcher hands it to the browser in the address's `#fragment`.
 * Only loopback `Host` names are accepted (DNS rebinding); state-changing calls need
   `X-Requested-With: rtool` and a loopback `Origin` (cross-site requests); request bodies are
   capped (paper uploads 64 MB, the rest 8 MB).
@@ -77,8 +80,9 @@ The server runs on shared machines and is reached through an ssh tunnel.
 rtool ui --mode local --demo --open        # a laptop: demo runs with simulated papers, model and cluster
 ```
 
-On Barkla the UI runs in your own account (a small CPU job, or a process tied to your ssh
-session) and is opened through a tunnel; see the [Barkla runbook](barkla_runbook.md).
+On Barkla, `rtool ui` (job mode, the default there) runs the server as a small CPU job in your
+own account; `scripts/rtool-ui` on the Mac starts or finds it, tunnels to it and opens the
+browser. See the [Barkla runbook](barkla_runbook.md#the-web-ui).
 
 ## Development
 

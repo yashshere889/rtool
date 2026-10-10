@@ -84,9 +84,16 @@ every stage live, and decide at each checkpoint. Each stage has its own page:
 rtool ui --mode local --demo --open      # try it on a laptop: demo runs, simulated papers, model and cluster
 ```
 
-On Barkla it listens on 127.0.0.1 only and is reached through an ssh tunnel (a one-command
-launcher is planned), e.g. `ssh -L 8765:127.0.0.1:8765 barkla` and then `rtool ui --mode login`
-there. Open the link it prints: it carries the access token.
+On Barkla the UI runs as a small CPU job in your own account and listens on a Unix socket only
+you can open. From the Mac (University VPN on), one command starts it (or finds the running one),
+opens an ssh tunnel and the browser, already signed in:
+
+```bash
+scripts/rtool-ui                         # Ctrl-C closes the tunnel; the job keeps running
+scripts/rtool-ui stop                    # end the UI job (runs keep going without it)
+```
+
+Details, and the by-hand route, in the [Barkla runbook](docs/barkla_runbook.md#the-web-ui).
 
 How it works, security, development, tests (unit, API, end-to-end with accessibility checks)
 and how to add a page for a new agent: [docs/frontend.md](docs/frontend.md).

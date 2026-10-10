@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Open the Research Tool UI that runs on Barkla in this Mac's browser (University VPN on).
+#
+#     scripts/rtool-ui            start the UI job (or reuse the running one), tunnel, open the browser
+#     scripts/rtool-ui status     is a UI job queued or running, and where?
+#     scripts/rtool-ui stop       end the UI job
+#
+# Options: --hours H (how long a new UI job may run; default 8), --port P (on this Mac; default
+# 8780), --bind socket|cluster (default socket), --host ALIAS (ssh alias; default barkla),
+# --no-browser.
+#
+# Ctrl-C closes the tunnel only: the job keeps running until its hours are used up or you stop it,
+# and running this again reconnects. Runs keep going without the UI either way.
+#
+# Security: the UI job listens on a Unix socket in a folder only your Barkla account can open,
+# and the tunnel ends on 127.0.0.1 here. The access token is read over ssh and handed to the
+# browser in the address's #fragment, which browsers never send to a server; it is not printed.
+# The compute node's host key is read through the login node into
+# ~/.config/rtool/barkla_known_hosts (your ~/.ssh/known_hosts is not changed).
+set -euo pipefail
+HOST="barkla"
+PORT="${RTOOL_UI_PORT:-8780}"
+HOURS=8
+BIND=socket
+CMD=start
+BROWSER=1
+REMOTE='bash -l ~/"Research tool"/scripts/barkla_rtool.sh'
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    start | status | stop) CMD="$1" ;;
+    --hours) HOURS="${2:?}"; shift ;;
+    --port) PORT="${2:?}"; shift ;;
+    --bind) BIND="${2:?}"; shift ;;
+    --host) HOST="${2:?}"; shift ;;
+    --no-browser) BROWSER=0 ;;
+    -h | --help) sed -n '2,/^set -e/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
+[[ "$HOURS" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "--hours must be a number" >&2; exit 2; }
+[[ "$PORT" =~ ^[0-9]+$ ]] || { echo "--port must be a number" >&2; exit 2; }
+[[ "$BIND" =~ ^(socket|cluster)$ ]] || { echo "--bind must be socket or cluster" >&2; exit 2; }
+
+case "$CMD" in
+  stop) exec ssh "$HOST" "$REMOTE ui --stop" ;;
+  status) exec ssh "$HOST" "$REMOTE ui --status" ;;
+esac
+
+field() { # field NAME < job JSON
+  python3 -I -c 'import json, sys; v = (json.load(sys.stdin) or {}).get(sys.argv[1]); print("" if v is None else v)' "$1"
+}
+listening() {
+  python3 -I -c 'import socket, sys; sys.exit(socket.socket().connect_ex(("127.0.0.1", int(sys.argv[1]))) != 0)' "$1"
+}
+plain() { # refuse anything that could be read as more than a name or path by the remote shell
+  [[ "$1" =~ ^[A-Za-z0-9_./-]+$ ]] || { echo "unexpected value from Barkla: $1" >&2; exit 1; }
+}
+
+if listening "$PORT"; then
+  echo "something already listens on 127.0.0.1:$PORT (an earlier tunnel?); close it or use --port" >&2
+  exit 1
+fi
+
+echo "starting or finding the UI job on $HOST..."
+job="$(ssh "$HOST" "$REMOTE ui --json --wait 60 --hours $HOURS --bind $BIND")"
+said=""
+while [ "$(field serving <<<"$job")" != True ]; do
+  if [ -z "$(field job_id <<<"$job")" ]; then
+    echo "the UI job is gone; its log is in the ui folder next to your runs on Barkla" >&2
+    exit 1
+  fi
+  line="UI job $(field job_id <<<"$job"): $(field state <<<"$job" | tr '[:upper:]' '[:lower:]') $(field reason <<<"$job")"
+  [ "$line" != "$said" ] && echo "$line (waiting; Ctrl-C stops waiting, the job stays queued)"
+  said="$line"
+  sleep 15
+  job="$(ssh "$HOST" "$REMOTE ui --status --json")"
+done
+
+job_id="$(field job_id <<<"$job")"
+node="$(field node <<<"$job")"
+user="$(field user <<<"$job")"
+dir="$(field directory <<<"$job")"
+bind="$(field bind <<<"$job")"
+for value in "$job_id" "$node" "$user" "$dir"; do plain "$value"; done
+token="$(ssh "$HOST" "cat '$dir/token'")"
+
+if [ "$bind" = socket ]; then
+  sock="$(field socket <<<"$job")"
+  plain "$sock"
+  known="$HOME/.config/rtool/barkla_known_hosts"
+  mkdir -p -m 700 "$(dirname "$known")"
+  key="$(ssh "$HOST" "ssh-keyscan -t ed25519 $node 2>/dev/null")"
+  [ -n "$key" ] || { echo "could not read $node's host key through $HOST" >&2; exit 1; }
+  touch "$known" && chmod 600 "$known"
+  ssh-keygen -R "$node" -f "$known" >/dev/null 2>&1 || true
+  rm -f "$known.old"
+  printf '%s\n' "$key" >>"$known"
+  ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o BatchMode=yes \
+    -o UserKnownHostsFile="$known" -o StrictHostKeyChecking=yes \
+    -J "$HOST" -L "127.0.0.1:$PORT:$sock" "$user@$node" &
+else
+  rport="$(field port <<<"$job")"
+  [[ "$rport" =~ ^[0-9]+$ ]] || { echo "unexpected port from Barkla: $rport" >&2; exit 1; }
+  ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L "127.0.0.1:$PORT:$node:$rport" "$HOST" &
+fi
+tunnel=$!
+trap 'kill "$tunnel" 2>/dev/null || true' EXIT
+trap 'echo; echo "tunnel closed; UI job $job_id keeps running (scripts/rtool-ui stop ends it)"; exit 0' INT TERM
+
+for _ in $(seq 30); do
+  if curl -sf --max-time 3 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then break; fi
+  kill -0 "$tunnel" 2>/dev/null || { echo "the tunnel to $node failed" >&2; exit 1; }
+  sleep 1
+done
+curl -sf --max-time 3 "http://127.0.0.1:$PORT/api/health" >/dev/null || { echo "the UI did not answer" >&2; exit 1; }
+
+url="http://127.0.0.1:$PORT/"
+if [ "$BROWSER" = 1 ] && command -v open >/dev/null; then
+  open "${url}#token=${token}"
+else
+  echo "open $url and sign in with the token: ssh $HOST cat $dir/token"
+fi
+echo "Research Tool UI: $url (job $job_id on $node). Ctrl-C closes the tunnel; the job keeps running."
+misses=0
+while kill -0 "$tunnel" 2>/dev/null; do # until the tunnel breaks or the job ends
+  sleep 30
+  if curl -sf --max-time 10 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then misses=0; else misses=$((misses + 1)); fi
+  if [ "$misses" -ge 2 ]; then
+    echo "the UI stopped answering (job ended, or the connection dropped); run scripts/rtool-ui to start or reconnect" >&2
+    exit 1
+  fi
+done
+echo "the tunnel closed; run scripts/rtool-ui again to reconnect" >&2

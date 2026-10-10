@@ -39,13 +39,18 @@ llm:
     reasoning_parser: null
 
 experiments:
-  # Experiments run in the Nemotron image too: torch 2.8.0 + CUDA 12.8, transformers 4.57.1,
-  # accelerate 1.11 (Python 3.10). Anything else is pip-installed into a venv layered on it.
+  # Experiments run in the Nemotron image too (Python 3.10.12, user site off). `pip list` inside it
+  # on 2026-10-10: torch 2.8.0 (+ torchvision 0.23, torchaudio 2.8, CUDA 12.8), numpy 2.1.2,
+  # scipy 1.15.3, transformers 4.57.1, accelerate 1.11, tokenizers 0.22, safetensors 0.6,
+  # huggingface_hub 0.36, pydantic 2.12, einops, sentencepiece, pillow, networkx, PyYAML, tqdm,
+  # requests. Not in it: pandas, scikit-learn, datasets, matplotlib, statsmodels; anything
+  # else is pip-installed into a venv layered on the image.
   container: $NEMOTRON_SIF
   modules: [apptainer/1.3.6, nemotron/nano-12b-v2]
   binds: [/mnt/scratch, /mnt/fastscratch]
   home: /mnt/scratch/users/${USER}/rtool/exp-home   # fresh HOME: ~/.local stays out
-  packages: [torch, numpy, transformers, accelerate, tokenizers, safetensors, huggingface_hub, pydantic]
+  packages: [torch, torchvision, torchaudio, numpy, scipy, transformers, accelerate, tokenizers, safetensors,
+             huggingface_hub, pydantic, einops, sentencepiece, pillow, networkx, pyyaml, tqdm, requests]
   max_parallel_runs: 4                                # GPUs one run may use at the same time
 
 slurm:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import secrets
+import signal
+import socket
 import webbrowser
 from pathlib import Path
 
@@ -34,3 +36,21 @@ def serve(settings: UISettings, *, host: str, port: int, open_browser: bool = Fa
     if open_browser:
         webbrowser.open(url)
     uvicorn.run(create_app(settings), host=host, port=port, log_level="warning", proxy_headers=False)
+
+
+def _exit_on_signal(signum: int, frame: object) -> None:
+    raise SystemExit(128 + signum)
+
+
+def serve_socket(settings: UISettings, sock: socket.socket) -> None:
+    """Serve on a socket the caller bound (the UI job: a private Unix socket or a cluster port).
+
+    On SIGTERM (Slurm's time limit, scancel) uvicorn shuts down gracefully and then raises
+    the signal again; this turns that into SystemExit so the caller's ``finally`` still runs.
+    """
+    config = uvicorn.Config(create_app(settings), log_level="warning", proxy_headers=False)
+    previous = signal.signal(signal.SIGTERM, _exit_on_signal)
+    try:
+        uvicorn.Server(config).run(sockets=[sock])
+    finally:
+        signal.signal(signal.SIGTERM, previous)

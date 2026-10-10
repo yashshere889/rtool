@@ -7,6 +7,7 @@ run lease. Pass ``--now`` to run that episode immediately.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
@@ -556,42 +557,178 @@ def stop(
 
 @app.command()
 def ui(
-    mode: str = typer.Option(
-        "local",
+    mode: str | None = typer.Option(
+        None,
         "--mode",
-        help="local: this machine, with simulated papers, model and cluster (demos, development). "
+        help="job (the default on the cluster): a small CPU Slurm job; scripts/rtool-ui on your Mac opens it. "
+        "local (the default elsewhere): this machine, with simulated papers, model and cluster (demos, development). "
         "login: on a cluster login node, only for as long as your ssh session lasts.",
     ),
     runs_root: Path | None = typer.Option(None, "--runs-root"),
-    port: int = typer.Option(8765, "--port"),
+    port: int = typer.Option(8765, "--port", help="local / login mode: the port on 127.0.0.1."),
     token_file: Path | None = typer.Option(
-        None, "--token-file", help="Also write the access token to this file (readable only by you)."
+        None, "--token-file", help="local / login mode: also write the access token to this file (mode 0600)."
     ),
     demo: bool = typer.Option(False, "--demo", help="local mode: create the demo runs first if there are no runs."),
-    open_browser: bool = typer.Option(False, "--open", help="Open the UI in the browser."),
+    open_browser: bool = typer.Option(False, "--open", help="local mode: open the UI in the browser."),
+    bind: str = typer.Option(
+        "socket",
+        "--bind",
+        help="job mode: socket (a Unix socket only you can open) or cluster (a TCP port on the cluster network, "
+        "token-protected; for sites without ssh to compute nodes).",
+    ),
+    hours: float = typer.Option(8.0, "--hours", min=0.25, help="job mode: how long the UI job may run."),
+    stop_job: bool = typer.Option(False, "--stop", help="job mode: end the UI job."),
+    status_only: bool = typer.Option(False, "--status", help="job mode: show the UI job without starting one."),
+    as_json: bool = typer.Option(False, "--json", help="job mode: print the job as JSON (used by scripts/rtool-ui)."),
+    wait: float = typer.Option(300, "--wait", min=0, help="job mode: seconds to wait for the job to start."),
+    state_dir: Path | None = typer.Option(
+        None, "--state-dir", help="job mode: the folder for the job's socket, token and log (default: beside the runs)."
+    ),
+    serve_here: bool = typer.Option(False, "--serve", hidden=True, help="Inside the UI job: serve."),
     config: list[Path] = typer.Option([], "--config", "-c"),
 ) -> None:
-    """Start the web UI (needs the `web` extra). It listens on 127.0.0.1 only; reach it through an ssh tunnel."""
+    """Start the web UI (needs the `web` extra). Reach it through an ssh tunnel; it never listens publicly."""
     with _guard():
-        if mode not in ("local", "login"):
-            raise RToolError("--mode must be local or login")
+        cfg = load_app_config(config, runs_root=runs_root)
+        mode = mode or ("job" if cfg.slurm.backend == "real" else "local")
+        if mode not in ("local", "login", "job"):
+            raise RToolError("--mode must be job, local or login")
+        if bind not in ("socket", "cluster"):
+            raise RToolError("--bind must be socket or cluster")
+        if mode == "job" and cfg.slurm.backend != "real":
+            raise RToolError("job mode needs a cluster (slurm.backend: real); use --mode local here")
+        root = cfg.paths.resolved_runs_root()
+        if mode == "job" and not serve_here:
+            _ui_job(
+                cfg,
+                runs_root=root,
+                config_files=config,
+                bind=bind,  # type: ignore[arg-type]
+                hours=hours,
+                stop_job=stop_job,
+                status_only=status_only,
+                as_json=as_json,
+                wait=wait,
+                state_dir=state_dir,
+            )
+            return
         try:
-            from ..web.server import new_token, serve, write_private
+            from ..web.server import new_token, serve, serve_socket, write_private
             from ..web.settings import UISettings
         except ImportError as exc:
             raise RToolError(f"the web UI needs the web extra: pip install -e '.[web]' ({exc})") from None
         load_secrets()
-        root = (runs_root or load_app_config(config).paths.resolved_runs_root()).expanduser()
         if mode == "local" and demo and not list_all_runs(root):
             from ..testing.demo_run import build_demo_runs
 
             console.print("building the demo runs (about ten seconds)...")
             build_demo_runs(root)
         token = new_token()
-        if token_file is not None:
-            write_private(token_file.expanduser(), token + "\n")
         settings = UISettings(runs_root=root, token=token, mode=mode, config_files=list(config))  # type: ignore[arg-type]
-        serve(settings, host="127.0.0.1", port=port, open_browser=open_browser)
+        if mode != "job":
+            if token_file is not None:
+                write_private(token_file.expanduser(), token + "\n")
+            serve(settings, host="127.0.0.1", port=port, open_browser=open_browser)
+            return
+
+        from ..service.ui_job import TOKEN_FILE, announce, listen, private_dir, ui_dir, withdraw
+
+        job_id = os.environ.get("SLURM_JOB_ID")
+        if not job_id:
+            raise RToolError("--serve is for the UI job itself; start the UI with `rtool ui`")
+        directory = private_dir(ui_dir(cfg, state_dir))
+        write_private(directory / TOKEN_FILE, token + "\n")
+        sock, where = listen(directory, bind)  # type: ignore[arg-type]
+        sock.listen(128)
+        announce(directory, job_id, bind, where)  # type: ignore[arg-type]
+        # The token stays out of this log.
+        print(f"Research Tool UI (job {job_id}, runs in {root}) on {where['socket'] or where['port']}", flush=True)
+        try:
+            serve_socket(settings, sock)
+        finally:
+            withdraw(directory, job_id)
+            sock.close()
+
+
+def _ui_job(
+    cfg: AppConfig,
+    *,
+    runs_root: Path,
+    config_files: list[Path],
+    bind: Any,
+    hours: float,
+    stop_job: bool,
+    status_only: bool,
+    as_json: bool,
+    wait: float,
+    state_dir: Path | None,
+) -> None:
+    """``rtool ui`` on a login node: start (or reuse) the UI job and say how to open it."""
+    import getpass
+    from datetime import datetime, timedelta
+
+    from ..hpc.slurm_client import SubprocessSlurm
+    from ..service.ui_job import find_ui_job, start_ui_job, stop_ui_job, ui_dir, wait_until_serving
+
+    directory = ui_dir(cfg, state_dir)
+    slurm = SubprocessSlurm(cfg.slurm, state_dir=directory / ".rtool")
+    if stop_job:
+        stopped = stop_ui_job(directory, slurm) if directory.exists() else None
+        if as_json:
+            typer.echo(json.dumps({"stopped": stopped}))
+        else:
+            console.print(f"cancelled UI job {stopped}" if stopped else "no UI job was queued or running")
+        return
+    if status_only:
+        job = find_ui_job(directory, slurm) if directory.exists() else None
+    else:
+        job, new = start_ui_job(
+            cfg,
+            slurm,
+            directory,
+            hours=hours,
+            bind=bind,
+            runs_root=runs_root,
+            config_files=config_files,
+            user=getpass.getuser(),
+        )
+        if not as_json:
+            console.print(f"{'submitted' if new else 'found'} UI job {job.job_id}")
+        if not job.serving:
+            said: list[str] = []
+
+            def waiting(current: Any) -> None:
+                why = f": {current.reason}" if current.reason else ""
+                line = f"waiting for it to start ({current.state.lower()}{why})"
+                if not as_json and line not in said:
+                    err_console.print(line)
+                    said.append(line)
+
+            job = wait_until_serving(directory, slurm, timeout=wait, on_wait=waiting) or find_ui_job(directory, slurm)
+    if as_json:
+        typer.echo(json.dumps(job.model_dump() if job else None))
+        return
+    if job is None:
+        console.print("no UI job is queued or running; start one with: rtool ui")
+        return
+    if not job.serving:
+        console.print(
+            f"UI job {job.job_id} is still {job.state.lower()}{' (' + job.reason + ')' if job.reason else ''}. "
+            "Run `rtool ui` again later to see where it serves, or `rtool ui --stop`."
+        )
+        return
+    until = ""
+    with contextlib.suppress(ValueError, TypeError):
+        ends = datetime.fromisoformat(job.started_at or "") + timedelta(hours=job.hours)
+        until = f" until about {ends.astimezone():%a %H:%M}"  # the cluster's local time
+    target = job.socket if job.bind == "socket" else f"{job.node}:{job.port}"
+    jump = f"-J barkla {job.user}@{job.node}" if job.bind == "socket" else "barkla"
+    console.print(f"UI job {job.job_id} serves on {job.node}{until}.")
+    console.print("On your Mac:  scripts/rtool-ui   (opens the tunnel and the browser; the job keeps running)")
+    console.print(f"By hand:      ssh -N -L 8765:{target} {jump}")
+    console.print(f"              then open http://127.0.0.1:8765 and sign in with the token in {job.directory}/token")
+    console.print("End it:       rtool ui --stop")
 
 
 @app.command()
