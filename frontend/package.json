@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "api-types": "openapi-typescript src/api/openapi.json -o src/api/schema.d.ts"
+    "api-types": "openapi-typescript src/api/openapi.json -o src/api/schema.d.ts",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.2",
@@ -41,7 +42,9 @@
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "9.39.5",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

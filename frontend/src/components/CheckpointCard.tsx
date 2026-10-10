@@ -122,7 +122,7 @@ export function CheckpointCard({
         {showStageLink && (
           <Link
             to={`${runPath(run.project, run.run_id)}/${gate.stage}`}
-            className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"
+            className="inline-flex items-center gap-1 text-sm font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
           >
             Review on the {stageTitle(gate.stage)} page <ArrowRight className="size-4" />
           </Link>

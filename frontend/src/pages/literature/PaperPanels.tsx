@@ -77,7 +77,7 @@ function RefList({ refs, ctx, empty }: { refs: PaperRef[]; ctx: PanelContext; em
     <ul className="space-y-1.5 text-sm">
       {refs.map((ref) => (
         <li key={ref.id}>
-          <Link to={readerPath(ctx.project, ctx.runId, ctx.stage, ref.id)} className="text-accent hover:underline">
+          <Link to={readerPath(ctx.project, ctx.runId, ctx.stage, ref.id)} className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             {ref.title}
           </Link>{" "}
           <span className="text-ink-soft">
@@ -105,13 +105,36 @@ function MethodsText({ text }: { text: string }) {
   );
 }
 
+/** Text written by the model about the paper: labelled as such, with numbers it may have made up flagged. */
+function AiWritten({ title, detail, children }: { title: string; detail: PaperDetail; children: ReactNode }) {
+  const unverified = detail.digest?.unverified_numbers ?? [];
+  return (
+    <section className="space-y-2 rounded-lg border border-dashed border-line bg-muted/40 p-3">
+      <h4 className="flex flex-wrap items-center gap-2 text-xs font-semibold tracking-wide text-ink-soft uppercase">
+        {title}
+        <Badge tone="info">AI-written · not checked against quotes</Badge>
+      </h4>
+      {children}
+      {unverified.length > 0 && (
+        <p className="text-xs text-warn">Contains numbers not found in the paper's text: {unverified.join(" ")}</p>
+      )}
+    </section>
+  );
+}
+
 export function PaperPanel({ kind, detail, ctx }: { kind: PanelKind; detail: PaperDetail; ctx: PanelContext }) {
   const paper = detail.paper;
+  const digest = detail.digest;
   const results = detail.claims.filter((c) => c.kind === "result");
   switch (kind) {
     case "summary":
       return (
         <div className="space-y-4">
+          {digest && (
+            <AiWritten title="In brief" detail={detail}>
+              <p className="text-sm leading-relaxed">{digest.summary}</p>
+            </AiWritten>
+          )}
           <Section title="Research problem">
             <p className="text-sm leading-relaxed">{detail.problem || "Not stated."}</p>
           </Section>
@@ -135,6 +158,18 @@ export function PaperPanel({ kind, detail, ctx }: { kind: PanelKind; detail: Pap
     case "methodology":
       return (
         <div className="space-y-4">
+          {digest && (
+            <AiWritten title="Study at a glance" detail={detail}>
+              <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[max-content_1fr]">
+                <dt className="font-medium text-ink-soft">Design</dt>
+                <dd>{digest.design}</dd>
+                <dt className="font-medium text-ink-soft">Sample</dt>
+                <dd>{digest.sample}</dd>
+                <dt className="font-medium text-ink-soft">Procedure</dt>
+                <dd>{digest.procedure}</dd>
+              </dl>
+            </AiWritten>
+          )}
           <Section title="Approach">
             <p className="text-sm leading-relaxed">{detail.approach || "Not stated."}</p>
           </Section>
@@ -168,6 +203,15 @@ export function PaperPanel({ kind, detail, ctx }: { kind: PanelKind; detail: Pap
     case "gaps":
       return (
         <div className="space-y-5">
+          {digest && digest.gaps.length > 0 && (
+            <AiWritten title="Gaps this paper leaves" detail={detail}>
+              <ul className="list-disc space-y-1 pl-5 text-sm">
+                {digest.gaps.map((gap) => (
+                  <li key={gap}>{gap}</li>
+                ))}
+              </ul>
+            </AiWritten>
+          )}
           <Section title="Future work the authors suggest">
             <Claims
               claims={detail.claims.filter((c) => c.kind === "future_work")}

@@ -49,8 +49,9 @@ export function StageStepper({ run }: { run: RunDetail }) {
 
 /** A compact row of dots, one per stage (project list). */
 export function StageDots({ run }: { run: RunSummary }) {
+  const done = run.stages.filter((s) => s.status === "done").length;
   return (
-    <span className="flex items-center gap-1" aria-label="Stage progress">
+    <span className="flex items-center gap-1" role="img" aria-label={`${done} of ${run.stages.length} stages done`}>
       {run.stages.map((stage) => {
         const state = stageState(stage);
         return (

@@ -69,7 +69,7 @@ function ReportDocument({ run, view, stage, papers }: { run: RunDetail; view: Re
             {view.references.map((paper) => (
               <li key={paper.key}>
                 {paper.authors || "Anon."} ({paper.year ?? "n.d."}).{" "}
-                <Link to={readerPath(run.project, run.run_id, stage, paper.paper_id)} className="text-accent hover:underline">
+                <Link to={readerPath(run.project, run.run_id, stage, paper.paper_id)} className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
                   {paper.title}
                 </Link>
                 <span className="text-ink-soft"> [{paper.key}]</span>
@@ -382,7 +382,7 @@ export function ReportWorkspace({ run, which, stage }: { run: RunDetail; which: 
                     <li key={i}>
                       <Badge tone={f.severity === "major" ? "bad" : "warn"}>{f.severity}</Badge>{" "}
                       {f.section && (
-                        <a href={`#section-${f.section}`} className="text-accent hover:underline">
+                        <a href={`#section-${f.section}`} className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
                           {headings[f.section] ?? f.section}
                         </a>
                       )}{" "}

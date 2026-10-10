@@ -952,6 +952,51 @@
     "title": "Created",
     "type": "object"
    },
+   "DigestView": {
+    "description": "The model's plain-language digest of a paper (AI-written: not checked against quotes).",
+    "properties": {
+     "design": {
+      "title": "Design",
+      "type": "string"
+     },
+     "gaps": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Gaps",
+      "type": "array"
+     },
+     "procedure": {
+      "title": "Procedure",
+      "type": "string"
+     },
+     "sample": {
+      "title": "Sample",
+      "type": "string"
+     },
+     "summary": {
+      "title": "Summary",
+      "type": "string"
+     },
+     "unverified_numbers": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Unverified Numbers",
+      "type": "array"
+     }
+    },
+    "required": [
+     "design",
+     "gaps",
+     "procedure",
+     "sample",
+     "summary",
+     "unverified_numbers"
+    ],
+    "title": "DigestView",
+    "type": "object"
+   },
    "DownloadItem": {
     "properties": {
      "bytes": {
@@ -2545,6 +2590,21 @@
       "title": "Note",
       "type": "string"
      },
+     "override": {
+      "anyOf": [
+       {
+        "enum": [
+         "include",
+         "exclude"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Override"
+     },
      "read": {
       "enum": [
        "full_text",
@@ -2571,6 +2631,10 @@
      },
      "status": {
       "title": "Status",
+      "type": "string"
+     },
+     "summary": {
+      "title": "Summary",
       "type": "string"
      },
      "title": {
@@ -2614,10 +2678,12 @@
      "links",
      "needs_upload",
      "note",
+     "override",
      "read",
      "relevance",
      "relevance_reason",
      "status",
+     "summary",
      "title",
      "topics",
      "venue",
@@ -2670,6 +2736,16 @@
       },
       "title": "Datasets",
       "type": "array"
+     },
+     "digest": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/DigestView"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "gaps": {
       "items": {
@@ -2726,6 +2802,7 @@
      "claims",
      "coverage",
      "datasets",
+     "digest",
      "gaps",
      "methods",
      "methods_section",

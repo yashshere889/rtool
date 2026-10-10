@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from ... import __version__
 from ...core.secrets import secrets_status
 from ..deps import settings_of
-from ..security import SESSION_COOKIE, session_value
+from ..security import cookie_name, session_value
 
 router = APIRouter(tags=["session"])
 
@@ -44,7 +44,12 @@ def sign_in(body: SessionRequest, request: Request, response: Response) -> None:
     if not hmac.compare_digest(body.token, settings.token):
         raise HTTPException(401, "wrong access token")
     response.set_cookie(
-        SESSION_COOKIE, session_value(settings.token), httponly=True, samesite="strict", path="/", secure=False
+        cookie_name(request.headers.get("host", "")),
+        session_value(settings.token),
+        httponly=True,
+        samesite="strict",
+        path="/",
+        secure=False,
     )
 
 

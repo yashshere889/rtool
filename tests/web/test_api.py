@@ -33,10 +33,30 @@ def test_only_the_token_holder_gets_in(runs_root: Path) -> None:
     assert bearer.get("/api/runs", headers={"authorization": f"Bearer {TOKEN}"}).status_code == 200
 
 
+def test_servers_on_two_ports_do_not_sign_each_other_out(runs_root: Path) -> None:
+    c = client(runs_root)  # signed in at 127.0.0.1:8765
+    other = {"host": "127.0.0.1:8766"}
+    assert "rtool_session_8765" in c.cookies
+    assert c.get("/api/runs", headers=other).status_code == 401  # 8765's cookie does not open 8766
+    assert c.post("/api/session", json={"token": TOKEN}, headers={**WRITE, **other}).status_code == 204
+    assert c.get("/api/runs").status_code == 200 and c.get("/api/runs", headers=other).status_code == 200
+
+
+def test_oversized_requests_are_refused(runs_root: Path) -> None:
+    c = client(runs_root)
+    url = "/api/runs/sleep-demo/1-literature/drafts/experiment_plan"
+    big = b'{"base_version": 1, "value": {"x": "' + b"a" * (9 * 1024 * 1024) + b'"}}'
+    response = c.put(url, content=big, headers={**WRITE, "content-type": "application/json"})
+    assert response.status_code == 413 and "at most 8 MB" in response.json()["detail"]
+
+
 def test_other_sites_and_hosts_are_refused(runs_root: Path) -> None:
     c = client(runs_root)
     assert c.get("/api/runs", headers={"host": "evil.example:8765"}).status_code == 400  # DNS rebinding
-    assert c.get("/api/runs", headers={"host": "localhost:5173"}).status_code == 200  # the Vite dev proxy
+    dev = {"host": "localhost:5173"}  # the Vite dev proxy: its own port, so its own session cookie
+    assert c.get("/api/runs", headers=dev).status_code == 401
+    assert c.post("/api/session", json={"token": TOKEN}, headers={**WRITE, **dev}).status_code == 204
+    assert c.get("/api/runs", headers=dev).status_code == 200
     action = {"kind": "approve", "stage": "literature", "gate": "literature_review"}
     url = "/api/runs/sleep-demo/1-literature/actions"
     assert c.post(url, json=action).status_code == 403  # a plain cross-site form/fetch cannot add the header

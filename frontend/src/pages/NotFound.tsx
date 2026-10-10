@@ -8,7 +8,7 @@ export function NotFound() {
       <Empty
         title="Page not found"
         action={
-          <Link to="/" className="text-accent hover:underline">
+          <Link to="/" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             Go to your projects
           </Link>
         }

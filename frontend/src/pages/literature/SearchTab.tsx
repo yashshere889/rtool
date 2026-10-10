@@ -59,7 +59,7 @@ export function SearchTab({ run, stage }: { run: RunDetail; stage: string }) {
           {results.data.length === 0 && <p className="text-sm text-ink-soft">No passage matches “{query}”.</p>}
           {results.data.map((hit, i) => (
             <li key={`${hit.paper_id}-${i}`} className="rounded-lg border border-line bg-surface p-3">
-              <Link to={readerPath(run.project, run.run_id, stage, hit.paper_id)} className="font-medium text-accent hover:underline">
+              <Link to={readerPath(run.project, run.run_id, stage, hit.paper_id)} className="font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
                 {hit.title}
               </Link>
               <p className="text-xs text-ink-soft">{hit.section}</p>

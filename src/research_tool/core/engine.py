@@ -71,6 +71,7 @@ from .state import (
 from .workspace import Workspace
 
 REVISION_LIMIT_GATE = "revision_limit"
+DECISION_KEYS = {"feedback", "note", "expect", "index", "edit", "retest"}  # read by the engine itself
 MAX_EDITED_FILE_BYTES = 1_000_000
 
 
@@ -661,6 +662,7 @@ class Engine:
         edit: dict[str, Any] | None = None,
         auto: bool = False,
         by: str | None = None,
+        data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         rs = self.pipeline.stage(sid)
         st = self.stages[sid]
@@ -675,6 +677,7 @@ class Engine:
                     kind=FeedbackKind.HUMAN_REJECTION,
                     text=feedback or "rejected without comment",
                     gate_id=st.gate.gate_id,
+                    data=dict(data or {}),
                 )
             )
             self.events.emit("gate_resolved", stage=sid, gate=st.gate.gate_id, approved=False)
@@ -828,6 +831,10 @@ class Engine:
             index = action.payload.get("index")
             if kind is ActionKind.SELECT and index is None:
                 raise ActionError("select needs an index")
+            # anything structured that comes with a rejection goes to the agent (e.g. papers to keep or drop)
+            extra = {k: v for k, v in action.payload.items() if k not in DECISION_KEYS}
+            if not approved and not feedback and extra:
+                feedback, extra = "see the researcher's choices", {**extra, "choices_only": True}
             resolution = self._resolve_stage_gate(
                 sid,
                 approved,
@@ -835,6 +842,7 @@ class Engine:
                 index=None if index is None else int(index),
                 edit=action.payload.get("edit"),
                 by=action.by,
+                data=extra,
             )
             return {"stage_id": sid, "gate": gate_state.gate_id, **resolution}
 

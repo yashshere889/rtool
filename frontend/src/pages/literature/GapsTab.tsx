@@ -14,7 +14,7 @@ function PaperLinks({ ids, view, run }: { ids: string[]; view: LiteratureView; r
     <ul className="mt-2 space-y-1 text-sm">
       {papers.map((p) => (
         <li key={p.id}>
-          <Link to={readerPath(run.project, run.run_id, view.stage, p.id)} className="text-accent hover:underline">
+          <Link to={readerPath(run.project, run.run_id, view.stage, p.id)} className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             {p.title}
           </Link>{" "}
           <span className="text-ink-soft">({p.year ?? "n.d."})</span>

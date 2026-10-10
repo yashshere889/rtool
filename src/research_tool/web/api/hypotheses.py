@@ -93,7 +93,7 @@ class _Papers:
     def card(self, paper_id: str) -> PaperCard:
         if paper_id not in self._cards:
             paper = self.lit.by_id[paper_id]
-            self._cards[paper_id] = self.lit.card(paper, self.lit.how_read(self.kb, paper))
+            self._cards[paper_id] = self.lit.card(paper, self.kb)
         return self._cards[paper_id]
 
     def uses(self, h: Hypothesis) -> list[PaperUse]:

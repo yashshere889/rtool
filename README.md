@@ -49,6 +49,8 @@ rtool run sleep                      # submits an episode job; it stops at the f
 rtool status sleep                   # stages, gates, files to read
 rtool approve sleep                  # or: rtool reject sleep -f "focus on older adults"
 rtool select sleep 1                 # at the hypothesis gate
+rtool reopen sleep --stage hypotheses   # change your mind later (later stages redo only if it changes)
+rtool edit sleep experiment_plan --from plan.json   # replace an output with your edited version
 rtool list                           # every run and what it waits for
 rtool stop sleep                     # cancel its episode job (resume with rtool run)
 rtool archive sleep                  # when done: results, report and code to ~/data
@@ -62,8 +64,21 @@ cluster facts: [docs/barkla_runbook.md](docs/barkla_runbook.md).
 
 ## Web UI
 
-`rtool ui` serves a browser interface: start research from a question, follow every stage
-live, and make the decisions at each checkpoint. It needs the `web` extra.
+`rtool ui` serves a browser interface (the `web` extra): start research from a question, follow
+every stage live, and decide at each checkpoint. Each stage has its own page:
+
+- **Literature**: every paper with Open full paper (PDF or text with the verified findings
+  marked) and Summary, Methodology, Key findings, Limitations, Gaps, Datasets, References and
+  Cite; a map of topics, methods and datasets; gaps and open problems; full-text search; keep or
+  drop papers; upload a PDF you have.
+- **Hypotheses**: the three offered side by side with the papers they use, their citations
+  ("show in paper") and references; choose one, edit it first, or change your choice later.
+- **Experiment plan**: the whole plan, editable (with live checks and what applying redoes),
+  datasets and models with links, compute against the budget, then the downloads.
+- **Code & runs**: the code with `experiment.py` editable (tested again before any GPU time), a
+  diff with the generated version, smoke tests, repairs, every run with its log, the results.
+- **Report** and **Review**: the report with linked citations, editable prose (placeholders and
+  citations as chips), print to PDF; the review's verdict, scores, checks, issues and edits.
 
 ```bash
 rtool ui --mode local --demo --open      # try it on a laptop: demo runs, simulated papers, model and cluster
@@ -73,10 +88,8 @@ On Barkla it listens on 127.0.0.1 only and is reached through an ssh tunnel (a o
 launcher is planned), e.g. `ssh -L 8765:127.0.0.1:8765 barkla` and then `rtool ui --mode login`
 there. Open the link it prints: it carries the access token.
 
-Frontend development (`frontend/`, React + TypeScript + Vite): run `rtool ui --mode local
---runs-root runs/demo` and `npm run dev` in `frontend/` (it forwards `/api` to port 8765), then
-`scripts/build_frontend.sh` to rebuild the app into `src/research_tool/web/static` — commit the
-result, the cluster has no Node. Demo runs: `python -m research_tool.testing.demo_run runs/demo`.
+How it works, security, development, tests (unit, API, end-to-end with accessibility checks)
+and how to add a page for a new agent: [docs/frontend.md](docs/frontend.md).
 
 ## How it works
 

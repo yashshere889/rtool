@@ -82,6 +82,8 @@ class FeedbackItem(BaseModel):
     gate_id: str | None = None
     created_at: str = Field(default_factory=now_iso)
     consumed_by_attempt: int | None = None
+    # structured parts of a decision, for agents that act on them (e.g. papers to keep or drop)
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class StageState(BaseModel):

@@ -1054,6 +1054,24 @@ export interface components {
             kick: components["schemas"]["KickResult"];
             run: components["schemas"]["RunDetail"];
         };
+        /**
+         * DigestView
+         * @description The model's plain-language digest of a paper (AI-written: not checked against quotes).
+         */
+        DigestView: {
+            /** Design */
+            design: string;
+            /** Gaps */
+            gaps: string[];
+            /** Procedure */
+            procedure: string;
+            /** Sample */
+            sample: string;
+            /** Summary */
+            summary: string;
+            /** Unverified Numbers */
+            unverified_numbers: string[];
+        };
         /** DownloadItem */
         DownloadItem: {
             /** Bytes */
@@ -1658,6 +1676,8 @@ export interface components {
             needs_upload: boolean;
             /** Note */
             note: string;
+            /** Override */
+            override: ("include" | "exclude") | null;
             /**
              * Read
              * @enum {string}
@@ -1669,6 +1689,8 @@ export interface components {
             relevance_reason: string;
             /** Status */
             status: string;
+            /** Summary */
+            summary: string;
             /** Title */
             title: string;
             /** Topics */
@@ -1694,6 +1716,7 @@ export interface components {
             coverage: components["schemas"]["CoverageView"][];
             /** Datasets */
             datasets: string[];
+            digest: components["schemas"]["DigestView"] | null;
             /** Gaps */
             gaps: components["schemas"]["GapView"][];
             /** Methods */

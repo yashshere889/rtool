@@ -218,7 +218,7 @@ export function HypothesesPage({ run, stage }: { run: RunDetail; stage: StageSum
             href={fileUrl(run.project, run.run_id, view.markdown)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-accent hover:underline"
+            className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
           >
             <FileText className="size-4" /> The agent's write-up
           </a>

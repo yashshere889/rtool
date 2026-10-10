@@ -263,7 +263,7 @@ export function PlanPage({ run, stage }: { run: RunDetail; stage: StageSummary }
         <VersionNote view={view} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {view.plan.markdown_path && (
-            <a href={fileUrl(run.project, run.run_id, view.plan.markdown_path)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-accent hover:underline">
+            <a href={fileUrl(run.project, run.run_id, view.plan.markdown_path)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
               <FileText className="size-4" /> Plan as a document
             </a>
           )}

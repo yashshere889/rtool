@@ -38,6 +38,7 @@ class PaperRecord(BaseModel):
     relevance_reason: str = ""
     status: PaperStatus = "candidate"
     note: str = ""
+    override: Literal["include", "exclude"] | None = None  # the researcher's call; screening never changes it
     file: str | None = None  # relative to the run directory
     file_sha256: str | None = None
 
@@ -92,6 +93,18 @@ class PaperExtraction(BaseModel):
     key_results: list[KeyResult] = Field(default_factory=list, max_length=8)
     limitations: list[EvidenceItem] = Field(default_factory=list, max_length=5)
     future_work: list[EvidenceItem] = Field(default_factory=list, max_length=5)
+
+
+class PaperDigest(BaseModel):
+    """A reader's digest of one paper (prose by the model: shown as AI-written, not checked against quotes)."""
+
+    summary: str = Field(description="2-3 plain sentences: what was studied, how, and the main finding")
+    design: str = Field(description="The study design in one sentence (e.g. randomised crossover, simulation)")
+    sample: str = Field(description="Who or what was studied (participants, datasets, systems), or 'not stated'")
+    procedure: str = Field(description="The main steps, in 2-4 short sentences")
+    gaps: list[str] = Field(
+        default_factory=list, max_length=3, description="Open questions or weaknesses the paper itself leaves"
+    )
 
 
 class TopicLabel(BaseModel):

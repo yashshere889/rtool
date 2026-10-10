@@ -119,7 +119,7 @@ export function ResourceTable({ plan }: { plan: ExperimentPlan }) {
           <span key="s" className="break-all">
             <span className="block text-xs text-ink-soft">{label(RESOURCE_SOURCES, r.source)}</span>
             {link ? (
-              <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+              <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
                 {r.identifier} <ExternalLink className="size-3" />
               </a>
             ) : (

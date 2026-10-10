@@ -115,3 +115,16 @@ def test_an_undone_rewrite_becomes_a_draft_again(runs_root: Path) -> None:
     assert again.status_code == 409
     assert c.delete(f"{AT_GATE}/actions/{sent.json()['action']['id']}", headers=WRITE).status_code == 204
     assert c.get(drafts).json()["value"] == {"content": "# mine\n", "base_sha": view["experiment_sha"]}
+
+
+def test_links_planted_in_the_code_folder_are_not_followed(runs_root: Path, tmp_path: Path) -> None:
+    secret = tmp_path / "id_rsa"
+    secret.write_text("PRIVATE KEY")
+    code = open_run(runs_root, "sleep-demo", "4-gpu-runs").work_dir("code") / "code"
+    (code / "notes.txt").symlink_to(secret)  # e.g. written by experiment code
+    c = web_client(runs_root)
+    assert "notes.txt" not in {f["path"] for f in c.get(f"{AT_GATE}/code").json()["files"]}
+    assert c.get(f"{AT_GATE}/code/file", params={"path": "notes.txt"}).status_code == 404
+    archive = zipfile.ZipFile(io.BytesIO(c.get(f"{AT_GATE}/code/archive").content))
+    assert not any(n.endswith("notes.txt") for n in archive.namelist())
+    assert all(b"PRIVATE KEY" not in archive.read(n) for n in archive.namelist())

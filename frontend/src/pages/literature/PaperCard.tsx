@@ -1,4 +1,4 @@
-import { BookOpen, Upload } from "lucide-react";
+import { BookOpen, Check, Upload, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
@@ -41,7 +41,49 @@ function Relevance({ value, reason }: { value: number | null; reason: string }) 
   );
 }
 
-export function PaperCard({ paper, run, stage, anchor }: { paper: PaperCardData; run: RunDetail; stage: string; anchor: string }) {
+export type Choice = "include" | "exclude";
+
+/** Keep / Drop, while the literature checkpoint is open: sent together with the decision to request changes. */
+function ChoiceButtons({ paper, choice, onChoose }: { paper: PaperCardData; choice: Choice | null; onChoose: (c: Choice | null) => void }) {
+  const current = choice ?? paper.override;
+  const toggle = (c: Choice) => onChoose(choice === c || (choice === null && paper.override === c) ? null : c);
+  return (
+    <div className="flex gap-1" role="group" aria-label={`Keep or drop: ${paper.title}`}>
+      <button
+        type="button"
+        aria-pressed={current === "include"}
+        onClick={() => toggle("include")}
+        className={buttonStyles({ size: "sm", variant: current === "include" ? "primary" : "ghost" })}
+      >
+        <Check /> Keep
+      </button>
+      <button
+        type="button"
+        aria-pressed={current === "exclude"}
+        onClick={() => toggle("exclude")}
+        className={buttonStyles({ size: "sm", variant: current === "exclude" ? "danger" : "ghost" })}
+      >
+        <X /> Drop
+      </button>
+    </div>
+  );
+}
+
+export function PaperCard({
+  paper,
+  run,
+  stage,
+  anchor,
+  choice = null,
+  onChoose,
+}: {
+  paper: PaperCardData;
+  run: RunDetail;
+  stage: string;
+  anchor: string;
+  choice?: Choice | null; // marked on this page, not sent yet
+  onChoose?: (choice: Choice | null) => void; // only while the checkpoint is open
+}) {
   const [panel, setPanel] = useState<PanelKind | null>(null);
   const [uploading, setUploading] = useState(false);
   const detail = usePaper(run.project, run.run_id, paper.id, panel !== null);
@@ -62,8 +104,17 @@ export function PaperCard({ paper, run, stage, anchor }: { paper: PaperCardData;
             {paper.citation_count != null ? ` · ${paper.citation_count.toLocaleString()} citations` : ""}
           </p>
         </div>
-        <Badge tone={status.tone}>{status.label}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {paper.override && <Badge tone={paper.override === "include" ? "ok" : "neutral"}>{paper.override === "include" ? "Kept by you" : "Dropped by you"}</Badge>}
+          <Badge tone={status.tone}>{status.label}</Badge>
+          {onChoose && <ChoiceButtons paper={paper} choice={choice} onChoose={onChoose} />}
+        </div>
       </div>
+      {paper.summary && (
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-ink-soft" title="AI-written summary">
+          {paper.summary}
+        </p>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
         <Relevance value={paper.relevance} reason={paper.relevance_reason} />
         {paper.topics.map((topic) => (

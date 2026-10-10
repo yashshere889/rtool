@@ -37,7 +37,7 @@ export function Markdown({
         const paper = papers.get(decodeURIComponent(href.slice(5)));
         if (!paper) return <span className="text-bad">{children}</span>;
         return (
-          <Link to={readerPath(project, runId, stage, paper.paper_id)} title={paper.title} className="rounded bg-ok-soft/70 px-1 text-ok no-underline hover:underline">
+          <Link to={readerPath(project, runId, stage, paper.paper_id)} title={paper.title} className="rounded bg-ok-soft/70 px-1 text-ok underline decoration-ok/40 underline-offset-2">
             {children}
           </Link>
         );

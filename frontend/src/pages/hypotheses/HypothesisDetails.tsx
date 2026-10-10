@@ -72,10 +72,12 @@ export function Rubric({ h, weights }: { h: Hypothesis; weights: Record<string, 
                 <span className="cursor-help underline decoration-line decoration-dotted underline-offset-4">{c.label}</span>
               </Tooltip>
             </dt>
-            <dd className="flex gap-0.5" aria-label={`${scoreText(value)} out of 5`}>
-              {[1, 2, 3, 4, 5].map((i) => (
-                <span key={i} className={cn("h-2 flex-1 rounded-sm", value !== undefined && i <= value ? "bg-accent" : "bg-line")} />
-              ))}
+            <dd>
+              <span role="img" aria-label={`${scoreText(value)} out of 5`} className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <span key={i} className={cn("h-2 flex-1 rounded-sm", value !== undefined && i <= value ? "bg-accent" : "bg-line")} />
+                ))}
+              </span>
             </dd>
             <dd className="text-xs text-ink-soft tabular-nums">
               {scoreText(value)}/5{weights[c.key] ? ` · counts ${Math.round(weights[c.key] * 100)}%` : ""}
@@ -104,7 +106,7 @@ export function Novelty({ card, ctx }: { card: HypothesisCardData; ctx: Ctx }) {
       {closest && (
         <p className="text-ink-soft">
           Closest earlier work:{" "}
-          <Link to={readerPath(ctx.project, ctx.runId, ctx.stage, closest.id)} className="text-accent hover:underline">
+          <Link to={readerPath(ctx.project, ctx.runId, ctx.stage, closest.id)} className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             {closest.title}
           </Link>{" "}
           ({closest.year ?? "n.d."})
@@ -120,7 +122,7 @@ export function PapersUsed({ card, ctx }: { card: HypothesisCardData; ctx: Ctx }
     <ul className="space-y-2">
       {card.papers.map(({ paper, roles }) => (
         <li key={paper.id} className="rounded-lg border border-line bg-canvas/50 p-3">
-          <Link to={readerPath(ctx.project, ctx.runId, ctx.stage, paper.id)} className="text-sm leading-snug font-medium hover:text-accent hover:underline">
+          <Link to={readerPath(ctx.project, ctx.runId, ctx.stage, paper.id)} className="text-sm leading-snug font-medium hover:text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             {paper.title}
           </Link>
           <p className="mt-0.5 text-xs text-ink-soft">
@@ -179,7 +181,7 @@ export function Citations({ card, ctx }: { card: HypothesisCardData; ctx: Ctx })
               {paper && (
                 <Link
                   to={readerPath(ctx.project, ctx.runId, ctx.stage, paper.id, { quote: e.quote })}
-                  className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+                  className="inline-flex items-center gap-1 font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
                 >
                   <ScanSearch className="size-3.5" /> Show in paper
                 </Link>

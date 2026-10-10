@@ -270,6 +270,14 @@ class DemoModel:
         return paper.extraction()
 
     @staticmethod
+    def digest(request: ChatRequest) -> dict[str, Any]:
+        match = re.search(r"^Paper title: (.+)$", _last(request), re.M)
+        paper = data.BY_TITLE.get(match.group(1).strip()) if match else None
+        if paper is None:
+            return {"summary": "not stated", "design": "not stated", "sample": "not stated", "procedure": "not stated"}
+        return paper.digest()
+
+    @staticmethod
     def topic_label(request: ChatRequest) -> dict[str, Any]:
         titles = " ".join(re.findall(r"^- (.+?) \(\d{4}", _last(request), re.M)).lower()
         if "older" in titles or "ageing" in titles or "cognitive impairment" in titles:
@@ -403,6 +411,7 @@ def demo_llm() -> MockLLM:
         "SearchPlan": {"queries": data.SEARCH_QUERIES, "must_cover": ["closed-loop stimulation", "spindles"]},
         "RelevanceJudgment": model.relevance,
         "PaperExtraction": model.extraction,
+        "PaperDigest": model.digest,
         "TopicLabel": model.topic_label,
         "OpenProblems": model.open_problems,
         "Overview": model.overview,

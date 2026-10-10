@@ -36,7 +36,7 @@
   --accent: #2c5be8;
   --accent-soft: #e7edfd;
   --accent-ink: #ffffff;
-  --ok: #1d7f46;
+  --ok: #18703d; /* 5.3:1 on --ok-soft, 6.1:1 on white (WCAG AA) */
   --ok-soft: #e1f3e8;
   --warn: #9a5b00;
   --warn-soft: #fdf0d8;
@@ -115,6 +115,8 @@ body {
 }
 .rt-prose a {
   color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .rt-prose code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

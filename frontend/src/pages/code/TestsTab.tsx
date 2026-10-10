@@ -51,7 +51,7 @@ export function TestsTab({ run, view }: { run: RunDetail; view: CodeView }) {
                       </td>
                       <td className="py-2">
                         {file && (
-                          <button type="button" className="text-sm text-accent hover:underline" onClick={() => setLog({ name: file.name, title: file.label })}>
+                          <button type="button" className="text-sm text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent" onClick={() => setLog({ name: file.name, title: file.label })}>
                             Open
                           </button>
                         )}
@@ -94,7 +94,7 @@ export function TestsTab({ run, view }: { run: RunDetail; view: CodeView }) {
           <ul className="space-y-1 text-sm">
             {view.logs.map((l) => (
               <li key={l.name}>
-                <button type="button" className="text-accent hover:underline" onClick={() => setLog({ name: l.name, title: l.label })}>
+                <button type="button" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent" onClick={() => setLog({ name: l.name, title: l.label })}>
                   {l.label}
                 </button>{" "}
                 <span className="text-xs text-ink-soft">({fileSize(l.size)})</span>

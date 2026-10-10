@@ -36,7 +36,7 @@ export function QuoteBlock({ claim, showInPaper }: { claim: ClaimView; showInPap
           <Badge key={tag}>{tag}</Badge>
         ))}
         {showInPaper && (
-          <Link to={showInPaper} className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+          <Link to={showInPaper} className="inline-flex items-center gap-1 text-xs font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             <ScanSearch className="size-3.5" /> Show in paper
           </Link>
         )}

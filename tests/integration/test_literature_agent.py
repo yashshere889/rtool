@@ -222,6 +222,14 @@ def make_llm(calls: dict[str, int]) -> MockLLM:
     )
     llm.add(lambda r: schema(r) == "OpenProblems", counted("problems", open_problems))
     llm.add(lambda r: schema(r) == "Overview", counted("overview", overview))
+    digest = {
+        "summary": "Spindles were measured overnight; recall rose in 73 percent of sleepers.",  # 73 is made up
+        "design": "Correlational sleep study.",
+        "sample": "Healthy adults.",
+        "procedure": "Sleep was recorded and recall tested the next morning.",
+        "gaps": ["Causality is not shown."],
+    }
+    llm.add(lambda r: schema(r) == "PaperDigest", counted("digest", digest))
     return llm
 
 
@@ -281,6 +289,10 @@ def test_literature_agent_builds_a_verified_corpus_and_map(setup) -> None:  # no
     snapshot = run.root / corpus.kb_path
     kb = KnowledgeStore(snapshot, readonly=True)
     assert kb.search("spindle density recall", k=3)  # downstream agents can search full text
+    digests = [d["digest"] for d in kb.extractions().values() if "digest" in d]
+    assert len(digests) == len(kb.extractions()) == calls["digest"]  # one digest per paper that was read
+    assert digests[0]["gaps"] == ["Causality is not shown."]
+    assert any("73" in n for n in digests[0]["unverified_numbers"])  # a number the paper does not contain
     assert ("arxiv:2101.00001", "doi:10.1/thal") in kb.citations()
     kb.close()
     assert "literature_phase_done" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
@@ -312,14 +324,14 @@ def test_paper_stems_never_collide_on_dotted_ids() -> None:
 def test_rejecting_the_gate_reuses_downloads_and_reading(setup) -> None:  # noqa: ANN001
     run, services, documents, calls, sources = setup
     Engine(run, services).advance()
-    downloads, extractions = len(documents.downloads), calls["extract"]
+    downloads, extractions, digests = len(documents.downloads), calls["extract"], calls["digest"]
     from research_tool.testing.harness import queue
 
     queue(run, ActionKind.REJECT, payload={"feedback": "Also cover targeted memory reactivation."})
     result = Engine(run, services).advance()
     assert result.outcome is Outcome.WAITING_GATE
     assert len(documents.downloads) == downloads  # nothing downloaded twice
-    assert calls["extract"] == extractions  # nothing read twice
+    assert calls["extract"] == extractions and calls["digest"] == digests  # nothing read twice
     assert calls["plan"] == 2 and calls["relevance"] > 7  # replanned and re-screened with the feedback
     _, stages, _ = load_status(run)
     assert stages["literature"].attempt == 2
@@ -341,3 +353,27 @@ def test_papers_dropped_in_the_inbox_are_ingested(setup) -> None:  # noqa: ANN00
     mine = next(p for p in corpus.papers if p.doi == "10.9/mine")
     assert mine.found_by == ["manual"] and mine.status == "extracted" and mine.note == "added by hand"
     assert not list(inbox.iterdir())  # moved into papers/
+
+
+def test_papers_marked_to_keep_or_drop_are_applied_as_marked(setup) -> None:  # noqa: ANN001
+    from research_tool.testing.harness import queue
+
+    run, services, _, calls, _ = setup
+    Engine(run, services).advance()
+    corpus = ArtifactStore(run.artifacts_dir).get("corpus")
+    by_title = {p.title: p for p in corpus.papers}
+    drop, keep = by_title[HITS[0].title].id, by_title[HITS[4].title].id  # read in full / excluded at screening
+    screened = calls["relevance"]
+    queue(run, ActionKind.REJECT, payload={"include": [keep], "exclude": [drop, "doi:not-in-the-corpus"]})
+    assert Engine(run, services).advance().outcome is Outcome.WAITING_GATE
+    assert calls["relevance"] == screened  # choices only: nothing re-screened by the model
+    papers = {p.id: p for p in ArtifactStore(run.artifacts_dir).get("corpus").papers}
+    assert (papers[drop].status, papers[drop].override, papers[drop].note) == ("excluded", "exclude", "dropped by you")
+    assert papers[keep].status != "excluded" and papers[keep].override == "include"
+    assert "literature_choices_applied" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+
+    queue(run, ActionKind.REJECT, payload={"feedback": "Also cover targeted memory reactivation."})
+    Engine(run, services).advance()  # re-screened with the comment: the researcher's choices still stand
+    papers = {p.id: p for p in ArtifactStore(run.artifacts_dir).get("corpus").papers}
+    assert calls["relevance"] > screened
+    assert papers[drop].status == "excluded" and papers[keep].status != "excluded"

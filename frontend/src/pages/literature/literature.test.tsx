@@ -5,8 +5,9 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { PaperDetail, RunDetail } from "@/api/types";
+import type { OpenGate, PaperDetail, RunDetail } from "@/api/types";
 
+import { ChoicesBar } from "./LiteraturePage";
 import { PaperPanel } from "./PaperPanels";
 import { UploadDialog } from "./UploadDialog";
 
@@ -107,5 +108,58 @@ describe("paper panels", () => {
     render(wrap(<PaperPanel kind="methodology" detail={detail} ctx={ctx} />));
     expect(screen.getAllByText("Not stated in the paper.")).toHaveLength(2);
     expect(screen.getByText(/no section the agent recognised as its methods/)).toBeInTheDocument();
+  });
+});
+
+describe("keeping and dropping papers", () => {
+  it("sends the marked papers with an optional comment, bound to the checkpoint", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ action: { id: "b".repeat(32) }, kick: { submitted: false, detail: "ok" } }, 202));
+    vi.stubGlobal("fetch", fetch);
+    const sent = vi.fn();
+    const titles = new Map([["doi:1", "Kept paper"], ["doi:2", "Dropped paper"]]);
+    render(wrap(<ChoicesBar run={run} gate={gate as OpenGate} choices={{ "doi:1": "include", "doi:2": "exclude" }} titles={titles} onSent={sent} />));
+    expect(screen.getByText("You marked 1 to keep and 1 to drop.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Send to the literature agent/ }));
+    expect(screen.getByText("Dropped paper")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Anything else/), "More on older adults");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sent).toHaveBeenCalled());
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      kind: "reject",
+      stage: "literature",
+      gate: "literature_review",
+      payload: {
+        feedback: "More on older adults",
+        include: ["doi:1"],
+        exclude: ["doi:2"],
+        expect: { gate_nonce: "n1", artifacts: { corpus: 1 } },
+      },
+    });
+  });
+
+  it("labels the AI digest as such and flags numbers it may have made up", () => {
+    const withDigest = {
+      paper: { id: "doi:1", read: "full_text", links: {}, authors: ["A. Morgan"], title: "T", year: 2019 },
+      problem: "",
+      approach: "",
+      methods: [],
+      datasets: [],
+      metrics: [],
+      claims: [],
+      methods_section: "",
+      section_titles: [],
+      gaps: [],
+      open_problems: [],
+      coverage: [],
+      cites: [],
+      cited_by: [],
+      bibtex: "",
+      digest: { summary: "A short summary.", design: "Crossover", sample: "24 adults", procedure: "Two nights.", gaps: ["Only young adults"], unverified_numbers: ["…in 73 percent…"] },
+    } as unknown as PaperDetail;
+    const ctx = { project: "sleep", runId: "r1", stage: "literature" };
+    render(wrap(<PaperPanel kind="summary" detail={withDigest} ctx={ctx} />));
+    expect(screen.getByText("A short summary.")).toBeInTheDocument();
+    expect(screen.getByText(/AI-written · not checked against quotes/)).toBeInTheDocument();
+    expect(screen.getByText(/numbers not found in the paper's text/)).toBeInTheDocument();
   });
 });

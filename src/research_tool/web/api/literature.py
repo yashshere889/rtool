@@ -65,6 +65,8 @@ class PaperCard(BaseModel):
     topics: list[str]
     claims: dict[str, int]  # verified claims by kind: result, limitation, future_work
     links: PaperLinks
+    summary: str  # the AI digest's summary ("" if there is none)
+    override: Literal["include", "exclude"] | None  # kept or dropped by the researcher
 
 
 class TopicView(BaseModel):
@@ -116,6 +118,17 @@ class LiteratureView(BaseModel):
     keys: dict[str, str]  # bib key -> paper id
 
 
+class DigestView(BaseModel):
+    """The model's plain-language digest of a paper (AI-written: not checked against quotes)."""
+
+    summary: str
+    design: str
+    sample: str
+    procedure: str
+    gaps: list[str]
+    unverified_numbers: list[str]  # numbers in the digest that the paper text does not contain
+
+
 class ClaimView(BaseModel):
     index: int  # position among this paper's claims (highlights refer to it)
     kind: str
@@ -152,6 +165,7 @@ class PaperDetail(BaseModel):
     cites: list[PaperRef]  # papers in this corpus that this paper cites
     cited_by: list[PaperRef]  # papers in this corpus that cite this paper
     bibtex: str
+    digest: DigestView | None
 
 
 class TextSection(BaseModel):
@@ -225,7 +239,10 @@ class _Literature:
     def claims_of(self, paper_id: str) -> list[Claim]:
         return [c for c in (self.km.claims if self.km else []) if c.paper_id == paper_id]
 
-    def card(self, paper: PaperRecord, read: Read) -> PaperCard:
+    def card(self, paper: PaperRecord, kb: KnowledgeStore | None) -> PaperCard:
+        found = kb.extraction(paper.id) if kb is not None else None
+        read: Read = "none" if found is None else "abstract" if found[1].get("abstract_only") else "full_text"
+        digest = (found[0].get("digest") or {}) if found else {}
         included = paper.status not in ("candidate", "excluded")
         claims: dict[str, int] = {}
         for claim in self.claims_of(paper.id):
@@ -253,6 +270,8 @@ class _Literature:
             found_by=paper.found_by,
             topics=[t.label for t in (self.km.topics if self.km else []) if paper.id in t.paper_ids],
             claims=claims,
+            summary=str(digest.get("summary", "")),
+            override=paper.override,
             links=PaperLinks(
                 doi=f"https://doi.org/{paper.doi}" if paper.doi else None,
                 arxiv=f"https://arxiv.org/abs/{paper.arxiv_id}" if paper.arxiv_id else None,
@@ -302,7 +321,7 @@ def literature(project: str, run_id: str, request: Request) -> LiteratureView:
     lit = _Literature(get_run(request, project, run_id))
     km = lit.km
     with lit.kb() as kb:
-        cards = [lit.card(p, lit.how_read(kb, p)) for p in lit.corpus.papers]
+        cards = [lit.card(p, kb) for p in lit.corpus.papers]
     return LiteratureView(
         stage=lit.stage,
         corpus_version=lit.corpus_version,
@@ -330,7 +349,7 @@ def paper_detail(project: str, run_id: str, id: str, request: Request) -> PaperD
     lit = _Literature(get_run(request, project, run_id))
     paper = _paper(lit, id)
     with lit.kb() as kb:
-        read = lit.how_read(kb, paper)
+        card = lit.card(paper, kb)
         extraction = (kb.extraction(paper.id) if kb else None) or ({}, {})
         sections = kb.sections(paper.id) if kb else []
         edges = kb.citations() if kb else []
@@ -344,8 +363,10 @@ def paper_detail(project: str, run_id: str, id: str, request: Request) -> PaperD
     bib_path = lit.run.root / lit.corpus.bibtex_path if lit.corpus.bibtex_path else None
     if paper.bib_key and bib_path is not None and bib_path.is_file():
         bibtex = bibtex_subset(bib_path.read_text(encoding="utf-8"), [paper.bib_key]).strip()
+    digest = data.get("digest")
     return PaperDetail(
-        paper=lit.card(paper, read),
+        paper=card,
+        digest=DigestView.model_validate({"unverified_numbers": [], **digest}) if digest else None,
         problem=str(data.get("problem", "")),
         approach=str(data.get("approach", "")),
         methods=list(data.get("methods", [])),

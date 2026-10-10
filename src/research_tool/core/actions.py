@@ -1,4 +1,4 @@
-"""Action inbox: how the CLI (or a future UI) talks to the engine.
+"""Action inbox: how the CLI and the web UI talk to the engine.
 
 The CLI never edits engine state directly. It drops an action file into
 ``actions/``; the next episode applies it while holding the run lease and moves

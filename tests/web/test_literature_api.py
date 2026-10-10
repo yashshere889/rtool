@@ -38,6 +38,9 @@ def test_one_paper_in_detail(runs_root: Path) -> None:
     assert detail["problem"].startswith("Whether strengthening slow oscillations")
     assert "closed-loop auditory stimulation" in detail["methods"] and detail["datasets"]
     assert "Twenty-four healthy adults" in detail["methods_section"]  # the paper's own methods text
+    digest = detail["digest"]
+    assert digest["summary"] and digest["design"] and digest["gaps"] and digest["unverified_numbers"] == []
+    assert detail["paper"]["summary"] == digest["summary"] and detail["paper"]["override"] is None
     kinds = [c["kind"] for c in detail["claims"]]
     assert kinds.count("result") == 3 and all(c["verified"] for c in detail["claims"])
     assert [r["bib_key"] for r in detail["cited_by"]][:1] and any(
@@ -86,3 +89,14 @@ def test_uploading_a_paper_you_have(runs_root: Path) -> None:
     assert wrong.status_code == 422
     other = c.put(url, params=params, content=b"x", headers={**WRITE, "content-type": "image/png"})
     assert other.status_code == 415
+
+
+def test_rejecting_with_papers_to_keep_or_drop(runs_root: Path) -> None:
+    c = web_client(runs_root)
+    url = "/api/runs/sleep-demo/1-literature/actions"
+    body = {"kind": "reject", "stage": "literature", "gate": "literature_review", "payload": {}}
+    assert c.post(url, json=body, headers=WRITE).status_code == 422  # neither a comment nor a choice
+    bad = {**body, "payload": {"exclude": "doi:1"}}
+    assert c.post(url, json=bad, headers=WRITE).status_code == 422
+    chosen = {**body, "payload": {"exclude": [MORGAN], "include": []}}
+    assert c.post(url, json=chosen, headers=WRITE).status_code == 202

@@ -10,6 +10,9 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, type RefObject } fr
 
 import { useDark } from "@/lib/useDark";
 
+// read-only editors are not focusable by default; keyboard users still need to scroll and read them
+const focusable = EditorView.contentAttributes.of({ tabindex: "0" });
+
 const frame = EditorView.theme({
   "&": { fontSize: "13px", border: "1px solid var(--line)", borderRadius: "0.75rem", overflow: "hidden" },
   ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.55" },
@@ -36,6 +39,7 @@ function useEditor(
         doc,
         extensions: [
           ...extensions,
+          focusable,
           theme.current.of(dark ? oneDark : []),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) changed.current?.(update.state.doc.toString());

@@ -1,0 +1,24 @@
+Write a short digest of the paper below for a researcher deciding whether to read it in full, for a literature review on: {{ topic }}
+
+Rules:
+- Use only the paper text and the facts below. If something is not stated, write "not stated".
+- Plain language, no citations, and no numbers that are not in the paper text.
+- summary: two or three sentences: what was studied, how, and the main finding.
+- design: the study design in one sentence.
+- sample: who or what was studied (participants, datasets, systems).
+- procedure: the main steps, in two to four short sentences.
+- gaps: up to three open questions or weaknesses that this paper leaves, judged from its own text.
+
+Facts already extracted from the paper:
+Problem: {{ facts.problem }}
+Approach: {{ facts.approach }}
+{% if facts.methods %}Methods: {{ facts.methods | join(", ") }}
+{% endif %}{% if facts.datasets %}Data: {{ facts.datasets | join(", ") }}
+{% endif %}{% for r in facts.key_results[:4] %}Result: {{ r.claim }}
+{% endfor %}{% for l in facts.limitations[:3] %}Limitation: {{ l.statement }}
+{% endfor %}
+Paper title: {{ title }}
+Paper text:
+<<<
+{{ text }}
+>>>

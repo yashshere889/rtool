@@ -118,7 +118,7 @@ export function PlanForm({
         <p className="leading-relaxed">{title ? <span className="font-medium">{title}: </span> : null}{value.hypothesis}</p>
         <p className="text-sm text-ink-soft">
           The hypothesis comes from your choice; to test another one,{" "}
-          <Link to={hypothesesPath} className="text-accent hover:underline">
+          <Link to={hypothesesPath} className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             change it on the Hypotheses page
           </Link>
           .
@@ -189,7 +189,7 @@ export function PlanForm({
                 {(shown ?? r).license && <span className="text-ink-soft">licence {(shown ?? r).license}</span>}
                 {(shown ?? r).size_gb != null && <span className="text-ink-soft">{(shown ?? r).size_gb} GB</span>}
                 {link && (
-                  <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+                  <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
                     Look it up <ExternalLink className="size-3" />
                   </a>
                 )}

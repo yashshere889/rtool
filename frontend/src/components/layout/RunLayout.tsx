@@ -71,7 +71,7 @@ export function RunLayout() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
         {run.error instanceof ApiError && run.error.status === 404 ? (
-          <Empty title="This run does not exist" action={<Link to="/" className="text-accent hover:underline">All projects</Link>}>
+          <Empty title="This run does not exist" action={<Link to="/" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">All projects</Link>}>
             {project}/{runId} was not found in this server's runs folder.
           </Empty>
         ) : (

@@ -81,7 +81,20 @@ export function AppShell() {
       <main id="main">
         <Outlet />
       </main>
-      <Toaster position="bottom-right" richColors closeButton theme="system" />
+      <Toaster
+        position="bottom-right"
+        closeButton
+        toastOptions={{
+          // the app's own colours (readable in both themes, and following the app's theme switch)
+          classNames: {
+            toast: "!bg-surface !text-ink !border-line",
+            description: "!text-ink-soft",
+            success: "!border-l-4 !border-l-ok",
+            error: "!border-l-4 !border-l-bad",
+            closeButton: "!bg-surface !text-ink-soft !border-line",
+          },
+        }}
+      />
     </div>
   );
 }

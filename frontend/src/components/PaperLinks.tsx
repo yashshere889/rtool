@@ -16,7 +16,7 @@ export function ExternalLinks({ links, className }: { links: PaperCardData["link
   return (
     <div className={className ?? "flex flex-wrap gap-3 text-sm"}>
       {items.map(([label, href]) => (
-        <a key={label} href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+        <a key={label} href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
           {label} <ExternalLink className="size-3.5" />
         </a>
       ))}

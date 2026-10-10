@@ -219,12 +219,17 @@ class _Code:
         return {key: rel for key, (_, rel) in found.items()}
 
 
+def _inside(path: Path, root: Path) -> bool:
+    """A real file in the code folder: not a symlink (the experiment could plant one to a file elsewhere)."""
+    return path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root.resolve())
+
+
 def _files(code: _Code) -> list[CodeFileView]:
     out = []
     root = code.code
     for path in sorted(root.rglob("*")) if root.is_dir() else []:
         rel = path.relative_to(root)
-        if not path.is_file() or HIDDEN & set(rel.parts) or rel.name.startswith("."):
+        if not _inside(path, root) or HIDDEN & set(rel.parts) or rel.name.startswith("."):
             continue
         name = str(rel)
         role = "experiment" if name == "experiment.py" else ROLES.get(name, "other")
@@ -413,7 +418,7 @@ def archive(project: str, run_id: str, request: Request) -> Response:
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(code.code.rglob("*")) if code.code.is_dir() else []:
             rel = path.relative_to(code.code)
-            if path.is_file() and not HIDDEN & set(rel.parts) and not rel.name.startswith("."):
+            if _inside(path, code.code) and not HIDDEN & set(rel.parts) and not rel.name.startswith("."):
                 zf.write(path, f"{run_id}-code/{rel}")
     return Response(
         buffer.getvalue(),

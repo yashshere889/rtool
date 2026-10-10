@@ -1,16 +1,17 @@
-import { FilePlus2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { FilePlus2, Send, X } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { ApiError } from "@/api/client";
 import { useLiterature } from "@/api/hooks";
-import type { PaperCardData, RunDetail, StageSummary } from "@/api/types";
-import { CheckpointCard } from "@/components/CheckpointCard";
+import type { OpenGate, PaperCardData, RunDetail, StageSummary } from "@/api/types";
+import { CheckpointCard, useGateDecision } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
 import { ReopenButton } from "@/components/ReopenDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
+import { Input, Textarea } from "@/components/ui/field";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { STAGES } from "@/lib/stages";
@@ -18,7 +19,7 @@ import { STAGES } from "@/lib/stages";
 import { GapsTab } from "./GapsTab";
 import { MapTab, type PaperFilter } from "./MapTab";
 import { OverviewTab } from "./OverviewTab";
-import { PaperCard } from "./PaperCard";
+import { PaperCard, type Choice } from "./PaperCard";
 import { SearchTab } from "./SearchTab";
 import { UploadDialog } from "./UploadDialog";
 
@@ -40,6 +41,84 @@ const SORT: Record<Sort, [string, (a: PaperCardData, b: PaperCardData) => number
   citations: ["Most cited", (a, b) => (b.citation_count ?? 0) - (a.citation_count ?? 0)],
 };
 
+/** The papers marked Keep or Drop on this page, sent with "request changes" (the agent applies them as marked). */
+export function ChoicesBar({
+  run,
+  gate,
+  choices,
+  titles,
+  onSent,
+}: {
+  run: RunDetail;
+  gate: OpenGate;
+  choices: Record<string, Choice>;
+  titles: Map<string, string>;
+  onSent: () => void;
+}) {
+  const { send, decide } = useGateDecision(run, gate);
+  const [open, setOpen] = useState(false);
+  const [comment, setComment] = useState("");
+  const commentId = useId();
+  const include = Object.keys(choices).filter((id) => choices[id] === "include");
+  const exclude = Object.keys(choices).filter((id) => choices[id] === "exclude");
+  return (
+    <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-accent/40 bg-surface px-4 py-3 shadow-lg">
+      <span className="text-sm">
+        You marked {include.length} to keep and {exclude.length} to drop.
+      </span>
+      <Button variant="ghost" size="sm" className="ml-auto" onClick={onSent}>
+        Clear
+      </Button>
+      <Button size="sm" onClick={() => setOpen(true)}>
+        <Send /> Send to the literature agent
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          title="Request changes to the literature"
+          description="The papers are kept or dropped exactly as you marked them, and the agent runs again (downloading and reading what it now needs)."
+        >
+          <div className="space-y-3 text-sm">
+            {include.length > 0 && (
+              <div>
+                <p className="font-medium">Keep</p>
+                <ul className="list-disc pl-5 text-ink-soft">{include.map((id) => <li key={id}>{titles.get(id) ?? id}</li>)}</ul>
+              </div>
+            )}
+            {exclude.length > 0 && (
+              <div>
+                <p className="font-medium">Drop</p>
+                <ul className="list-disc pl-5 text-ink-soft">{exclude.map((id) => <li key={id}>{titles.get(id) ?? id}</li>)}</ul>
+              </div>
+            )}
+            <label htmlFor={commentId} className="block font-medium">
+              Anything else? (optional: with a comment the papers are also screened again)
+            </label>
+            <Textarea id={commentId} rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="For example: also cover studies in older adults." />
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button
+              busy={decide.isPending}
+              onClick={() =>
+                send("reject", { feedback: comment.trim(), include, exclude }, "Request changes to the literature", {
+                  onSuccess: () => {
+                    setOpen(false);
+                    onSent();
+                  },
+                })
+              }
+            >
+              Send
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="rounded-lg border border-line bg-surface px-4 py-3">
@@ -58,6 +137,16 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
   const [text, setText] = useState("");
   const [filter, setFilter] = useState<PaperFilter | null>(null);
   const [adding, setAdding] = useState(false);
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const gate = stage.gate && !stage.gate.in_stage && stage.gate.kind === "approve" ? stage.gate : null;
+  const queuedDecision = gate && run.queued_actions.some((a) => a.stage === gate.stage && a.gate === gate.gate);
+  const choose = (id: string) => (choice: Choice | null) =>
+    setChoices((prev) => {
+      const next = { ...prev };
+      if (choice === null) delete next[id];
+      else next[id] = choice;
+      return next;
+    });
 
   const papers = useMemo(() => {
     const data = literature.data?.papers ?? [];
@@ -187,9 +276,26 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
           ) : (
             <div className="space-y-3">
               {papers.map((paper, i) => (
-                <PaperCard key={paper.id} paper={paper} run={run} stage={view.stage} anchor={`paper-${i}`} />
+                <PaperCard
+                  key={paper.id}
+                  paper={paper}
+                  run={run}
+                  stage={view.stage}
+                  anchor={`paper-${i}`}
+                  choice={choices[paper.id] ?? null}
+                  onChoose={gate && !queuedDecision ? choose(paper.id) : undefined}
+                />
               ))}
             </div>
+          )}
+          {gate && !queuedDecision && Object.keys(choices).length > 0 && (
+            <ChoicesBar
+              run={run}
+              gate={gate}
+              choices={choices}
+              titles={new Map(view.papers.map((p) => [p.id, p.title]))}
+              onSent={() => setChoices({})}
+            />
           )}
         </TabsContent>
         <TabsContent value="map" className="mt-4">

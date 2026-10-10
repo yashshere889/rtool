@@ -35,6 +35,7 @@ from ...schemas.literature import (
     KnowledgeMap,
     OpenProblems,
     Overview,
+    PaperDigest,
     PaperExtraction,
     PaperRecord,
     RelevanceJudgment,
@@ -45,13 +46,14 @@ from ...schemas.literature import (
 from ...tools.documents.convert import ConversionError, document_to_text
 from ...tools.documents.sections import budgeted_text, chunk_sections, main_text, split_sections
 from ...tools.http import HttpError
+from ...tools.report.render import bare_numbers
 from ...tools.scholarly.base import PaperHit, bib_key
 from ...tools.scholarly.merge import PaperIndex
 from . import mapping
 from .toolkit import LiteratureToolkit, build_toolkit
 
 SYSTEM = "You are a careful research assistant. Follow the instructions exactly and never invent facts or citations."
-PHASES = ("plan", "search", "screen", "snowball", "download", "parse", "extract", "embed", "map")
+PHASES = ("plan", "search", "screen", "snowball", "download", "parse", "extract", "digest", "embed", "map")
 INCLUDED = ("included", "downloaded", "unavailable", "parsed", "extracted", "failed")
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -72,6 +74,8 @@ class LiteratureConfig(BaseModel):
     download: bool = True
     max_download_mb: int = Field(default=60, ge=1)
     extract_chars: int = Field(default=40_000, ge=2_000)  # ~10k tokens of paper text per extraction call
+    digest: bool = True  # a short plain-language digest per paper (one small extra call each)
+    digest_chars: int = Field(default=12_000, ge=1_000)
     min_text_chars: int = Field(default=1_500, ge=0)  # less than this after parsing = scanned PDF or bad download
     quote_threshold: float = Field(default=0.85, gt=0, le=1)
     overview_papers: int = Field(default=40, ge=1)
@@ -130,7 +134,12 @@ class _LiteratureRun:
         self.kb = kb
         self.brief: ResearchBrief = ctx.inputs.get("research_brief")
         self.prompts = PromptLibrary.for_agent(__package__, "literature", pack=self.brief.domain_pack)
-        self.feedback = [f.text for f in ctx.feedback]
+        # what the researcher wrote (choices made by clicking are applied below, not handed to the model)
+        self.feedback = [f.text for f in ctx.feedback if not f.data.get("choices_only")]
+        self.choices: dict[str, str] = {}  # paper id -> include | exclude, the latest decision wins
+        for item in ctx.feedback:
+            for choice in ("include", "exclude"):
+                self.choices.update({str(pid): choice for pid in item.data.get(choice, []) or []})
         self.state = ctx.state
         self.index = PaperIndex(kb.papers())
         self.provenance: dict[str, Any] = self.state.setdefault("provenance", {})
@@ -154,6 +163,7 @@ class _LiteratureRun:
         return prompt.text
 
     def execute(self) -> None:
+        self.record_choices()
         done = set(self.state.get("done", []))
         for phase in PHASES:
             if phase in done:
@@ -205,9 +215,32 @@ class _LiteratureRun:
         self.screen(rescreen=bool(self.feedback) and not self.state.get("rescreened"))
         self.state["rescreened"] = True
 
+    def record_choices(self) -> None:
+        """Papers the researcher marked to keep or drop: remembered on the paper, so later screening respects them."""
+        papers = {p.id: p for p in self.index.all()}
+        applied = {pid: choice for pid, choice in self.choices.items() if pid in papers}
+        for pid, choice in applied.items():
+            papers[pid].override = choice  # type: ignore[assignment]
+        if applied:
+            self.apply_overrides()
+            self.save()
+            self.ctx.emit(
+                "literature_choices_applied",
+                kept=sum(c == "include" for c in applied.values()),
+                dropped=sum(c == "exclude" for c in applied.values()),
+            )
+
+    def apply_overrides(self) -> None:
+        for paper in self.index.all():
+            if paper.override == "exclude" and paper.status != "excluded":
+                paper.status, paper.note = "excluded", "dropped by you"
+            elif paper.override == "include" and paper.status in ("candidate", "excluded"):
+                paper.status, paper.note = "included", "kept by you"
+
     def screen(self, rescreen: bool = False) -> None:
         todo = [p for p in self.index.all() if p.relevance is None or (rescreen and p.status != "candidate")]
         if not todo:
+            self.apply_overrides()
             return
         prompts = [self.render("relevance.j2", brief=self.brief, paper=p, feedback=self.feedback) for p in todo]
         results = self.ctx.llm.structured_many(RelevanceJudgment, prompts, profile="extract", system=SYSTEM)
@@ -224,11 +257,14 @@ class _LiteratureRun:
             elif not keep:
                 paper.status = "excluded"  # already read, but no longer relevant
         self.apply_cap()
+        self.apply_overrides()
         self.save()
         self.ctx.emit("literature_screened", screened=len(todo), failures=failures, included=len(self.included()))
 
     def apply_cap(self) -> None:
         ranked = sorted(self.included(), key=lambda p: (p.relevance or 0, p.citation_count or 0), reverse=True)
+        kept = [p for p in ranked if p.override == "include"]  # the researcher's picks count first
+        ranked = kept + [p for p in ranked if p.override != "include"]
         for paper in ranked[self.cfg.max_papers :]:
             paper.status = "excluded"
             paper.note = "below the corpus size cap"
@@ -400,6 +436,49 @@ class _LiteratureRun:
                 paper.status = "extracted"
         self.save()
         self.ctx.emit("literature_extracted", papers=len(todo) - failures, failures=failures)
+
+    # --------------------------------------------------------------- digest
+    def phase_digest(self) -> None:
+        """A digest per paper (summary, design, sample, procedure, gaps) for the reader: model prose, so the UI
+        marks it as AI-written, and numbers in it that the paper text does not contain are listed.
+
+        Papers that already have one are skipped, so an older knowledge base is filled in on the next run.
+        """
+        if not self.cfg.digest:
+            return
+        todo: list[tuple[PaperRecord, dict[str, Any], dict[str, Any], str]] = []
+        for paper in self.included():
+            found = self.kb.extraction(paper.id)
+            if found is None or "digest" in found[0]:
+                continue
+            sections = self.kb.sections(paper.id)
+            text = budgeted_text(sections, self.cfg.digest_chars) if sections else paper.abstract
+            if text:
+                todo.append((paper, *found, text))
+        if not todo:
+            return
+        prompts = [
+            self.render(
+                "digest.j2",
+                topic=self.brief.topic,
+                title=paper.title,
+                text=text,
+                facts=PaperExtraction.model_validate(data),
+            )
+            for paper, data, _meta, text in todo
+        ]
+        results = self.ctx.llm.structured_many(PaperDigest, prompts, profile="extract", system=SYSTEM)
+        failures = 0
+        for (paper, data, meta, text), result in zip(todo, results, strict=True):
+            if isinstance(result, Exception):
+                failures += 1
+                continue
+            prose = " ".join([result.summary, result.design, result.sample, result.procedure, *result.gaps])
+            numbers = {float(n) for n in re.findall(r"\d+(?:\.\d+)?", text)}
+            digest = {**result.model_dump(), "unverified_numbers": bare_numbers(prose, numbers)}
+            meta = {**meta, "digest_hash": self.provenance["digest.j2"]}
+            self.kb.put_extraction(paper.id, {**data, "digest": digest}, meta)
+        self.ctx.emit("literature_digested", papers=len(todo) - failures, failures=failures)
 
     # ---------------------------------------------------------------- embed
     def phase_embed(self) -> None:

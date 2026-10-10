@@ -30,11 +30,11 @@ export function ResultsTab({ run }: { run: RunDetail }) {
         </span>
         <span className="ml-auto flex gap-3">
           {r.tables_path && (
-            <a href={fileUrl(run.project, run.run_id, r.tables_path)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+            <a href={fileUrl(run.project, run.run_id, r.tables_path)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
               <FileText className="size-4" /> Tables
             </a>
           )}
-          <a href={fileUrl(run.project, run.run_id, r.results_path)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+          <a href={fileUrl(run.project, run.run_id, r.results_path)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             <FileText className="size-4" /> results.json
           </a>
         </span>

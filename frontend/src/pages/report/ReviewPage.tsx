@@ -32,6 +32,7 @@ function Scores({ view }: { view: ReviewView }) {
   const scores = Object.entries(view.review.scores);
   if (!scores.length) return <p className="text-sm text-ink-soft">The automatic review did not produce scores.</p>;
   return (
+    <div className="space-y-2">
     <dl className="space-y-2">
       {scores.map(([name, value]) => {
         const info = CRITERIA[name] ?? { label: name, help: "" };
@@ -43,16 +44,19 @@ function Scores({ view }: { view: ReviewView }) {
                 <span className="cursor-help underline decoration-line decoration-dotted underline-offset-4">{info.label}</span>
               </Tooltip>
             </dt>
-            <dd className="relative h-2.5 rounded-full bg-muted" aria-label={`${value} out of 5`}>
-              <span className={cn("absolute inset-y-0 left-0 rounded-full", low ? "bg-warn" : "bg-ok")} style={{ width: `${(value / 5) * 100}%` }} />
-              <span className="absolute -top-1 -bottom-1 w-0.5 bg-ink-soft/60" style={{ left: `${(view.min_score / 5) * 100}%` }} title={`needed to accept: ${view.min_score}`} />
+            <dd>
+              <span role="img" aria-label={`${value} out of 5`} className="relative block h-2.5 rounded-full bg-muted">
+                <span className={cn("absolute inset-y-0 left-0 rounded-full", low ? "bg-warn" : "bg-ok")} style={{ width: `${(value / 5) * 100}%` }} />
+                <span className="absolute -top-1 -bottom-1 w-0.5 bg-ink-soft/60" style={{ left: `${(view.min_score / 5) * 100}%` }} />
+              </span>
             </dd>
             <dd className={cn("text-right tabular-nums", low && "font-semibold text-warn")}>{value}/5</dd>
           </div>
         );
       })}
-      <p className="text-xs text-ink-soft">Median of independent reviews; the line marks the score needed to accept ({view.min_score}).</p>
     </dl>
+    <p className="text-xs text-ink-soft">Median of independent reviews; the line marks the score needed to accept ({view.min_score}).</p>
+    </div>
   );
 }
 
@@ -103,7 +107,7 @@ function ReviewTab({ view, goToSection }: { view: ReviewView; goToSection: (id: 
                 <li key={i} className="rounded-lg border border-line bg-canvas/40 p-3 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={issue.severity === "major" ? "bad" : "neutral"}>{issue.severity}</Badge>
-                    <button type="button" className="font-medium text-accent hover:underline" onClick={() => goToSection(issue.section)}>
+                    <button type="button" className="font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent" onClick={() => goToSection(issue.section)}>
                       {issue.section.replace(/_/g, " ")}
                     </button>
                     <Badge tone={state.tone}>{state.label}</Badge>

@@ -42,7 +42,17 @@ re-entered with its saved `ctx.state`; a commit that was half done is finished.
 
 **Gates.** After a stage (`gate:` in the YAML) or inside one (`ctx.gate(...)`,
 e.g. the Coder's `gpu_runs` before spending GPU hours). Humans answer with
-`rtool approve | reject -f "…" | select <n>`; any gate can be set to `auto`.
+`rtool approve | reject -f "…" | select <n>` or in the web UI; any gate can be set to
+`auto`. A finished stage's gate can be reopened (`rtool reopen`): later stages are
+redone only if the decision changes its outputs.
+
+**Hand edits.** A researcher can replace an output with an edited version
+(`rtool edit`, or the plan, report and final report pages): the owning agent
+registers an editor (`core/editing.py`) that recomputes what follows from the
+edit and refuses what would break later stages; the new version is made by
+`human:<user>` and stales only what read the old one. Agents may also declare
+files researchers can rewrite while the stage waits for them (`editable_files`,
+the Coder's `experiment.py`). See [frontend.md](frontend.md).
 
 **Change requests.** A later stage can ask the producer of one of its inputs
 to redo its work (`ctx.request_change(artifact=…)`): the Writer when planned

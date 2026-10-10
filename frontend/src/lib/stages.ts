@@ -68,7 +68,9 @@ const GATES: Record<string, GateInfo> = {
     title: "Review the literature",
     approve: "Approve & continue",
     reject: "Request changes",
-    help: "Approving moves on to the hypotheses. Requesting changes searches and screens again with your comments.",
+    help:
+      "Approving moves on to the hypotheses. Requesting changes searches and screens again with your comments; " +
+      "you can also mark papers Keep or Drop on the Literature page.",
   },
   hypothesis_selection: {
     title: "Choose a hypothesis",

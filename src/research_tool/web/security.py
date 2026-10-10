@@ -12,7 +12,11 @@ other sites. So:
   cannot send without a CORS preflight, which is never granted) and, if the
   browser sends one, a loopback ``Origin``;
 * responses carry headers that stop sniffing, framing by other sites and
-  referrer leaks.
+  referrer leaks;
+* request bodies are capped (paper uploads 64 MB, everything else 8 MB);
+* the session cookie is named after the port, because browsers send a host's
+  cookies to every port: two servers on one machine must not sign each
+  other out.
 """
 
 from __future__ import annotations
@@ -29,6 +33,8 @@ SESSION_COOKIE = "rtool_session"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 PUBLIC_PATHS = frozenset({"/api/health", "/api/session"})
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+MAX_BODY = 8 * 1024 * 1024
+MAX_UPLOAD_BODY = 64 * 1024 * 1024  # PUT …/literature/inbox (the route itself allows 60 MB)
 SECURITY_HEADERS = [
     (b"x-content-type-options", b"nosniff"),
     (b"referrer-policy", b"no-referrer"),
@@ -60,6 +66,17 @@ def is_loopback(netloc: str) -> bool:
     return hostname(netloc) in LOOPBACK_HOSTS
 
 
+def cookie_name(host: str) -> str:
+    """rtool_session_8765 for Host 127.0.0.1:8765 (a host's cookies reach all its ports, so name them apart)."""
+    netloc = host.strip().lower()
+    port = netloc.rsplit(":", 1)[1] if netloc.count(":") == 1 or "]:" in netloc else ""
+    return f"{SESSION_COOKIE}_{port}" if port.isdigit() else SESSION_COOKIE
+
+
+def body_limit(path: str) -> int:
+    return MAX_UPLOAD_BODY if path.endswith("/literature/inbox") else MAX_BODY
+
+
 class SecurityMiddleware:
     def __init__(self, app: ASGIApp, *, token: str) -> None:
         self.app = app
@@ -76,6 +93,21 @@ class SecurityMiddleware:
             status, detail = problem
             await self.reply(send, status, detail)
             return
+        limit = body_limit(scope["path"])
+        declared = headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > limit:
+            await self.reply(send, 413, f"the request is too large (at most {limit // (1024 * 1024)} MB)")
+            return
+        received = 0
+
+        async def receive_capped() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:  # a body without (or with a false) Content-Length: stop reading it
+                    return {"type": "http.disconnect"}
+            return message
 
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -85,7 +117,7 @@ class SecurityMiddleware:
                 ]
             await send(message)
 
-        await self.app(scope, receive, send_with_headers)
+        await self.app(scope, receive_capped, send_with_headers)
 
     def authenticated(self, headers: dict[str, str]) -> bool:
         auth = headers.get("authorization", "")
@@ -96,7 +128,7 @@ class SecurityMiddleware:
             cookie.load(headers.get("cookie", ""))
         except Exception:  # noqa: BLE001 - a malformed cookie header is just "not logged in"
             return False
-        morsel = cookie.get(SESSION_COOKIE)
+        morsel = cookie.get(cookie_name(headers.get("host", "")))
         return morsel is not None and hmac.compare_digest(morsel.value, self.session)
 
     def check(self, method: str, path: str, headers: dict[str, str]) -> tuple[int, str] | None:

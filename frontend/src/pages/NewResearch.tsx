@@ -105,7 +105,7 @@ export function NewResearch() {
                 autoFocus
               />
             </Field>
-            <div className="flex flex-wrap gap-2" aria-label="Examples">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Examples">
               {EXAMPLES.map((example) => (
                 <button
                   key={example}

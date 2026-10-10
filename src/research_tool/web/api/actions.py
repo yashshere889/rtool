@@ -109,7 +109,11 @@ def check(status: RunStatus, body: ActionRequest, run: RunHandle) -> dict[str, A
                 raise HTTPException(422, f"choose an option between 0 and {len(options) - 1}")
             if payload.get("edit"):
                 check_choice_edit(run, gate, index, payload["edit"])
-        if body.kind == "reject" and not payload.get("retest") and not str(payload.get("feedback") or "").strip():
+        choices = [payload.get(k) for k in ("include", "exclude") if payload.get(k) is not None]
+        if any(not isinstance(c, list) or len(c) > 1000 or not all(isinstance(i, str) for i in c) for c in choices):
+            raise HTTPException(422, "include and exclude must be lists of paper ids")
+        said = bool(str(payload.get("feedback") or "").strip()) or payload.get("retest") or any(choices)
+        if body.kind == "reject" and not said:
             raise HTTPException(422, "say what should change: the stage re-runs with your feedback")
         # bind the decision to the gate as the user saw it (the server's view, if the page did not send its own)
         payload.setdefault("expect", {"gate_nonce": gate.nonce, "artifacts": gate.summary.get("artifacts", {})})

@@ -106,6 +106,19 @@ class DemoPaper:
             "future_work": [{"statement": s, "quote": q} for s, q in self.future_work],
         }
 
+    def digest(self) -> dict[str, Any]:
+        """What the fake model answers for the paper's digest (built from the same facts)."""
+        methods = next((body for heading, body in self.sections if "method" in heading.lower()), "")
+        first = methods.split(". ")[0].rstrip(".") + "." if methods else "not stated"
+        finding = self.results[0].claim if self.results else ""
+        return {
+            "summary": " ".join(part for part in (self.problem, self.approach, finding) if part),
+            "design": self.approach or "not stated",
+            "sample": ", ".join(self.datasets) or "not stated",
+            "procedure": first,
+            "gaps": [s for s, _ in self.limitations][:2] + [s for s, _ in self.future_work][:1],
+        }
+
 
 CLAS = "closed-loop auditory stimulation"
 OPEN = "open-loop auditory stimulation"

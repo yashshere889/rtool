@@ -24,5 +24,6 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     testTimeout: 20_000, // page tests type into forms; jsdom is slow when the files run in parallel
+    include: ["src/**/*.test.{ts,tsx}"], // e2e/ is Playwright's
   },
 });

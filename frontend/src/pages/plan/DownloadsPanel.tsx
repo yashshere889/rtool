@@ -41,7 +41,7 @@ export function DownloadsPanel({ run }: { run: RunDetail }) {
                 <p className="font-medium">{item.name}</p>
                 <p className="text-xs break-all text-ink-soft">
                   {link ? (
-                    <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+                    <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
                       {item.identifier} <ExternalLink className="size-3" />
                     </a>
                   ) : (

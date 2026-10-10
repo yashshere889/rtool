@@ -20,7 +20,7 @@ function Cited({ text, view, run }: { text: string; view: LiteratureView; run: R
             key={i}
             to={readerPath(run.project, run.run_id, view.stage, id)}
             title={paper ? `${paper.title} (${paper.year ?? "n.d."})` : key}
-            className="rounded bg-accent-soft px-1 text-[0.85em] font-medium text-accent no-underline hover:underline"
+            className="rounded bg-accent-soft px-1 text-[0.85em] font-medium text-accent underline decoration-accent/40 underline-offset-2"
           >
             {key}
           </Link>
