@@ -183,6 +183,13 @@ class Reviewing:
                 detail=f"{ok} of {len(self.results.runs)} runs produced results",
             )
         )
+        found.append(
+            Check(
+                name="results come from a real experiment",
+                ok=not self.results.warnings,
+                detail="; ".join(self.results.warnings[:2]),
+            )
+        )
         tables = report.section("results_tables")
         missing = [c.name for c in self.plan.run_conditions() if tables is None or f"`{c.name}`" not in tables.template]
         found.append(

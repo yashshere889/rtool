@@ -311,3 +311,60 @@ def test_editing_a_finished_plan_makes_later_stages_run_again(runs_root: Path, t
     queue(run, ActionKind.EDIT, payload=same)
     Engine(run, services(run, llm)).advance()
     assert ActionInbox(run.actions_dir).processed()[-1]["outcome"]["unchanged"] and store.head("experiment_plan") == 2
+
+
+def with_manual_env(request: ChatRequest) -> dict[str, Any]:
+    plan = resources(request)
+    plan["resources"].append(
+        {"kind": "other", "name": "CS:GO env", "source": "manual", "identifier": "custom", "purpose": "simulator"}
+    )
+    return plan
+
+
+def manual_plan_llm() -> MockLLM:
+    llm = MockLLM()
+    llm.add(lambda r: schema(r) == "PlanCore", core)
+    llm.add(lambda r: schema(r) == "ResourcePlan", with_manual_env)
+    llm.add(
+        lambda r: schema(r) == "ComputeEstimate",
+        {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 1.5, "justification": "BERT base fits"},
+    )
+    return llm
+
+
+def test_manual_resources_stop_the_fetch_until_someone_decides(runs_root: Path, tmp_path: Path) -> None:
+    run = seed(runs_root, tmp_path)
+    llm = manual_plan_llm()
+    assert Engine(run, services(run, llm)).advance().open_gates[0]["gate"] == "plan_gate"
+    plan = ArtifactStore(run.artifacts_dir).get("experiment_plan")
+    env = next(r for r in plan.resources if r.source == "manual")
+    assert any("CS:GO env is marked manual" in i for i in plan.issues)  # flagged at the plan gate already
+    assert "NOT PUBLIC" in (run.root / plan.markdown_path).read_text()
+    assert env.name == "CS:GO env"
+
+    queue(run, ActionKind.APPROVE)
+    stopped = Engine(run, services(run, llm)).advance()
+    gate = stopped.open_gates[0]
+    assert stopped.outcome is Outcome.WAITING_GATE and gate["gate"] == "manual_resources" and gate["in_stage"]
+    folder = Path(gate["summary"]["missing"][0]["path"])
+    assert folder.is_dir() and not any(folder.iterdir()) and str(folder) in gate["summary"]["message"]
+
+    (folder / "simulator.py").write_text("print('the researcher brought it')\n")
+    queue(run, ActionKind.APPROVE)
+    assert Engine(run, services(run, llm)).advance().outcome is Outcome.DONE
+    manifest = ArtifactStore(run.artifacts_dir).get("resource_manifest")
+    provided = next(r for r in manifest.resources if r.name == "CS:GO env")
+    assert provided.status == "manual" and provided.files == 1 and provided.note == "provided by hand (1 files)"
+
+
+def test_rejecting_the_manual_resources_sends_the_plan_back(runs_root: Path, tmp_path: Path) -> None:
+    run = seed(runs_root, tmp_path)
+    llm = manual_plan_llm()
+    Engine(run, services(run, llm)).advance()
+    queue(run, ActionKind.APPROVE)
+    Engine(run, services(run, llm)).advance()  # stops at manual_resources
+    queue(run, ActionKind.REJECT, payload={"feedback": "use PettingZoo MPE (pip install pettingzoo)"})
+    again = Engine(run, services(run, llm)).advance()
+    assert again.open_gates[0]["gate"] == "plan_gate"  # the plan was redone and waits for approval again
+    asked = [r.messages[-1].content for r in llm.calls if schema(r) == "PlanCore"]
+    assert "use PettingZoo MPE (pip install pettingzoo)" in asked[-1]

@@ -7,7 +7,14 @@ from pathlib import Path
 import httpx
 import pytest
 
-from research_tool.agents.planner.checks import design_issues, fit_compute, format_time, results_schema, slug
+from research_tool.agents.planner.checks import (
+    design_issues,
+    fit_compute,
+    format_time,
+    resource_issues,
+    results_schema,
+    slug,
+)
 from research_tool.core.config import load_config
 from research_tool.schemas.plan import ComputeEstimate, Condition, Metric, PlanCore, ResourceChoice, ResourceSpec
 from research_tool.tools.http import PoliteHttp
@@ -100,6 +107,8 @@ def test_hub_checker() -> None:
             return httpx.Response(
                 200, json={"gated": "manual", "tags": ["license:llama3"], "siblings": [{"size": 10**9}]}
             )
+        if request.url.path == "/pypi/pettingzoo/json":
+            return httpx.Response(200, json={"info": {"name": "PettingZoo", "license": "MIT"}})
         return httpx.Response(404)
 
     checker = HubChecker(
@@ -119,8 +128,29 @@ def test_hub_checker() -> None:
         ResourceChoice(kind="dataset", name="n", source="huggingface", identifier="nope/x", purpose="")
     )
     assert not missing.exists and "404" in missing.note
-    pip = checker.check(ResourceChoice(kind="code", name="p", source="pip", identifier="scikit-learn", purpose=""))
-    assert pip.exists
+    pip = checker.check(
+        ResourceChoice(kind="code", name="p", source="pip", identifier="pettingzoo[mpe]>=1.24", purpose="")
+    )
+    assert pip.exists and pip.license == "MIT"
+    typo = checker.check(ResourceChoice(kind="code", name="p", source="pip", identifier="petingzoo", purpose=""))
+    assert not typo.exists and "404" in typo.note
+    torchvision = checker.check(
+        ResourceChoice(kind="dataset", name="c", source="torchvision", identifier="CIFAR10", purpose="")
+    )
+    assert torchvision.exists
+    # nothing public was named: never "verified", whatever it is called
+    manual = checker.check(
+        ResourceChoice(kind="dataset", name="CS:GO env", source="manual", identifier="custom", purpose="")
+    )
+    assert not manual.exists and "someone must provide it" in manual.note
+
+
+def test_manual_resources_are_an_issue_not_a_verified_resource() -> None:
+    manual = ResourceSpec(
+        kind="dataset", name="CS:GO env", source="manual", identifier="custom", purpose="", verified=True
+    )
+    issues = resource_issues([manual], max_dataset_gb=100)
+    assert len(issues) == 1 and "marked manual" in issues[0] and "pip package" in issues[0]
 
 
 def test_fetcher(tmp_path: Path) -> None:

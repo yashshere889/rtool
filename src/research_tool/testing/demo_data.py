@@ -1086,26 +1086,36 @@ RESOURCES: list[dict[str, Any]] = [
     },
 ]
 
-COMPUTE = {"gpu_memory_gb": 4, "gpus_per_run": 1, "hours_per_run": 0.5, "justification": "light signal processing"}
+COMPUTE = {"gpu_memory_gb": 4, "gpus_per_run": 1, "hours_per_run": 0.1, "justification": "light signal processing"}
 
 EXPERIMENT = '''"""Closed-loop auditory stimulation, simulated on sleep recordings (demo experiment)."""
 # requirements:
+import csv
 import random
+from pathlib import Path
 
 EFFECT = {"sham": 0.0, "phase_locked": 2.1, "fixed_interval": 0.4}
 AMPLITUDE = {"sham": 0.0, "phase_locked": 9.5, "fixed_interval": 1.5}
 
 
+def deep_sleep_minutes(folder):
+    """Minutes of N3 sleep in each recorded night."""
+    with open(Path(folder) / "recordings.csv", newline="") as handle:
+        return [float(row["n3_minutes"]) for row in csv.DictReader(handle)]
+
+
 def run(condition, seed, resources, smoke, workdir):
-    """One simulated night per seed: returns the metrics the plan asks for."""
+    """One simulated night per seed and recording: returns the metrics the plan asks for."""
+    minutes = deep_sleep_minutes(resources["Sleep-EDF"])
     rng = random.Random(seed * 7919 + len(condition))
     nights = 3 if smoke else 40
     gains, amplitudes = [], []
-    for _ in range(nights):
+    for night in range(nights):
+        deep = minutes[night % len(minutes)] / 90  # clicks only reach deep sleep
         baseline = rng.gauss(1.0, 0.6)
         # conditions added to the plan by hand get a middling effect
-        gains.append(baseline + EFFECT.get(condition, 1.2) + rng.gauss(0.0, 0.5))
-        amplitudes.append(70.0 + AMPLITUDE.get(condition, 5.0) + rng.gauss(0.0, 3.0))
+        gains.append(baseline + deep * EFFECT.get(condition, 1.2) + rng.gauss(0.0, 0.5))
+        amplitudes.append(70.0 + deep * AMPLITUDE.get(condition, 5.0) + rng.gauss(0.0, 3.0))
     return {"recall_gain": sum(gains) / nights, "so_amplitude": sum(amplitudes) / nights}
 '''
 

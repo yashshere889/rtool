@@ -189,7 +189,7 @@ class PlannerAgent(Agent):
         spec = ResourceSpec(**choice.model_dump())
         if not enabled:
             spec.note = "not checked"
-            spec.verified = True
+            spec.verified = spec.source != "manual"  # nothing public to check, nor to download
             return spec
         result = checker.check(choice)
         spec.verified, spec.license, spec.size_gb, spec.note = (
@@ -244,7 +244,8 @@ def render_markdown(plan: ExperimentPlan, title: str) -> str:
         "## Resources",
         "",
         *[
-            f"- {r.name} — {r.source}:`{r.identifier}` ({r.kind}; {'found' if r.verified else 'NOT FOUND'}"
+            f"- {r.name} — {r.source}:`{r.identifier}` ({r.kind}; "
+            f"{'NOT PUBLIC' if r.source == 'manual' else 'found' if r.verified else 'NOT FOUND'}"
             f"{f', {r.size_gb:g} GB' if r.size_gb else ''}{f', licence {r.license}' if r.license else ''})"
             f"{f' — {r.note}' if r.note else ''}"
             for r in plan.resources

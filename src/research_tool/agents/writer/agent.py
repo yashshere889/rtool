@@ -300,11 +300,12 @@ class Drafting:
                     f"{{{{p:{key}}}}} with the {c.test} — {verdict}."
                 )
         lines.append(f"- What the plan expected: {self.plan.expected_results}")
-        lines += [f"- Note: {note}" for note in self.results.notes]
+        lines += [f"- Note: {note}" for note in self.results.notes if not note.startswith("Warning: ")]
         return "\n".join(lines)
 
     def limitations(self) -> str:
         lines = ["Known limitations and risks:"]
+        lines += [f"- Warning about the experiment itself (say so plainly): {w}" for w in self.results.warnings]
         lines += [f"- {risk}" for risk in self.plan.risks]
         failed = [r for r in self.results.runs if r.status != "ok"]
         if failed:

@@ -20,9 +20,17 @@ def mean(xs: Sequence[float]) -> float:
     return sum(xs) / len(xs)
 
 
+def constant(xs: Sequence[float]) -> bool:
+    """All values equal, up to floating-point noise (0.6 three times has a computed sd of 7e-17)."""
+    if not xs:
+        return True
+    lo, hi = min(xs), max(xs)
+    return hi - lo <= 1e-12 * max(abs(lo), abs(hi))
+
+
 def stdev(xs: Sequence[float]) -> float:
-    """Sample standard deviation (n - 1); 0 for fewer than two values."""
-    if len(xs) < 2:
+    """Sample standard deviation (n - 1); 0 for fewer than two values or values that are all equal."""
+    if len(xs) < 2 or constant(xs):
         return 0.0
     m = mean(xs)
     return math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))

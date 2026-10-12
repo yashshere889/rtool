@@ -85,7 +85,7 @@ def test_the_review_and_the_bundle(runs_root: Path) -> None:
     c = web_client(runs_root)
     view = c.get(f"{AT_GATE}/review").json()
     review = view["review"]
-    assert review["verdict"] in ("accept", "needs_human") and len(review["checks"]) == 8
+    assert review["verdict"] in ("accept", "needs_human") and len(review["checks"]) == 9
     assert set(review["scores"]) == {"soundness", "evidence", "clarity", "reproducibility", "limitations"}
     assert view["final_version"] == 1 and not view["final_edited"] and view["rounds_max"] >= 1
     assert view["report_stage"] == "report" and view["min_score"] == 3.0

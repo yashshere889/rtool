@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -185,6 +185,8 @@ def render_tables(
     summaries: list[MetricSummary],
     comparisons: list[Comparison],
     figures: dict[str, str],
+    *,
+    warnings: Sequence[str] = (),
 ) -> str:
     ok = sum(1 for r in records if r.status == "ok")
     baseline = next((c.name for c in plan.conditions if c.is_baseline), "")
@@ -197,6 +199,8 @@ def render_tables(
         f"`{baseline}` (difference = condition minus baseline).",
         "",
     ]
+    if warnings:
+        lines += ["## Warnings: check before trusting these numbers", "", *[f"- {w}" for w in warnings], ""]
     for metric in plan.metrics:
         direction = "higher" if metric.higher_is_better else "lower"
         lines += [f"## `{metric.name}` ({direction} is better)", "", metric.definition, ""]

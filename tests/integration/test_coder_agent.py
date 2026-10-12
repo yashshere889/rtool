@@ -25,6 +25,7 @@ from research_tool.schemas.plan import (
     ComputeRequest,
     Condition,
     ExperimentPlan,
+    FetchedResource,
     Metric,
     ResourceManifest,
     StatisticalTest,
@@ -382,3 +383,63 @@ def test_a_cosmetic_plan_change_keeps_the_code(runs_root: Path, tmp_path: Path) 
     advance(run, svc, Outcome.WAITING_GATE)  # the stage ran again for the new plan version...
     again = len([r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content])
     assert again == writes  # ...but kept experiment.py instead of having it written again
+
+
+MOCKED = """# requirements:
+
+
+def run(condition, seed, resources, smoke, workdir):
+    env_path = resources["CS:GO env"]
+    # Mock metric calculation based on the condition (hypothetical trend)
+    acc = 0.65 if condition == "base" else 0.72
+    return {"acc": acc, "loss": 1 - acc}
+"""
+
+
+def test_a_mocked_experiment_is_flagged_at_the_gate_and_in_the_results(runs_root: Path, tmp_path: Path) -> None:
+    """The failure seen on Barkla: a manual resource nobody provided, and code that returns a formula."""
+    run = setup(runs_root, tmp_path)
+    empty = tmp_path / "manual" / "CS_GO_env"
+    empty.mkdir(parents=True)
+    ArtifactStore(run.artifacts_dir).put(
+        "resource_manifest",
+        ResourceManifest(
+            resources=[
+                FetchedResource(
+                    name="CS:GO env",
+                    kind="dataset",
+                    source="manual",
+                    identifier="custom",
+                    status="manual",
+                    path=str(empty),
+                )
+            ],
+            root=str(tmp_path),
+        ),
+        producer=Producer(stage="user", agent="test"),
+    )
+    llm = coder_llm(MOCKED)
+    svc = services(run, llm)
+
+    gate = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]
+    implement = next(r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content)
+    prompt = implement.messages[-1].content
+    assert "`CS:GO env` (dataset) is NOT available" in prompt and "Never hard-code metric values" in prompt
+    assert 'resources["CS:GO env"]: dataset' not in prompt  # not offered as downloaded data
+    warnings = gate["summary"]["warnings"]
+    assert len(warnings) == 4, warnings
+    assert "CS:GO env was never provided" in warnings[0]
+    assert "mock, dummy or placeholder" in warnings[1] and "`env_path`" in warnings[2]
+    assert "exactly the same metrics with seeds 0 and 1" in warnings[3]
+    assert "Check experiment.py before approving: (1) CS:GO env" in gate["summary"]["message"]
+
+    queue(run, ActionKind.APPROVE)
+    advance(run, svc, Outcome.WAITING_JOB)
+    svc.slurm.finish_all()  # type: ignore[union-attr]
+    advance(run, svc, Outcome.DONE)
+    results = ArtifactStore(run.artifacts_dir).get("experiment_results")
+    assert results.warnings[:4] == warnings
+    assert any("exactly the same `acc`, `loss` in every condition" in w for w in results.warnings)
+    assert any("under 1 s, although the plan expects about 0.5 h" in w for w in results.warnings)
+    assert sum(n.startswith("Warning: ") for n in results.notes) == len(results.warnings)
+    assert "## Warnings: check before trusting these numbers" in (run.root / results.tables_path).read_text()

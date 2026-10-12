@@ -8,7 +8,7 @@ fit together; [adding_an_agent.md](adding_an_agent.md) shows how to extend it an
 ## The pipeline
 
 ```
-literature ─▶[literature_review]─▶ hypotheses ─▶[hypothesis_selection]─▶ plan ─▶[experiment_plan]─▶ fetch
+literature ─▶[literature_review]─▶ hypotheses ─▶[hypothesis_selection]─▶ plan ─▶[experiment_plan]─▶ fetch ─▶[manual_resources]
    ─▶ code: write ─▶ smoke test ─▶[gpu_runs]─▶ Slurm runs ─▶ analysis ─▶ report ─▶ review ─▶[final_report]
             ▲______________________ change requests (bounded) ______________________│
 ```
@@ -41,7 +41,8 @@ Kill it at any point and the next episode resumes: a stage that was running is
 re-entered with its saved `ctx.state`; a commit that was half done is finished.
 
 **Gates.** After a stage (`gate:` in the YAML) or inside one (`ctx.gate(...)`,
-e.g. the Coder's `gpu_runs` before spending GPU hours). Humans answer with
+e.g. the Coder's `gpu_runs` before spending GPU hours, and the fetch stage's `manual_resources`
+when the plan names something that is not public and nobody has provided it yet). Humans answer with
 `rtool approve | reject -f "…" | select <n>` or in the web UI; any gate can be set to
 `auto`. A finished stage's gate can be reopened (`rtool reopen`): later stages are
 redone only if the decision changes its outputs.
@@ -117,6 +118,7 @@ The model is good but small, so every step is narrow and checked by code:
 | invented numbers | reports write results as placeholders (`{{mean:acc:new}}`) filled from the results; any other number must appear in the material the section was written from |
 | wrong statistics | all statistics are computed deterministically (t-tests, exact rank tests, CIs, corrections) |
 | broken code | static checks, CPU smoke tests, a failure playbook, bounded LLM repairs, then a human |
+| fake experiments | the code may not invent results; warnings at the GPU-runs checkpoint and in the results when experiment.py calls itself a mock, sets values it never uses, gives the same metrics for two seeds, or its runs take no time; manual resources are never "verified"; the Reviewer fails a check on any such warning |
 | runaway cost | a human approves every GPU spend; budgets for GPU-hours, jobs and LLM calls |
 | overconfident review | three independent reviews; scores are medians; an issue counts only if most raise it |
 

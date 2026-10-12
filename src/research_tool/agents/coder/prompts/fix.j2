@@ -17,6 +17,8 @@ The experiment code below fails. Fix it and reply with the complete corrected `e
 - `run(condition, seed, resources, smoke, workdir)` must return floats for: {{ metrics | join(", ") }}.
 - Conditions: {{ conditions | join(", ") }}.
 - Local data and models: {{ resources }}.
+{% if missing %}- Not available (nobody provided them; build a real version in code instead of reading them): {{ missing | map(attribute="name") | join(", ") }}.
+{% endif %}- Every metric must be measured by really running the procedure: no hard-coded, mock or placeholder results.
 - Installed: {{ packages | join(", ") }}; anything else goes on the `# requirements:` line.
 - {{ smoke }}
 {% if history %}- Earlier attempts failed with: {{ history | join("; ") }}. Do not repeat those mistakes.

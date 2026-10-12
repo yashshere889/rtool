@@ -114,7 +114,13 @@ def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float) -> lis
     if not any(r.kind == "dataset" for r in resources):
         issues.append("no dataset is listed")
     for r in resources:
-        if not r.verified and r.note == UNCHECKED:
+        if r.source == "manual":
+            issues.append(
+                f"{r.name} is marked manual, so nothing will be downloaded for it: use a public resource "
+                "(Hugging Face, a URL, torchvision or a pip package) if one exists; otherwise someone must "
+                "provide its files, or the experiment code must build it"
+            )
+        elif not r.verified and r.note == UNCHECKED:
             issues.append(f"{r.name} ({r.source}: {r.identifier}) was changed by hand and is not checked yet")
         elif not r.verified:
             issues.append(

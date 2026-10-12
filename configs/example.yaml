@@ -42,6 +42,7 @@ gates:
     literature_review: ask
     hypothesis_selection: ask
     experiment_plan: ask
+    manual_resources: ask                 # inside the fetch stage, if a non-public resource is not provided
     gpu_runs: ask                         # inside the code stage, before any GPU time is spent
     final_report: ask
     revision_limit: ask

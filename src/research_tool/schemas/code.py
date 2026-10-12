@@ -101,6 +101,8 @@ class ExperimentResults(BaseModel):
     gpu_hours_requested: float = 0.0
     code_fingerprint: str = ""
     notes: list[str] = Field(default_factory=list)
+    # signs that nothing real was measured (e.g. every seed gave the same value): for people to check
+    warnings: list[str] = Field(default_factory=list)
 
     def summary(self, condition: str, metric: str) -> MetricSummary | None:
         return next((s for s in self.summaries if s.condition == condition and s.metric == metric), None)

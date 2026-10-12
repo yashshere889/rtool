@@ -38,7 +38,9 @@ from ...llm.prompts import PromptLibrary
 from ...packs import DEFAULT_PACK, Pack, load_pack
 from ...schemas.code import CodeBundle, CodeFile, ExperimentResults, FixRecord, RunRecord, SmokeResult
 from ...schemas.common import ResearchBrief
-from ...schemas.plan import ExperimentPlan, ResourceManifest
+from ...schemas.plan import ExperimentPlan, FetchedResource, ResourceManifest
+from ...tools.resources.fetch import tree_size
+from . import sanity
 from .env import ExperimentEnv
 from .playbook import Diagnosis, declared_requirements, diagnose, halve_batch_size, merge_requirements
 from .results import (
@@ -55,7 +57,8 @@ from .results import (
 
 SYSTEM = (
     "You are a careful research software engineer. Write correct, simple, runnable Python that follows "
-    "the stated contract exactly. Never invent data paths or results."
+    "the stated contract exactly. Never invent data paths or results: every metric must be measured by "
+    "really carrying out the experiment."
 )
 GATE = "gpu_runs"
 HARNESS = ("run.py", "launch.py")
@@ -262,6 +265,25 @@ class CoderSession:
     def resource_paths(self) -> dict[str, str]:
         return {r.name: r.path for r in self.manifest.resources if r.path and r.status in ("ready", "manual")}
 
+    @staticmethod
+    def provided(resource: FetchedResource) -> bool:
+        """Downloaded, or (manual) somebody put files in its folder; an empty manual folder is not data."""
+        if not resource.path or resource.status not in ("ready", "manual"):
+            return False
+        return resource.status == "ready" or (Path(resource.path).is_dir() and tree_size(Path(resource.path))[1] > 0)
+
+    def available(self) -> dict[str, str]:
+        """What the code may read: name -> local path."""
+        return {r.name: r.path for r in self.manifest.resources if self.provided(r) and r.path}
+
+    def missing(self) -> list[FetchedResource]:
+        """Manual resources nobody provided: the code has to build them (or the researcher add them)."""
+        return [r for r in self.manifest.resources if r.status == "manual" and not self.provided(r)]
+
+    def missing_text(self) -> list[dict[str, str]]:
+        purposes = {r.name: r.purpose for r in self.plan.resources}
+        return [{"name": r.name, "kind": r.kind, "purpose": purposes.get(r.name, "")} for r in self.missing()]
+
     def prepare(self) -> None:
         """Harness, config.json and the code README's facts: rtool's files, rewritten every attempt."""
         harness = resources.files(__package__).joinpath("harness")
@@ -318,7 +340,7 @@ class CoderSession:
         resources_text = [
             {**r.model_dump(), "files": file_listing(Path(r.path), self.cfg.resource_files) if r.path else ""}
             for r in self.manifest.resources
-            if r.path and r.status in ("ready", "manual")
+            if r.path and self.provided(r)
         ]
         if same_plan and not feedback:
             edited = sha256_text(self.source()) != marker.get("sha")
@@ -333,7 +355,8 @@ class CoderSession:
                     plan=self.plan,
                     conditions=self.conditions,
                     metrics=self.metric_names,
-                    resources=self.resources,
+                    resources=self.available(),
+                    missing=self.missing_text(),
                     packages=self.packages(),
                     source=self.source(),
                 )
@@ -344,6 +367,7 @@ class CoderSession:
                     conditions=self.plan.run_conditions(),
                     resources=resources_text,
                     deferred=[r for r in self.manifest.resources if r.status == "deferred"],
+                    missing=self.missing_text(),
                     packages=self.packages(),
                     gpu=self.gpu_text(),
                     pack=self.pack,
@@ -435,7 +459,46 @@ class CoderSession:
             failure = (condition, found, "\n".join(log.splitlines()[-80:]))
             break
         self.state["smoke"] = [r.model_dump() for r in results]
+        if failure is None:
+            first = next((r for r in results if r.condition == baseline), None)
+            self.state["smoke_warnings"] = self.seed_check(baseline, seed, first.metrics) if first else []
         return failure
+
+    def seed_check(self, condition: str, seed: int, metrics: dict[str, float]) -> list[str]:
+        """Smoke-test one condition with a second seed: identical metrics hint that nothing is measured."""
+        other = next((s for s in self.plan.seeds if s != seed), None)
+        if other is None:
+            return []
+        out = self.ctx.workspace.mkdir("smoke") / f"{condition}__seed{other}.json"
+        out.unlink(missing_ok=True)
+        run = self.env.run(
+            [
+                "run.py",
+                "--condition",
+                condition,
+                "--seed",
+                str(other),
+                "--output",
+                str(out),
+                "--smoke",
+                "--workdir",
+                str(self.scratch / "smoke" / f"{condition}__seed{other}"),
+            ],
+            log_path=self.logs / f"smoke-{condition}-seed{other}.log",
+            timeout_s=self.ctx.app_config.experiments.smoke_timeout_s,
+        )
+        data, _problem = read_output(out, self.metric_names)
+        if not run.ok or data is None:
+            return [f"the smoke test of `{condition}` with seed {other} failed (see {self.logs})"]
+        warning = sanity.seed_warning(condition, (seed, other), metrics, data["metrics"])
+        return [warning] if warning else []
+
+    def warnings(self) -> list[str]:
+        """Signs that the code may not measure anything real (see sanity.py), for people to check."""
+        found = [sanity.missing_resources_warning([r.name for r in self.missing()])]
+        found += sanity.code_warnings(self.source(), has_resources=bool(self.available()))
+        found += self.state.get("smoke_warnings", [])
+        return [w for w in found if w]
 
     # --------------------------------------------------------------- repair
     def record(self, *, phase: str, signature: str, action: str, detail: str = "") -> None:
@@ -478,7 +541,8 @@ class CoderSession:
                 source=self.source(),
                 metrics=self.metric_names,
                 conditions=self.conditions,
-                resources=self.resources,
+                resources=self.available(),
+                missing=self.missing_text(),
                 packages=self.packages(),
                 smoke=self.pack.smoke,
                 history=history,
@@ -527,12 +591,20 @@ class CoderSession:
         hours = self.gpu_hours(len(runs), self.plan.compute.time_limit)
         smoke = [SmokeResult.model_validate(r) for r in self.state.get("smoke", [])]
         c = self.plan.compute
+        warnings = self.warnings()
+        check = (
+            " Check experiment.py before approving: "
+            + " ".join(f"({n}) {w}" + ("" if w.endswith(("?", ".")) else ".") for n, w in enumerate(warnings, 1))
+            if warnings
+            else ""
+        )
         summary = {
             "message": (
                 f"Smoke tests passed on CPU for {len(smoke)} condition(s). Approve to run {len(runs)} jobs on "
                 f"{c.partition} ({self.gpu_text()}, up to {c.time_limit} each; at most {hours:g} GPU-hours). "
-                "Reject with feedback to have the code revised first."
+                "Reject with feedback to have the code revised first." + check
             ),
+            "warnings": warnings,
             "smoke": ", ".join(f"{r.condition} ok in {r.seconds:g}s" for r in smoke),
             "runs": len(runs),
             "partition": c.partition,
@@ -720,6 +792,8 @@ class CoderSession:
         )
         if comparisons:
             notes.append(f"comparisons use the {comparisons[0].test} against the baseline")
+        warnings = self.warnings() + sanity.results_warnings(self.plan, records)
+        notes += [f"Warning: {w}" for w in warnings]
         payload = results_payload(records, notes)
         problems = validate(payload, self.plan.results_schema)
         if problems:
@@ -732,7 +806,12 @@ class CoderSession:
         atomic_write_text(
             tables,
             render_tables(
-                self.plan, records, summaries, comparisons, {m: f"figures/{p.name}" for m, p in figures.items()}
+                self.plan,
+                records,
+                summaries,
+                comparisons,
+                {m: f"figures/{p.name}" for m, p in figures.items()},
+                warnings=warnings,
             ),
         )
         bundle = self.bundle()
@@ -752,6 +831,7 @@ class CoderSession:
                 gpu_hours_requested=round(sum(j.get("gpu_hours", 0) for j in jobs), 2),
                 code_fingerprint=bundle.fingerprint,
                 notes=notes,
+                warnings=warnings,
             ),
             meta={"review": ctx.relative(tables)},
         )
