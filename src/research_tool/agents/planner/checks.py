@@ -92,8 +92,40 @@ def normalise_core(core: PlanCore) -> PlanCore:
     return core
 
 
+# Words in a metric's name that usually say which way is better. A name with words of both kinds
+# ("error_reduction") is left alone.
+_LOWER = {
+    "error", "errors", "loss", "losses", "collision", "collisions", "crash", "crashes", "latency", "delay",
+    "duration", "runtime", "cost", "regret", "violation", "violations", "failure", "failures", "mse", "rmse",
+    "mae", "perplexity", "overhead", "distance", "steps", "wer", "cer",
+}  # fmt: skip
+_HIGHER = {
+    "accuracy", "acc", "success", "reward", "return", "score", "f1", "precision", "recall", "auc", "auroc",
+    "efficiency", "throughput", "gain", "reduction", "improvement", "saved", "coverage", "bleu", "rouge",
+}  # fmt: skip
+
+
+def metric_issues(metrics: list[Metric]) -> list[str]:
+    """Metrics whose direction contradicts their name (seen on Barkla: collision_frequency, 'higher is better')."""
+    issues = []
+    for metric in metrics:
+        words = set(slug(metric.name).split("_"))
+        lower, higher = sorted(words & _LOWER), sorted(words & _HIGHER)
+        if metric.higher_is_better and lower and not higher:
+            issues.append(
+                f"metric {metric.name} says higher is better, but a higher {lower[0]} is usually worse: "
+                "set higher_is_better to false if smaller values are better"
+            )
+        elif not metric.higher_is_better and higher and not lower:
+            issues.append(
+                f"metric {metric.name} says lower is better, but a higher {higher[0]} is usually better: "
+                "set higher_is_better to true if larger values are better"
+            )
+    return issues
+
+
 def design_issues(core: PlanCore, min_seeds: int) -> list[str]:
-    return _design_issues(core.conditions, core.ablations, core.n_seeds, min_seeds)
+    return _design_issues(core.conditions, core.ablations, core.n_seeds, min_seeds) + metric_issues(core.metrics)
 
 
 def _design_issues(conditions: list[Condition], ablations: list[Condition], n_seeds: int, min_seeds: int) -> list[str]:
@@ -203,6 +235,7 @@ def plan_issues(plan: ExperimentPlan, config: AppConfig, min_seeds: int, max_dat
     """Everything the planner would warn about, for a whole plan."""
     return (
         _design_issues(plan.conditions, plan.ablations, len(plan.seeds), min_seeds)
+        + metric_issues(plan.metrics)
         + resource_issues(plan.resources, max_dataset_gb)
         + compute_issues(plan.compute, config)
     )

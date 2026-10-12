@@ -117,6 +117,7 @@ The model is good but small, so every step is narrow and checked by code:
 | invented citations | hypotheses cite verified quotes; reports may only cite corpus keys |
 | invented numbers | reports write results as placeholders (`{{mean:acc:new}}`) filled from the results; any other number must appear in the material the section was written from |
 | wrong statistics | all statistics are computed deterministically (t-tests, exact rank tests, CIs, Holm's correction whenever there are several comparisons); results that do not vary across seeds get no p-value; tests the plan names that rtool does not run (e.g. ANOVA) are said to be translated |
+| wrong direction | the plan must say for each metric whether higher is better; names like `collision_frequency` marked "higher is better" are sent back |
 | broken code | static checks, CPU smoke tests, a failure playbook, bounded LLM repairs, then a human |
 | fake experiments | the code may not invent results; warnings at the GPU-runs checkpoint and in the results when experiment.py calls itself a mock, sets values it never uses, gives the same metrics for two seeds, or its runs take no time; manual resources are never "verified"; the Reviewer fails a check on any such warning |
 | runaway cost | a human approves every GPU spend; budgets for GPU-hours, jobs and LLM calls |

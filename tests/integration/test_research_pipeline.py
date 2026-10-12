@@ -85,7 +85,7 @@ def add_downstream_rules(llm: Any) -> None:
                 {"name": "sham", "description": "no sound", "is_baseline": True},
                 {"name": "stim", "description": "closed-loop sound"},
             ],
-            "metrics": [{"name": "recall_gain", "definition": "post minus pre"}],
+            "metrics": [{"name": "recall_gain", "definition": "post minus pre", "higher_is_better": True}],
             "statistical_tests": [{"test": "paired t-test", "comparison": "stim vs sham"}],
             "n_seeds": 3,
             "procedure": ["load EEG", "detect spindles", "simulate stimulation", "score recall"],

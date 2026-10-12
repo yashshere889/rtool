@@ -34,6 +34,7 @@ Problems with the previous version that you must fix:
 Requirements:
 - Compare at least one baseline condition with the treatment condition(s); mark baselines with is_baseline = true.
 - Use short snake_case names for conditions and metrics.
+- For every metric say which way is better: higher_is_better is false when smaller values are better (errors, losses, collisions, latency, cost), and the definition must match the name (a count of messages is not an "efficiency").
 - Use at least {{ min_seeds }} seeds (independent runs) per condition.
 - Statistics: rtool compares every condition with the baseline, so name one of the tests it runs: "paired t-test" (the same seeds in every condition), "Welch t-test", "Wilcoxon signed-rank" or "Mann-Whitney U". With several comparisons it corrects the p-values with Holm's method (or Bonferroni, if you name it).
 - Write the procedure as concrete steps a programmer can implement: loading data, preprocessing, training or analysis, evaluation, saving results.

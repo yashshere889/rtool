@@ -91,7 +91,7 @@ def core(request: ChatRequest) -> dict[str, Any]:
             {"name": "Clean Labels", "description": "no noise", "is_baseline": fixed},
             {"name": "Noisy Labels", "description": "20% noise"},
         ],
-        "metrics": [{"name": "Accuracy", "definition": "test accuracy"}],
+        "metrics": [{"name": "Accuracy", "definition": "test accuracy", "higher_is_better": True}],
         "statistical_tests": [{"test": "paired t-test", "comparison": "clean vs noisy accuracy"}],
         "n_seeds": 3,
         "procedure": ["load IMDB", "flip labels", "fine-tune BERT", "evaluate"],
@@ -368,3 +368,28 @@ def test_rejecting_the_manual_resources_sends_the_plan_back(runs_root: Path, tmp
     assert again.open_gates[0]["gate"] == "plan_gate"  # the plan was redone and waits for approval again
     asked = [r.messages[-1].content for r in llm.calls if schema(r) == "PlanCore"]
     assert "use PettingZoo MPE (pip install pettingzoo)" in asked[-1]
+
+
+def test_a_metric_pointing_the_wrong_way_is_sent_back(runs_root: Path, tmp_path: Path) -> None:
+    run = seed(runs_root, tmp_path)
+
+    def with_collisions(request: ChatRequest) -> dict[str, Any]:
+        plan = core(request)
+        fixed = "Problems with the previous version" in request.messages[-1].content
+        plan["metrics"].append(
+            {"name": "collision_frequency", "definition": "collisions per episode", "higher_is_better": not fixed}
+        )
+        return plan
+
+    llm = MockLLM()
+    llm.add(lambda r: schema(r) == "PlanCore", with_collisions)
+    llm.add(lambda r: schema(r) == "ResourcePlan", resources)
+    llm.add(
+        lambda r: schema(r) == "ComputeEstimate",
+        {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 1.5, "justification": "BERT base fits"},
+    )
+    Engine(run, services(run, llm)).advance()
+    plan = ArtifactStore(run.artifacts_dir).get("experiment_plan")
+    assert plan.issues == [] and plan.metrics[1].higher_is_better is False
+    repair = [r.messages[-1].content for r in llm.calls if schema(r) == "PlanCore"][1]
+    assert "metric collision_frequency says higher is better" in repair

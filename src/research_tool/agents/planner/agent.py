@@ -21,7 +21,7 @@ from ...llm.prompts import PromptLibrary
 from ...schemas.common import ResearchBrief, SelectedItem
 from ...schemas.hypothesis import Hypothesis
 from ...schemas.literature import Corpus, KnowledgeMap
-from ...schemas.plan import ComputeEstimate, ExperimentPlan, PlanCore, ResourcePlan, ResourceSpec
+from ...schemas.plan import ComputeEstimate, ExperimentPlan, Metric, PlanCore, ResourcePlan, ResourceSpec
 from ...tools.http import PoliteHttp
 from ...tools.resources.checks import HubChecker, ResourceChecker
 from ..common import SYSTEM, compute_profile, open_corpus_kb
@@ -140,7 +140,7 @@ class PlannerAgent(Agent):
             controls=core.controls,
             conditions=core.conditions,
             ablations=core.ablations,
-            metrics=core.metrics,
+            metrics=[Metric.model_validate(m.model_dump()) for m in core.metrics],
             statistical_tests=core.statistical_tests,
             seeds=seeds,
             procedure=core.procedure,

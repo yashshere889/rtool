@@ -6,11 +6,13 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from research_tool.agents.planner.checks import (
     design_issues,
     fit_compute,
     format_time,
+    metric_issues,
     resource_issues,
     results_schema,
     slug,
@@ -78,7 +80,7 @@ def test_design_rules() -> None:
         independent_variables=[{"name": "x", "description": "x"}],
         dependent_variables=[{"name": "y", "description": "y"}],
         conditions=[{"name": "a", "description": "a"}, {"name": "a", "description": "b"}],
-        metrics=[{"name": "acc", "definition": "accuracy"}],
+        metrics=[{"name": "acc", "definition": "accuracy", "higher_is_better": True}],
         statistical_tests=[{"test": "t", "comparison": "a vs b"}],
         n_seeds=1,
         procedure=["1", "2", "3"],
@@ -86,6 +88,23 @@ def test_design_rules() -> None:
     )
     issues = " ".join(design_issues(core, min_seeds=3))
     assert "baseline" in issues and "unique" in issues and "at least 3 seeds" in issues
+    with pytest.raises(ValidationError, match="higher_is_better"):  # the model may not leave the direction out
+        PlanCore.model_validate(core.model_dump() | {"metrics": [{"name": "acc", "definition": "accuracy"}]})
+
+
+def test_metric_direction_is_checked_against_the_name() -> None:
+    barkla = [
+        Metric(name="task_success_rate", definition="share of episodes solved", higher_is_better=True),
+        Metric(name="collision_frequency", definition="collisions per episode", higher_is_better=True),
+        Metric(name="Test Loss", definition="cross-entropy", higher_is_better=True),
+        Metric(name="accuracy", definition="test accuracy", higher_is_better=False),
+        Metric(name="error_reduction", definition="fewer errors than the baseline", higher_is_better=True),
+        Metric(name="so_amplitude", definition="slow-oscillation amplitude", higher_is_better=True),
+    ]
+    issues = metric_issues(barkla)
+    assert len(issues) == 3
+    assert issues[0].startswith("metric collision_frequency says higher is better, but a higher collision")
+    assert "Test Loss" in issues[1] and "accuracy says lower is better" in issues[2]
 
 
 def test_results_schema_shape() -> None:
