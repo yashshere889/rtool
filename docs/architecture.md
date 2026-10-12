@@ -120,6 +120,7 @@ The model is good but small, so every step is narrow and checked by code:
 | wrong direction | the plan must say for each metric whether higher is better; names like `collision_frequency` marked "higher is better" are sent back |
 | broken code | static checks, CPU smoke tests, a failure playbook, bounded LLM repairs, then a human |
 | fake experiments | the code may not invent results; warnings at the GPU-runs checkpoint and in the results when experiment.py calls itself a mock, sets values it never uses, gives the same metrics for two seeds, or its runs take no time; manual resources are never "verified"; the Reviewer fails a check on any such warning |
+| unchecked numbers | a number nobody could check is left out of an aside or shown as `[?]`, a major finding the Reviewer rewrites and checks |
 | runaway cost | a human approves every GPU spend; budgets for GPU-hours, jobs and LLM calls |
 | overconfident review | three independent reviews; scores are medians; an issue counts only if most raise it |
 

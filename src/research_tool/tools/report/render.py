@@ -25,6 +25,10 @@ _KEY = re.compile(r"@([A-Za-z0-9_:.\-]+)")
 _CODE = re.compile(r"`[^`\n]*`")
 _LINK_TARGET = re.compile(r"\]\([^)]*\)|https?://\S+")
 _NUMBER = re.compile(r"(?<![\w.@/])(?<![A-Za-z]-)(\d+(?:\.\d+)?)")
+# "95% CI {{ci:...}}" and "95% CI [{{ci:...}}]" render the label twice: the value already carries it
+_DOUBLE_CI = re.compile(r"95\s?%\s?(?:CI|confidence interval)[:,]?\s*(\[\s*)?(95% CI \[[^\[\]]*\])(?(1)\s*\])", re.I)
+UNRESOLVED = "[?]"  # what a number nobody could check becomes when it cannot simply be left out
+_UNRESOLVED_ASIDE = re.compile(r"\s*\([^()]*\[\?\][^()]*\)")
 
 
 @dataclass(frozen=True)
@@ -71,7 +75,24 @@ def placeholders(template: str) -> list[str]:
 
 
 def render(template: str, values: dict[str, Value]) -> str:
-    return PLACEHOLDER.sub(lambda m: values[m.group(1)].text if m.group(1) in values else m.group(0), template)
+    text = PLACEHOLDER.sub(lambda m: values[m.group(1)].text if m.group(1) in values else m.group(0), template)
+    return _DOUBLE_CI.sub(r"\2", text)
+
+
+def plan_numbers(plan: ExperimentPlan) -> str:
+    """Facts from the plan that prose may repeat as typed numbers: agent counts in condition names and
+    descriptions, the levels of the independent variables, seeds, alpha."""
+    parts = [plan.design]
+    for c in plan.run_conditions():
+        parts += [c.name.replace("_", " "), c.description]
+    for v in plan.independent_variables:
+        parts += [" ".join(value.strip("./ ") for value in v.values)]
+    parts += [f"{len(plan.seeds)} seeds", *(f"alpha {t.alpha:g}" for t in plan.statistical_tests)]
+    return "\n".join(parts)
+
+
+def unresolved_count(text: str) -> int:
+    return text.count(UNRESOLVED)
 
 
 def citation_keys(text: str) -> list[str]:
@@ -127,7 +148,7 @@ def problems(
 
 def strip_problems(template: str, values: dict[str, Value], keys: set[str], allowed_numbers: str | None) -> str:
     """Last resort after failed repairs: drop unknown placeholders/citations and typed numbers."""
-    text = PLACEHOLDER.sub(lambda m: m.group(0) if m.group(1) in values else "[?]", template)
+    text = PLACEHOLDER.sub(lambda m: m.group(0) if m.group(1) in values else UNRESOLVED, template)
 
     def keep_known(match: re.Match[str]) -> str:
         known = [k for k in _KEY.findall(match.group(2)) if k in keys]
@@ -143,10 +164,10 @@ def strip_problems(template: str, values: dict[str, Value], keys: set[str], allo
             inside = any(a <= match.start() < b for a, b in protected)
             keep = inside or value == 95 or (match.group(1).isdigit() and 1900 <= value <= 2099)
             keep = keep or any(abs(value - a) <= 1e-9 * max(1.0, abs(a)) for a in allowed)
-            return match.group(0) if keep else "[?]"
+            return match.group(0) if keep else UNRESOLVED
 
         text = _NUMBER.sub(scrub, text)
-    return text
+    return _UNRESOLVED_ASIDE.sub("", text)  # "(p < [?])" goes; a [?] in the middle of a sentence stays visible
 
 
 # --------------------------------------------------------------- references

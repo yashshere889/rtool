@@ -109,7 +109,17 @@ class Rubric(BaseModel):
     limitations: int = Field(ge=1, le=5, description="Are limitations and threats to validity discussed honestly?")
 
 
+class ReviewIssueDraft(ReviewIssue):
+    """What a reviewer must say about an issue: no default severity, so "minor" is never just left in."""
+
+    severity: Severity = Field(
+        description="'major' if a reader would be misled: a claim contradicts the facts (e.g. a result reported "
+        "in the wrong direction), the statistics shown are invalid, values are missing, or the results may not "
+        "come from a real experiment; 'minor' for wording, clarity and small omissions"
+    )
+
+
 class ReviewDraft(BaseModel):
     scores: Rubric
     summary: str = Field(description="Two or three sentences for the researcher")
-    issues: list[ReviewIssue] = Field(default_factory=list, max_length=10)
+    issues: list[ReviewIssueDraft] = Field(default_factory=list, max_length=10)

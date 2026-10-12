@@ -35,17 +35,20 @@ from ...schemas.report import Contradictions, Finding, Report, ReportSection, Ti
 from ...tools.report.editing import edit_report
 from ...tools.report.numbers import fmt, fmt_ci, fmt_p
 from ...tools.report.render import (
+    UNRESOLVED,
     Value,
     assemble,
     bib_keys,
     bibtex_subset,
     citation_keys,
     placeholders,
+    plan_numbers,
     problems,
     reference_list,
     render,
     strip_problems,
     to_pandoc_citations,
+    unresolved_count,
     value_table,
 )
 from ..coder.results import translated_tests
@@ -80,8 +83,9 @@ INSTRUCTIONS = {
     ),
     "discussion": (
         "Three or four paragraphs: what the results mean for the hypothesis, how they relate to prior work "
-        "(cite it), then a paragraph that starts with 'Limitations.' covering threats to validity, failed or "
-        "missing runs and the small number of seeds, and finally future work."
+        "(cite it), then a paragraph that starts with 'Limitations.' covering the known limitations listed in "
+        "the material (only those, and only as stated there: do not invent failed runs or wide intervals), and "
+        "finally future work."
     ),
     "conclusion": "One paragraph: the hypothesis, the main result (placeholders) and the take-away.",
 }
@@ -174,9 +178,10 @@ class Drafting:
             return "\n\n".join([self.brief_text(), self.hypothesis_text(), self.overview(), self.open_problems()])
         if section == "related_work":
             return "\n\n".join([self.topics(), self.claims()])
+        plan = "Plan details:\n" + plan_numbers(self.plan)
         if section == "discussion":
-            return "\n\n".join([self.hypothesis_text(), self.facts(), self.limitations(), self.claims(limit=15)])
-        return "\n\n".join([self.hypothesis_text(), self.facts()])
+            return "\n\n".join([self.hypothesis_text(), self.facts(), plan, self.limitations(), self.claims(limit=15)])
+        return "\n\n".join([self.hypothesis_text(), self.facts(), plan])
 
     def check(self, section: str, text: str) -> list[str]:
         keys = self.keys if section != "abstract" else set()
@@ -223,7 +228,18 @@ class Drafting:
             kind = "citation" if "citation" in problem else "number" if "number" in problem else "placeholder"
             self.findings.append(Finding(kind=kind, detail=problem, section=section, severity="minor"))
         keys = self.keys if section != "abstract" else set()
-        return strip_problems(text, self.placeholders_for(section), keys, self.material_for(section))
+        stripped = strip_problems(text, self.placeholders_for(section), keys, self.material_for(section))
+        if unresolved_count(stripped):
+            self.findings.append(
+                Finding(
+                    kind="placeholder",
+                    section=section,
+                    severity="major",
+                    detail=f"{unresolved_count(stripped)} value(s) could not be checked and show as {UNRESOLVED}: "
+                    "write them in by hand (with a placeholder) or rephrase",
+                )
+            )
+        return stripped
 
     # ------------------------------------------------------------ material
     def brief_text(self) -> str:
@@ -310,8 +326,13 @@ class Drafting:
                 f"- {len(failed)} planned runs produced no results, e.g. `{failed[0].condition}` seed "
                 f"{failed[0].seed}: {failed[0].error[:150]}"
             )
+        else:
+            lines.append(f"- No run failed: all {len(self.results.runs)} planned runs produced results.")
         if len(self.plan.seeds) < 5:
-            lines.append("- Few seeds per condition: confidence intervals are wide and tests have little power.")
+            lines.append(
+                f"- Only {len(self.plan.seeds)} seeds per condition: the tests have little statistical power, so "
+                "small effects can be missed."
+            )
         return "\n".join(lines)
 
     # ---------------------------------------------------- rtool's sections

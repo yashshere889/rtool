@@ -18,7 +18,7 @@ from research_tool.llm.mock_backend import MockLLM
 from research_tool.llm.types import ChatRequest
 from research_tool.schemas.code import CodeBundle, ExperimentResults
 from research_tool.schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord, Topic
-from research_tool.schemas.report import ReviewDraft, ReviewIssue, Rubric
+from research_tool.schemas.report import ReviewDraft, ReviewIssueDraft, Rubric
 from research_tool.testing.harness import make_run, queue
 from research_tool.testing.samples import sample_plan as plan
 from research_tool.testing.samples import sample_records as records
@@ -141,8 +141,23 @@ def test_writer_strips_what_repairs_cannot_fix(runs_root: Path) -> None:
     result = Engine(run, services(run, writer_llm(section=stubborn, fix=stubborn))).advance()
     assert result.outcome is Outcome.DONE
     report = ArtifactStore(run.artifacts_dir).get("report")
-    assert {f.kind for f in report.findings} == {"number"} and all(f.severity == "minor" for f in report.findings)
-    assert "0.99" not in (run.root / report.markdown_path).read_text()
+    numbers = [f for f in report.findings if f.kind == "number"]
+    assert numbers and all(f.severity == "minor" for f in numbers)
+    # what is left in mid-sentence stays visible, and is a major finding until someone fixes it
+    unresolved = [f for f in report.findings if f.kind == "placeholder"]
+    assert unresolved and all(f.severity == "major" and "show as [?]" in f.detail for f in unresolved)
+    text = (run.root / report.markdown_path).read_text()
+    assert "0.99" not in text and "It reached [?]." in text
+
+
+def test_an_unchecked_number_in_brackets_is_left_out(runs_root: Path) -> None:
+    run = seed(runs_root, stages=[{"id": "report", "agent": "writer"}])
+    aside = lambda r: honest(r) + " The effect was clear (p < 0.001)."  # noqa: E731
+    Engine(run, services(run, writer_llm(section=aside, fix=aside))).advance()
+    report = ArtifactStore(run.artifacts_dir).get("report")
+    assert all(f.severity == "minor" for f in report.findings)
+    text = (run.root / report.markdown_path).read_text()
+    assert "The effect was clear." in text and "[?]" not in text and "0.001" not in text
 
 
 def test_writer_asks_for_missing_conditions(runs_root: Path) -> None:
@@ -159,7 +174,13 @@ def test_writer_asks_for_missing_conditions(runs_root: Path) -> None:
 
 def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
     run = seed(runs_root)
-    issue = {"section": "results", "problem": "Name the test", "suggestion": "say paired t-test", "target": "report"}
+    issue = {
+        "section": "results",
+        "problem": "Name the test",
+        "suggestion": "say paired t-test",
+        "target": "report",
+        "severity": "minor",
+    }
     result = Engine(run, services(run, writer_llm(issues=[issue]))).advance()
     assert result.outcome is Outcome.WAITING_GATE and result.open_gates[0]["gate"] == "final_report"
     store = ArtifactStore(run.artifacts_dir)
@@ -219,7 +240,9 @@ def test_failed_checks_need_a_human(runs_root: Path) -> None:
 def test_issues_need_a_majority() -> None:
     def draft(*problems: str, score: int = 4) -> ReviewDraft:
         scores = Rubric(soundness=score, evidence=4, clarity=4, reproducibility=4, limitations=4)
-        issues = [ReviewIssue(section="results", problem=p, suggestion="fix it") for p in problems]
+        issues = [
+            ReviewIssueDraft(section="results", problem=p, suggestion="fix it", severity="minor") for p in problems
+        ]
         return ReviewDraft(scores=scores, summary=f"score {score}", issues=issues)
 
     reviewing = Reviewing.__new__(Reviewing)  # consensus() only needs the config
@@ -283,3 +306,19 @@ def test_hand_edits_are_checked_reviewed_again_and_kept_by_the_writer(runs_root:
     drafted = [r.messages[-1].content for r in llm.calls if "section of a research report" in r.messages[-1].content]
     assert drafted and not any('"Discussion"' in text for text in drafted)  # the researcher's section was not redrafted
     assert "report_human_sections_kept" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+
+
+def test_the_reviewer_rewrites_sections_with_unchecked_values(runs_root: Path) -> None:
+    run = seed(runs_root)
+    stubborn = lambda r: honest(r) + " It reached 0.99."  # noqa: E731
+    Engine(run, services(run, writer_llm(section=stubborn, fix=stubborn))).advance()
+    store = ArtifactStore(run.artifacts_dir)
+    assert "[?]" in (run.root / store.get("report").markdown_path).read_text()
+    review = store.get("review")
+    unresolved = [i for i in review.issues if "shown as [?]" in i.problem]
+    assert unresolved and all(i.severity == "major" for i in unresolved)
+    assert set(review.edited_sections) >= {i.section for i in unresolved}  # rewritten: "... Edited."
+    final = (run.root / store.get("final_report").markdown_path).read_text()
+    assert "[?]" not in final
+    check = next(c for c in review.checks if c.name == "no unresolved values ([?])")
+    assert check.ok  # judged on the final report, after the edits

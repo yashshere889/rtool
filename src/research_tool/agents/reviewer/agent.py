@@ -39,13 +39,16 @@ from ...schemas.plan import ExperimentPlan
 from ...schemas.report import Check, Report, ReportSection, Review, ReviewDraft, ReviewIssue, Rubric
 from ...tools.report.editing import edit_report
 from ...tools.report.render import (
+    UNRESOLVED,
     assemble,
     bib_keys,
     bibtex_subset,
     citation_keys,
+    plan_numbers,
     problems,
     reference_list,
     render,
+    unresolved_count,
     value_table,
 )
 from ..common import SYSTEM
@@ -59,6 +62,15 @@ class ReviewerConfig(BaseModel):
     agreement: float = Field(default=0.5, gt=0, le=1)  # share of reviews that must raise an issue
     min_score: float = Field(default=3.0, ge=1, le=5)  # every median rubric score must reach this to accept
     repair_rounds: int = Field(default=1, ge=0, le=3)
+
+
+UNRESOLVED_CHECK = f"no unresolved values ({UNRESOLVED})"
+
+
+def unresolved_check(sections: list[ReportSection]) -> Check:
+    """Numbers the Writer could not check show as [?]: never a finished report."""
+    found = [s.id for s in sections if unresolved_count(s.template)]
+    return Check(name=UNRESOLVED_CHECK, ok=not found, detail=f"in: {', '.join(found)}" if found else "")
 
 
 def similar(a: str, b: str) -> bool:
@@ -120,7 +132,7 @@ class Reviewing:
         return "\n".join(f"{c.text} {c.quote}" for c in self.km.claims if c.verified)
 
     def allowed_numbers(self, section: ReportSection, original: str = "") -> str:
-        material = [self.plan_text(), original]
+        material = [self.plan_text(), plan_numbers(self.plan), original]
         if section.id not in RESULT_SECTIONS:
             material.append(self.claims_text())
         return "\n".join(material)
@@ -210,6 +222,7 @@ class Reviewing:
         found.append(Check(name="reproducible", ok=not absent, detail=f"missing: {absent}" if absent else ""))
         majors = [f.detail for f in report.findings if f.severity == "major"]
         found.append(Check(name="no major findings left by the writer", ok=not majors, detail="; ".join(majors[:3])))
+        found.append(unresolved_check(report.sections))
         return found
 
     # -------------------------------------------------------------- review
@@ -249,7 +262,7 @@ class Reviewing:
             if len(raised_by) >= need:
                 majors = sum(1 for m in members if m.severity == "major")
                 severity = "major" if majors * 2 > len(members) else "minor"
-                issues.append(representative.model_copy(update={"severity": severity}))
+                issues.append(ReviewIssue.model_validate(representative.model_dump() | {"severity": severity}))
         middle = min(drafts, key=lambda d: sum(abs(getattr(d.scores, n) - scores[n]) for n in scores))
         return scores, issues, middle.summary
 
@@ -268,7 +281,8 @@ class Reviewing:
             text = self.ctx.llm.chat(prompt, profile="write", system=SYSTEM).text.strip()
             text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith(("#", "```"))).strip()
             unchanged = " ".join(text.split()) == " ".join(section.template.split())
-            if text and not unchanged and not self.section_problems(section, text, original=section.template):
+            clean = not unresolved_count(text) and not self.section_problems(section, text, original=section.template)
+            if text and not unchanged and clean:
                 return text
         return None  # no acceptable rewrite: the issue stays open for the human
 
@@ -287,6 +301,16 @@ class Reviewing:
         scores, issues, summary = self.consensus(drafts)
 
         sections = {s.id: s for s in self.report.sections}
+        issues += [  # the Writer's unchecked numbers are always worth a rewrite
+            ReviewIssue(
+                section=s.id,
+                problem=f"contains values that could not be checked, shown as {UNRESOLVED}",
+                suggestion="rewrite those sentences with the placeholders given, or leave the number out",
+                severity="major",
+            )
+            for s in self.report.sections
+            if unresolved_count(s.template) and s.origin != "rtool"
+        ]
         textual = [i for i in issues if i.target == "report"]
         # sections the researcher wrote are not rewritten: their issues stay open for them
         to_edit = sorted(
@@ -318,6 +342,7 @@ class Reviewing:
                 open_issues.append(issue)
 
         final_sections = [sections[s.id] for s in self.report.sections]
+        checks = [unresolved_check(final_sections) if c.name == UNRESOLVED_CHECK else c for c in checks]
         out = ctx.workspace.mkdir("final")
         self.copy_figures(out)
         cited = citation_keys("\n".join(s.template for s in final_sections))

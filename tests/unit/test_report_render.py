@@ -14,11 +14,13 @@ from research_tool.tools.report.render import (
     bare_numbers,
     bibtex_subset,
     citation_keys,
+    plan_numbers,
     problems,
     reference_list,
     render,
     strip_problems,
     to_pandoc_citations,
+    unresolved_count,
     value_table,
 )
 
@@ -66,6 +68,29 @@ def test_strip_problems_is_the_last_resort() -> None:
     text = "Accuracy was 0.72 {{mean:acc:old}} as shown [@nobody; @smith2020] and here [@nobody]."
     stripped = strip_problems(text, VALUES, KEYS, allowed_numbers="")
     assert stripped == "Accuracy was [?] [?] as shown [@smith2020] and here."
+    assert unresolved_count(stripped) == 2
+    # an aside that cannot be checked is left out rather than shown as "(p < [?])"
+    aside = strip_problems("All comparisons were significant (p < 0.001), as expected.", VALUES, KEYS, "")
+    assert aside == "All comparisons were significant, as expected."
+
+
+def test_the_ci_label_is_not_doubled() -> None:
+    """Seen on Barkla: '(95% CI 95% CI [1, 1])' and '95% CI [95% CI [-0.8, -0.8]]'."""
+    values = {"ci:a:b": Value("95% CI [1, 1]", "ci"), "diff_ci:a:b": Value("95% CI [-0.8, -0.8]", "ci")}
+    assert render("mean 1 (95% CI {{ci:a:b}})", values) == "mean 1 (95% CI [1, 1])"
+    assert render("(-0.8; 95% CI [{{diff_ci:a:b}}])", values) == "(-0.8; 95% CI [-0.8, -0.8])"
+    assert render("95 % CI: {{ci:a:b}}", values) == "95% CI [1, 1]"
+    assert render("a mean of 1 ({{ci:a:b}})", values) == "a mean of 1 (95% CI [1, 1])"
+
+
+def test_plan_facts_may_be_typed() -> None:
+    p = plan()
+    p.conditions[1].description = "Treatment condition with 10 agents"
+    p.independent_variables[0].values = ["./2", "3", "10"]
+    material = plan_numbers(p)
+    assert bare_numbers("Experiments across 2 to 10 agents, N=10, three seeds.", allowed=[2.0, 10.0]) == []
+    assert "10" in material and "2" in material.split() and "3 seeds" in material and "alpha 0.05" in material
+    assert problems("From 2 to 10 agents at alpha 0.05.", VALUES, KEYS, allowed_numbers=material) == []
 
 
 def test_references_and_bibtex() -> None:
