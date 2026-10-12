@@ -45,7 +45,9 @@ from .env import ExperimentEnv
 from .playbook import Diagnosis, declared_requirements, diagnose, halve_batch_size, merge_requirements
 from .results import (
     aggregate,
+    analysis_notes,
     collect,
+    correction_used,
     output_name,
     planned_runs,
     read_output,
@@ -790,8 +792,7 @@ class CoderSession:
             if len(ok) < len(records)
             else []
         )
-        if comparisons:
-            notes.append(f"comparisons use the {comparisons[0].test} against the baseline")
+        notes += analysis_notes(self.plan, comparisons)
         warnings = self.warnings() + sanity.results_warnings(self.plan, records)
         notes += [f"Warning: {w}" for w in warnings]
         payload = results_payload(records, notes)
@@ -832,6 +833,7 @@ class CoderSession:
                 code_fingerprint=bundle.fingerprint,
                 notes=notes,
                 warnings=warnings,
+                correction=correction_used(self.plan, comparisons),
             ),
             meta={"review": ctx.relative(tables)},
         )

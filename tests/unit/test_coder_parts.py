@@ -22,7 +22,16 @@ from research_tool.agents.coder.playbook import (
     merge_requirements,
     valid_requirement,
 )
-from research_tool.agents.coder.results import aggregate, render_figures, render_tables, results_payload, validate
+from research_tool.agents.coder.results import (
+    aggregate,
+    analysis_notes,
+    correction_used,
+    render_figures,
+    render_tables,
+    results_payload,
+    translated_tests,
+    validate,
+)
 from research_tool.core.config import ExperimentsConfig
 from research_tool.hpc.sbatch import render_script
 from research_tool.packs import available_packs, load_pack
@@ -48,8 +57,54 @@ def test_tests_on_a_known_example() -> None:
     assert stats.wilcoxon_signed_rank(a, b).p_value == pytest.approx(0.25)  # smallest possible with 3 pairs
     assert stats.mann_whitney(a, b).p_value == pytest.approx(0.1)  # complete separation, 3 vs 3
     same = stats.paired_t([1.0, 1.0], [1.0, 1.0])
-    assert same.p_value == 1.0 and same.difference == 0  # no noise, no difference
+    assert same.p_value is None and same.difference == 0  # no noise: nothing to test against
     assert stats.holm([0.01, 0.04, 0.03, None]) == pytest.approx([0.03, 0.06, 0.06, None])
+
+
+def test_no_variation_across_seeds_gives_no_p_value() -> None:
+    """Seen on Barkla: 0.6 three times has a computed sd of 7e-17, which gave p = 1e-32 and d = -5.9e15."""
+    flat, base = [1.0 - (6 - 2) * 0.1] * 3, [1.0] * 3
+    assert stats.stdev(flat) == 0 and stats.mean_ci(flat) == (pytest.approx(0.6), pytest.approx(0.6))
+    for result in (stats.paired_t(flat, base), stats.welch_t(flat, base)):
+        assert result.p_value is None and result.effect_size is None and result.statistic is None
+        assert result.difference == pytest.approx(-0.4)
+    tiny = stats.paired_t([1e-9, 2e-9, 3e-9], [0.0, 0.0, 0.0])  # small values still have real spread
+    assert tiny.p_value is not None and tiny.effect_size is not None
+
+
+def test_the_plans_tests_are_translated_and_said_so() -> None:
+    barkla = plan(test="ANOVA")
+    barkla.statistical_tests += [
+        barkla.statistical_tests[0].model_copy(update={"test": "Tukey’s HSD"}),
+        barkla.statistical_tests[0].model_copy(update={"test": "Kruskal-Wallis"}),
+    ]
+    summaries, comparisons = aggregate(barkla, records())
+    assert {c.test for c in comparisons} == {"paired t-test"}  # the first test decides: ANOVA -> t-tests
+    assert all(c.p_adjusted is not None for c in comparisons)  # two comparisons: corrected although "none"
+    assert correction_used(barkla, comparisons) == "holm"
+    assert translated_tests(barkla) == ["ANOVA", "Tukey’s HSD", "Kruskal-Wallis"]
+    notes = analysis_notes(barkla, comparisons)
+    assert notes[0] == "each condition is compared with the baseline using the paired t-test"
+    assert "the plan named ANOVA, Tukey’s HSD, Kruskal-Wallis; rtool runs pairwise t-tests" in notes[1]
+    assert notes[2] == "p-values are corrected for the 2 comparisons with Holm's method"
+    rank = aggregate(plan(test="Kruskal-Wallis H test"), records())[1]
+    assert {c.test for c in rank} == {"Mann-Whitney U"}
+    single = plan()
+    single.metrics = single.metrics[:1]
+    one = aggregate(single, records())[1]
+    assert len(one) == 1 and one[0].p_adjusted is None and correction_used(single, one) == ""
+
+
+def test_flat_results_are_not_called_significant() -> None:
+    flat = [
+        RunRecord(condition=c, seed=s, status="ok", metrics={"acc": v, "loss": 1 - v})
+        for c, v in (("base", 1.0), ("new", 0.6))
+        for s in (0, 1, 2)
+    ]
+    _, comparisons = aggregate(plan(), flat)
+    assert all(c.p_value is None and not c.significant and c.better is None for c in comparisons)
+    assert comparisons[0].verdict().startswith("no test possible: the results did not vary across seeds")
+    assert analysis_notes(plan(), comparisons)[-1].startswith("no test was possible for acc, loss")
 
 
 # --------------------------------------------------------------- playbook

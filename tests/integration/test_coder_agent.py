@@ -40,7 +40,7 @@ BATCH_SIZE = 16
 
 
 def run(condition, seed, resources, smoke, workdir):
-    rng = random.Random(seed)
+    rng = random.Random(f"{condition}-{seed}")
     level = 0.65 if condition == "base" else 0.72
     acc = level + rng.uniform(-0.01, 0.01)
     return {"acc": acc, "loss": 1 - acc}

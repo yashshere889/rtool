@@ -121,7 +121,7 @@ from pathlib import Path
 def run(condition, seed, resources, smoke, workdir):
     recording = Path(resources["Sleep-EDF"]) / "recording.edf"
     spread = len(recording.read_bytes()) / 6400  # 64 bytes -> 0.01
-    rng = random.Random(seed)
+    rng = random.Random(f"{condition}-{seed}")
     gain = (0.10 if condition == "sham" else 0.18) + rng.uniform(-spread, spread)
     return {"recall_gain": gain}
 '''

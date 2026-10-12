@@ -132,15 +132,12 @@ class Reviewing:
     def facts(self) -> str:
         lines = []
         for c in self.results.comparisons:
-            verdict = (
-                "not significant"
-                if not c.significant
-                else ("significantly better" if c.better else "significantly worse")
-            )
             key = f"{c.metric}:{c.condition}"
+            corrected = ", corrected" if c.p_adjusted is not None else ""
             lines.append(
                 f"- {c.condition} vs {c.baseline} on {c.metric}: difference {self.values[f'diff:{key}'].text} "
-                f"({self.values[f'diff_ci:{key}'].text}), {self.values[f'p:{key}'].text} ({c.test}) — {verdict}"
+                f"({self.values[f'diff_ci:{key}'].text}), {self.values[f'{c.p_key}:{key}'].text} "
+                f"({c.test}{corrected}) — {c.verdict()}"
             )
         ok = sum(1 for r in self.results.runs if r.status == "ok")
         lines.append(f"- {ok} of {len(self.results.runs)} planned runs produced results")

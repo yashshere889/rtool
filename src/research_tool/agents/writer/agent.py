@@ -48,6 +48,7 @@ from ...tools.report.render import (
     to_pandoc_citations,
     value_table,
 )
+from ..coder.results import translated_tests
 from ..common import SYSTEM
 
 PROSE = ("introduction", "related_work", "results", "discussion", "conclusion")
@@ -289,15 +290,11 @@ class Drafting:
                     f"{{{{ci:{metric.name}:{s.condition}}}}}"
                 )
             for c in (c for c in self.results.comparisons if c.metric == metric.name):
-                verdict = (
-                    "not statistically significant"
-                    if not c.significant
-                    else ("a significant improvement" if c.better else "a significant deterioration")
-                )
                 key = f"{metric.name}:{c.condition}"
+                test = f"the {c.test}" + (", corrected for multiple comparisons" if c.p_adjusted is not None else "")
                 lines.append(
                     f"  - `{c.condition}` vs `{c.baseline}`: difference {{{{diff:{key}}}}} ({{{{diff_ci:{key}}}}}), "
-                    f"{{{{p:{key}}}}} with the {c.test} — {verdict}."
+                    f"{{{{{c.p_key}:{key}}}}} with {test} — {c.verdict()}."
                 )
         lines.append(f"- What the plan expected: {self.plan.expected_results}")
         lines += [f"- Note: {note}" for note in self.results.notes if not note.startswith("Warning: ")]
@@ -320,8 +317,11 @@ class Drafting:
     # ---------------------------------------------------- rtool's sections
     def methods(self) -> str:
         p, c = self.plan, self.plan.compute
-        test = self.results.comparisons[0].test if self.results.comparisons else p.statistical_tests[0].test
-        corrections = sorted({t.correction for t in p.statistical_tests if t.correction and t.correction != "none"})
+        comparisons = self.results.comparisons
+        test = " / ".join(sorted({x.test for x in comparisons})) if comparisons else p.statistical_tests[0].test
+        corrected = sum(1 for x in comparisons if x.p_adjusted is not None)
+        method = {"holm": "Holm's method", "bonferroni": "Bonferroni"}.get(self.results.correction, "")
+        translated = translated_tests(p) if comparisons else []
         lines = [
             f"**Design.** {p.design}",
             "",
@@ -345,8 +345,18 @@ class Drafting:
             f"**Statistics.** Every condition ran with {len(p.seeds)} seeds ({', '.join(map(str, p.seeds))}). Each "
             f"condition is compared with the baseline using the {test} (paired by seed where all seeds succeeded); "
             "means are reported with 95% confidence intervals from the t distribution and effect sizes as Cohen's d"
-            + (f"; p-values are corrected for multiple comparisons ({', '.join(corrections)})" if corrections else "")
-            + f". Significance level: {p.statistical_tests[0].alpha:g}.",
+            + (
+                f"; p-values are corrected for the {corrected} comparisons with {method}"
+                if corrected and method
+                else ""
+            )
+            + "."
+            + (
+                f" The plan named {', '.join(translated)}; these were run as pairwise comparisons with the baseline."
+                if translated
+                else ""
+            )
+            + f" Significance level: {p.statistical_tests[0].alpha:g}.",
         ]
         if p.resources:
             lines += [

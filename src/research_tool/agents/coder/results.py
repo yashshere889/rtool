@@ -101,13 +101,72 @@ def validate(data: Any, schema: dict[str, Any], where: str = "$") -> list[str]:
 
 
 # ------------------------------------------------------------ statistics
+# What rtool can run for each condition against the baseline, recognised in the plan's free text. ANOVA and
+# Tukey's HSD become t-tests, Kruskal-Wallis becomes Mann-Whitney U: the same question asked pairwise.
+_FAMILIES = (
+    ("wilcoxon", re.compile(r"wilcoxon|signed[- ]rank")),
+    ("mann-whitney", re.compile(r"mann|whitney|kruskal|rank[- ]sum|\bu[- ]test")),
+    ("t", re.compile(r"t[- ]test|student|welch|anova|tukey|\bt\b")),
+)
+_RUN_AS = {"t": "t-tests", "wilcoxon": "Wilcoxon signed-rank tests", "mann-whitney": "Mann-Whitney U tests"}
+_SAME = {  # a plan's test that names exactly what rtool runs (not something translated into it)
+    "t": re.compile(r"t[- ]test|student|welch|\bt\b"),
+    "wilcoxon": _FAMILIES[0][1],
+    "mann-whitney": re.compile(r"mann|whitney|rank[- ]sum|\bu[- ]test"),
+}
+
+
+def _family_of(text: str) -> str | None:
+    return next((family for family, pattern in _FAMILIES if pattern.search(text.lower())), None)
+
+
 def _test_family(plan: ExperimentPlan) -> tuple[str, str]:
-    """(test, correction) chosen from the plan's statistical tests (free text written by the planner)."""
-    text = " ".join(f"{t.test} {t.comparison}" for t in plan.statistical_tests).lower()
+    """(test, correction) chosen from the plan's statistical tests (free text written by the planner).
+
+    The first test rtool recognises decides (the plan's main analysis; later ones are often robustness checks).
+    Several comparisons are always corrected: Holm's method unless the plan asks for Bonferroni.
+    """
+    test = next((f for t in plan.statistical_tests if (f := _family_of(t.test))), None)
+    test = test or _family_of(" ".join(t.comparison for t in plan.statistical_tests)) or "t"
     corrections = " ".join(t.correction for t in plan.statistical_tests).lower()
-    test = "wilcoxon" if "wilcoxon" in text else "mann-whitney" if re.search(r"mann|whitney", text) else "t"
-    correction = "holm" if "holm" in corrections else "bonferroni" if "bonferroni" in corrections else "none"
-    return test, correction
+    return test, "bonferroni" if "bonferroni" in corrections else "holm"
+
+
+def translated_tests(plan: ExperimentPlan) -> list[str]:
+    """The plan's tests that rtool does not run as named (e.g. ANOVA, run as pairwise t-tests)."""
+    family, _ = _test_family(plan)
+    return [t.test for t in plan.statistical_tests if not _SAME[family].search(t.test.lower())]
+
+
+def correction_used(plan: ExperimentPlan, comparisons: list[Comparison]) -> str:
+    """'holm' or 'bonferroni' if the comparisons' p-values were corrected, else ''."""
+    return _test_family(plan)[1] if any(c.p_adjusted is not None for c in comparisons) else ""
+
+
+def analysis_notes(plan: ExperimentPlan, comparisons: list[Comparison]) -> list[str]:
+    """What the analysis did, in words, where it differs from what the plan says."""
+    if not comparisons:
+        return []
+    family, _ = _test_family(plan)
+    tests = sorted({c.test for c in comparisons})
+    notes = [f"each condition is compared with the baseline using the {' / '.join(tests)}"]
+    translated = translated_tests(plan)
+    if translated:
+        notes.append(
+            f"the plan named {', '.join(translated)}; rtool runs pairwise {_RUN_AS[family]} against the baseline "
+            "instead"
+        )
+    adjusted = [c for c in comparisons if c.p_adjusted is not None]
+    if adjusted:
+        method = "Bonferroni" if correction_used(plan, comparisons) == "bonferroni" else "Holm's method"
+        notes.append(f"p-values are corrected for the {len(adjusted)} comparisons with {method}")
+    untestable = sorted({c.metric for c in comparisons if c.p_value is None and c.n >= 2})
+    if untestable:
+        notes.append(
+            f"no test was possible for {', '.join(untestable)}: the results (or their differences from the "
+            "baseline) did not vary across seeds"
+        )
+    return notes
 
 
 def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[MetricSummary], list[Comparison]]:
@@ -167,11 +226,12 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
                     n=result.n,
                 )
             )
-    adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}.get(correction)
+    tested = sum(1 for c in comparisons if c.p_value is not None)
+    adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}.get(correction) if tested > 1 else None
     adjusted = adjust([c.p_value for c in comparisons]) if adjust else [c.p_value for c in comparisons]
     direction = {m.name: m.higher_is_better for m in plan.metrics}
     for comparison, p in zip(comparisons, adjusted, strict=True):
-        comparison.p_adjusted = p if adjust else None
+        comparison.p_adjusted = p if adjust and p is not None else None
         comparison.significant = p is not None and p < stats.ALPHA
         if comparison.significant:
             comparison.better = (comparison.difference > 0) == direction[comparison.metric]

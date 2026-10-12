@@ -122,19 +122,14 @@ def _like(base: TestResult, test: str, *, p_value: float | None) -> TestResult:
     return TestResult(test, base.difference, base.ci_low, base.ci_high, None, p_value, base.effect_size, base.n)
 
 
-def _degenerate(diff: float) -> float:
-    """p-value when every value is identical within groups: no noise at all."""
-    return 1.0 if diff == 0 else 0.0
-
-
 def paired_t(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> TestResult:
     d = [x - y for x, y in zip(a, b, strict=True)]
     n, md = len(d), mean(d)
     if n < 2:
         return TestResult("paired t-test", md, md, md, None, None, None, n)
     sd = stdev(d)
-    if sd == 0:
-        return TestResult("paired t-test", md, md, md, None, _degenerate(md), None, n)
+    if sd == 0:  # every pair differs by the same amount: no noise to test against, so no p-value or d
+        return TestResult("paired t-test", md, md, md, None, None, None, n)
     se = sd / math.sqrt(n)
     t = md / se
     half = t_critical(n - 1, alpha) * se
@@ -150,8 +145,8 @@ def welch_t(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> Tes
     va, vb = stdev(a) ** 2 / na, stdev(b) ** 2 / nb
     se = math.sqrt(va + vb)
     pooled = math.sqrt(((na - 1) * stdev(a) ** 2 + (nb - 1) * stdev(b) ** 2) / (na + nb - 2))
-    if se == 0:
-        return TestResult("Welch t-test", diff, diff, diff, None, _degenerate(diff), None, n)
+    if se == 0:  # identical values within each group: nothing to test against
+        return TestResult("Welch t-test", diff, diff, diff, None, None, None, n)
     df = (va + vb) ** 2 / (va**2 / (na - 1) + vb**2 / (nb - 1))
     t = diff / se
     half = t_critical(df, alpha) * se
