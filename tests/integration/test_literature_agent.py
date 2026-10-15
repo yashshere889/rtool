@@ -276,7 +276,11 @@ def make_llm(calls: dict[str, int]) -> MockLLM:
 
 
 def literature_only(config: dict[str, Any]) -> dict[str, Any]:
-    return {"name": "lit", "stages": [{"id": "literature", "agent": "literature", "config": config}]}
+    return {
+        "name": "lit",
+        "gates": {"literature_review": {"kind": "approve", "prompt": "Review the papers."}},
+        "stages": [{"id": "literature", "agent": "literature", "gate": "literature_review", "config": config}],
+    }
 
 
 def build(runs_root: Path, config: dict[str, Any] | None = None):  # noqa: ANN201
@@ -508,3 +512,47 @@ def test_snowballing_falls_back_to_openalex_when_semantic_scholar_fails(runs_roo
     assert reference.found_by == ["refs:arxiv:2101.00001"] and reference.status != "excluded"
     failed = [e for e in EventLog(run.events_path, run.run_id) if e["kind"] == "literature_snowball_failed"]
     assert failed and all(e["data"]["source"] == "semantic_scholar" for e in failed)
+
+
+def test_a_comment_is_kept_when_a_later_rejection_only_drops_papers(setup) -> None:  # noqa: ANN001
+    """2026-10-15: a comment fixed the topic reading; dropping two junk records next must not forget it."""
+    from research_tool.testing.harness import queue
+
+    run, services, _, calls, _ = setup
+    Engine(run, services).advance()
+    queue(run, ActionKind.REJECT, payload={"feedback": "Focus on spindles during deep sleep."})
+    Engine(run, services).advance()
+    scope, plan, screened = calls["scope"], calls["plan"], calls["relevance"]
+    corpus = ArtifactStore(run.artifacts_dir).get("corpus")
+    drop = next(p for p in corpus.papers if p.status == "extracted").id
+    queue(run, ActionKind.REJECT, payload={"exclude": [drop]})
+    assert Engine(run, services).advance().outcome is Outcome.WAITING_GATE
+    assert (calls["scope"], calls["plan"], calls["relevance"]) == (scope, plan, screened)  # nothing read again
+    after = ArtifactStore(run.artifacts_dir).get("corpus")
+    assert next(p for p in after.papers if p.id == drop).status == "excluded"
+    assert after.scope == corpus.scope and after.queries == corpus.queries
+    _, stages, _ = load_status(run)
+    assert stages["literature"].attempt == 3
+
+
+def test_dropping_a_paper_frees_its_place_for_the_next_and_moves_nothing_else(runs_root: Path) -> None:
+    """2026-10-15: dropping two junk records re-ran citation following, and 14 other papers swapped."""
+    from research_tool.testing.harness import queue
+
+    run, services, _, calls, _ = build(runs_root, {"max_papers": 3, "min_papers": 0})
+    Engine(run, services).advance()
+    before = ArtifactStore(run.artifacts_dir).get("corpus")
+    kept = [p.id for p in before.included()]
+    waiting = [p for p in before.papers if p.note == "below the corpus size cap"]
+    assert len(kept) == 3 and waiting
+    screened = calls["relevance"]
+    queue(run, ActionKind.REJECT, payload={"exclude": [kept[0]]})
+    Engine(run, services).advance()
+    after = ArtifactStore(run.artifacts_dir).get("corpus")
+    now = [p.id for p in after.included()]
+    assert kept[0] not in now and set(kept[1:]) <= set(now) and len(now) == 3  # one out, one in, nothing else
+    newcomer = next(p for p in after.papers if p.id in set(now) - set(kept))
+    assert newcomer.id in {p.id for p in waiting} and newcomer.note == ""
+    assert calls["relevance"] == screened
+    events = [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+    assert "literature_snowball_skipped" in events

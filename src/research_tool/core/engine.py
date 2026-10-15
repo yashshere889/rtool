@@ -386,6 +386,7 @@ class Engine:
             job_results=dict(st.job_results),
             checkpoint=checkpoint,
             run_root=self.run.root,
+            earlier_feedback=[f for f in st.feedback if f.consumed_by_attempt is not None],
             tools=self.services.tools,
             # on a CPU-only episode an LLM stage may only run because it said it could resume without the
             # model; if it reaches for the model anyway, it is handed to a GPU episode (LLMRequired)

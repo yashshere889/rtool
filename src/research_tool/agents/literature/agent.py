@@ -66,6 +66,7 @@ SYSTEM = "You are a careful research assistant. Follow the instructions exactly 
 PHASES = ("plan", "search", "screen", "snowball", "download", "parse", "extract", "digest", "embed", "map")
 INCLUDED = ("included", "downloaded", "unavailable", "parsed", "extracted", "failed")
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+CAP_NOTE = "below the corpus size cap"
 
 
 class LiteratureConfig(BaseModel):
@@ -233,8 +234,12 @@ class _LiteratureRun:
         self.kb = kb
         self.brief: ResearchBrief = ctx.inputs.get("research_brief")
         self.prompts = PromptLibrary.for_agent(__package__, "literature", pack=self.brief.domain_pack)
-        # what the researcher wrote (choices made by clicking are applied below, not handed to the model)
-        self.feedback = [f.text for f in ctx.feedback if not f.data.get("choices_only")]
+        # what the researcher wrote (choices made by clicking are applied below, not handed to the model): every
+        # comment on this stage, oldest first, so a later rejection that only drops papers keeps the topic reading
+        new = [f.text for f in ctx.feedback if not f.data.get("choices_only")]
+        earlier = [f.text for f in ctx.earlier_feedback if not f.data.get("choices_only")]
+        self.feedback = list(dict.fromkeys([*earlier, *new]))
+        self.new_comments = bool(new)  # only a new comment re-screens the papers already judged
         self.choices: dict[str, str] = {}  # paper id -> include | exclude, the latest decision wins
         for item in ctx.feedback:
             for choice in ("include", "exclude"):
@@ -350,7 +355,7 @@ class _LiteratureRun:
 
     # --------------------------------------------------------------- screen
     def phase_screen(self) -> None:
-        self.screen(rescreen=bool(self.feedback) and not self.state.get("rescreened"))
+        self.screen(rescreen=self.new_comments and not self.state.get("rescreened"))
         self.state["rescreened"] = True
 
     def record_choices(self) -> None:
@@ -401,6 +406,8 @@ class _LiteratureRun:
             keep = score >= self.cfg.relevance_threshold
             if paper.status in ("candidate", "excluded", "included"):
                 paper.status = "included" if keep else "excluded"
+                if paper.note == CAP_NOTE:
+                    paper.note = ""  # apply_cap decides again
             elif not keep:
                 paper.status = "excluded"  # already read, but no longer relevant
         self.apply_overrides()  # no size cap yet: snowballing starts from what screening kept
@@ -411,12 +418,20 @@ class _LiteratureRun:
         return rank_papers(papers, self.kb.citations())
 
     def apply_cap(self) -> None:
-        ranked = self.ranked(self.included())
+        """Keep the ``max_papers`` best of what screening kept, counting papers an earlier cut left out.
+
+        So a paper the researcher drops frees its place for the next paper in line, and nothing else moves.
+        """
+        capped = [p for p in self.index.all() if p.status == "excluded" and p.note == CAP_NOTE and p.override is None]
+        ranked = self.ranked([*self.included(), *capped])
         kept = [p for p in ranked if p.override == "include"]  # the researcher's picks count first
         ranked = kept + [p for p in ranked if p.override != "include"]
-        for paper in ranked[self.cfg.max_papers :]:
-            paper.status = "excluded"
-            paper.note = "below the corpus size cap"
+        for n, paper in enumerate(ranked):
+            if n < self.cfg.max_papers:
+                if paper.status == "excluded":
+                    paper.status, paper.note = "included", ""
+            elif is_included(paper):
+                paper.status, paper.note = "excluded", CAP_NOTE
 
     # ------------------------------------------------------------- snowball
     def neighbours(self, seed: PaperRecord) -> list[tuple[PaperHit, str]]:
@@ -450,6 +465,14 @@ class _LiteratureRun:
         The cap used to apply during screening, so a broad search alone could fill it and snowballing never ran
         (2026-10-12: 100 of 100 papers came from keyword search). Reference lists find papers keywords miss.
         """
+        if not self.new_comments and self.kb.meta("snowballed"):
+            # only papers were kept or dropped: the reference lists were followed before, and following them
+            # again from a shifted set of seeds would swap papers nobody asked about (2026-10-15: 14 of 100)
+            self.apply_cap()
+            self.apply_overrides()
+            self.save()
+            self.ctx.emit("literature_snowball_skipped", reason="only papers were kept or dropped")
+            return
         for round_number in range(1, self.cfg.snowball_rounds + 1):
             expanded = set(self.state.get("expanded", []))
             seeds = self.ranked([p for p in self.included() if p.id not in expanded])[: self.cfg.snowball_seeds]
@@ -469,6 +492,7 @@ class _LiteratureRun:
             if new == 0:
                 break
             self.screen()
+        self.kb.set_meta("snowballed", True)
         self.apply_cap()
         self.apply_overrides()
         self.save()
