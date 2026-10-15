@@ -58,6 +58,7 @@ class JobSpec(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     modules: list[str] = Field(default_factory=list)
     requeue: bool = False
+    exclude: list[str] = Field(default_factory=list)  # nodes Slurm must not use (e.g. one that could not start vLLM)
     signal: str | None = None  # e.g. "B:USR1@600"
     stdout: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

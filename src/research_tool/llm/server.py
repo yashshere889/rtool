@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import secrets
 import signal
 import socket
@@ -46,6 +47,24 @@ def log_tail(path: Path, lines: int = 40) -> str:
         return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:])
     except FileNotFoundError:
         return "(no log written)"
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_ERROR_LINE = re.compile(r"\b([A-Za-z]+(?:Error|Exception)): (.+)$")
+_GENERIC = ("Engine core initialization failed", "Engine process failed to start")
+
+
+def root_cause(path: Path) -> str | None:
+    """The first specific ``SomeError: message`` line in a vLLM log (the tail often holds only the wrapper)."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return None
+    for line in text.splitlines():
+        match = _ERROR_LINE.search(_ANSI.sub("", line))
+        if match and not any(g in match.group(2) for g in _GENERIC):
+            return f"{match.group(1)}: {match.group(2).strip()}"
+    return None
 
 
 @dataclass
@@ -170,8 +189,11 @@ class VLLMServer:
             while True:
                 code = handle.process.poll()
                 if code is not None:
+                    cause = root_cause(handle.log_path)
                     raise VLLMServerError(
-                        f"vLLM exited with code {code} during startup; last log lines:\n{log_tail(handle.log_path)}"
+                        f"vLLM exited with code {code} during startup"
+                        + (f" ({cause})" if cause else "")
+                        + f"; last log lines:\n{log_tail(handle.log_path)}"
                     )
                 with contextlib.suppress(httpx.TransportError):
                     if client.get(handle.url + "/health").status_code == 200:

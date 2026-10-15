@@ -10,6 +10,8 @@ import { Tooltip } from "./ui/tooltip";
 export function QuoteBlock({ claim, showInPaper }: { claim: ClaimView; showInPaper?: string }) {
   const tags = [claim.method, claim.dataset, claim.metric && claim.value ? `${claim.metric} = ${claim.value}` : claim.metric]
     .filter(Boolean);
+  const unquoted = claim.unquoted_numbers ?? [];
+  const quoteFound = claim.support >= 0.85; // the agent's threshold: below it the quote does not count as found
   return (
     <figure className="space-y-2">
       <p className="text-sm font-medium">{claim.text}</p>
@@ -23,12 +25,27 @@ export function QuoteBlock({ claim, showInPaper }: { claim: ClaimView; showInPap
               </Badge>
             </span>
           </Tooltip>
+        ) : quoteFound ? (
+          <Tooltip content="The quote is in the paper, but the claim states a number that the paper's text does not contain. Treat this claim with care.">
+            <span>
+              <Badge tone="bad">
+                <CircleAlert className="size-3.5" /> Number not in the paper: {unquoted.join(", ")}
+              </Badge>
+            </span>
+          </Tooltip>
         ) : (
           <Tooltip content="The quote could not be found in the paper. Treat this claim with care.">
             <span>
               <Badge tone="bad">
                 <CircleAlert className="size-3.5" /> Quote not found ({Math.round(claim.support * 100)}% match)
               </Badge>
+            </span>
+          </Tooltip>
+        )}
+        {claim.verified && unquoted.length > 0 && (
+          <Tooltip content="These numbers are elsewhere in the paper, but not in this quote: check them in the paper.">
+            <span>
+              <Badge tone="warn">Not in this quote: {unquoted.join(", ")}</Badge>
             </span>
           </Tooltip>
         )}

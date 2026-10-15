@@ -5,17 +5,22 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from research_tool.core.config import load_config
 from research_tool.core.engine import Outcome
 from research_tool.core.events import EventLog
 from research_tool.core.run import RunHandle
 from research_tool.hpc.episode import (
+    BAD_NODE_HOURS,
     EpisodeTracker,
     LazyLLM,
+    bad_nodes,
     choose_gpu,
     episode_job_spec,
     gpu_available,
     llm_needed,
+    note_bad_node,
     run_episode,
     schedule_next,
     submit_episode,
@@ -23,6 +28,7 @@ from research_tool.hpc.episode import (
 from research_tool.hpc.fake_slurm import FakeSlurm
 from research_tool.llm.client import LLMClient
 from research_tool.llm.mock_backend import MockLLM
+from research_tool.llm.server import VLLMServerError
 from research_tool.testing.harness import make_run
 
 JOB = {"name": "job", "stages": [{"id": "source", "agent": "toy_source"}, {"id": "analyze", "agent": "toy_analyzer"}]}
@@ -176,3 +182,47 @@ def test_llm_needed_looks_only_at_what_can_run_next(runs_root: Path, mock_llm: M
     assert result.open_gates[0]["gate"] == "numbers_review"
     # approving lets `analyze` run next; `write` (which needs the LLM) is further away
     assert not llm_needed(run)
+
+
+NO_SHM = "vLLM exited with code 1 during startup (OSError: [Errno 28] No space left on device); last log lines:\n..."
+
+
+def broken_server() -> LLMClient:
+    raise VLLMServerError(NO_SHM)
+
+
+def test_a_node_that_cannot_start_vllm_is_avoided_and_the_run_goes_on(
+    runs_root: Path, mock_llm: MockLLM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-15: vLLM died twice on gpu45 (/dev/shm full); the episode crashed and nothing was resubmitted."""
+    run = make_run(runs_root, JOB)
+    slurm = FakeSlurm(run.jobs_dir / "fake_slurm.json")
+    monkeypatch.setenv("SLURMD_NODENAME", "gpu45")
+    result = run_episode(run, slurm=slurm, llm_factory=broken_server, has_gpu=True)
+    assert result.outcome is Outcome.NEEDS_LLM
+    assert result.message.startswith("vLLM exited with code 1 during startup (OSError: [Errno 28] No space left")
+    assert result.message.endswith("on gpu45; the next GPU episode avoids that node")
+    job = schedule_next(run, slurm, result, self_job_id=None)
+    assert job is not None and slurm.jobs[job]["spec"]["exclude"] == ["gpu45"]
+    failed = [e["data"] for e in EventLog(run.events_path, run.run_id) if e["kind"] == "llm_server_failed"]
+    assert failed and failed[0]["node"] == "gpu45" and not failed[0]["giving_up"]
+    # the next episode, on a working node, picks the interrupted stage up again
+    result = run_episode(run, slurm=slurm, llm_factory=Factory(run, mock_llm), has_gpu=True)
+    assert result.outcome is Outcome.WAITING_JOB and "source" in result.ran
+
+
+def test_repeated_server_failures_stop_for_a_human_and_are_forgotten_after_a_day(
+    runs_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(runs_root, JOB)
+    slurm = FakeSlurm(run.jobs_dir / "fake_slurm.json")
+    outcomes = []
+    for node in ("gpu41", "gpu42", "gpu43"):
+        monkeypatch.setenv("SLURMD_NODENAME", node)
+        outcomes.append(run_episode(run, slurm=slurm, llm_factory=broken_server, has_gpu=True))
+    assert [r.outcome for r in outcomes] == [Outcome.NEEDS_LLM, Outcome.NEEDS_LLM, Outcome.NEEDS_HUMAN]
+    assert "failed to start 3 times in the last day (nodes gpu41, gpu42, gpu43)" in outcomes[-1].message
+    assert schedule_next(run, slurm, outcomes[-1], self_job_id=None) is None
+    later = time.time() + (BAD_NODE_HOURS + 1) * 3600
+    assert bad_nodes(run, now=later) == {}
+    assert sorted(note_bad_node(run, "gpu44", "x", now=later)) == ["gpu44"]

@@ -112,6 +112,9 @@ def sentinel_name(array: bool) -> str:
     return "${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}" if array else "${SLURM_JOB_ID}"
 
 
+_NODE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
 def render_script(spec: JobSpec, *, sentinel_dir: Path, log_dir: Path) -> str:
     """The sbatch script for ``spec`` (call ``validate_job`` first)."""
     array = bool(spec.array)
@@ -136,6 +139,9 @@ def render_script(spec: JobSpec, *, sentinel_dir: Path, log_dir: Path) -> str:
     if spec.dependency:
         header.append(f"#SBATCH --dependency={spec.dependency_type}:{':'.join(spec.dependency)}")
         header.append("#SBATCH --kill-on-invalid-dep=yes")
+    nodes = [n for n in spec.exclude if _NODE_NAME.fullmatch(n)]
+    if nodes:
+        header.append(f"#SBATCH --exclude={','.join(nodes)}")
     if spec.signal:
         header.append(f"#SBATCH --signal={spec.signal}")
     if spec.requeue:

@@ -873,6 +873,8 @@ export interface components {
             support: number;
             /** Text */
             text: string;
+            /** Unquoted Numbers */
+            unquoted_numbers: string[];
             /** Value */
             value: string;
             /** Verified */
@@ -1209,6 +1211,11 @@ export interface components {
             comparisons: components["schemas"]["Comparison"][];
             /** Complete */
             complete: boolean;
+            /**
+             * Correction
+             * @default
+             */
+            correction: string;
             /** Figures */
             figures: string[];
             /**
@@ -1231,6 +1238,8 @@ export interface components {
              * @default
              */
             tables_path: string;
+            /** Warnings */
+            warnings: string[];
         };
         /** FieldChange */
         FieldChange: {
@@ -1476,14 +1485,19 @@ export interface components {
             overview: string;
             /** Papers */
             papers: components["schemas"]["PaperCard"][];
+            /** Quality */
+            quality: components["schemas"]["QualityCheck"][];
             /** Queries */
             queries: string[];
+            scope: components["schemas"]["TopicScope"] | null;
             /** Stage */
             stage: string;
             /** Stats */
             stats: {
                 [key: string]: number;
             };
+            /** Subtopics */
+            subtopics: components["schemas"]["SubtopicView"][];
             /** Timeline */
             timeline: {
                 [key: string]: number;
@@ -1877,6 +1891,23 @@ export interface components {
              * @default
              */
             token: string;
+        };
+        /**
+         * QualityCheck
+         * @description One measured property of the literature stage's output, for the researcher at the review gate.
+         */
+        QualityCheck: {
+            /** Check */
+            check: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Ok */
+            ok: boolean;
+            /** Value */
+            value: string;
         };
         /** Queued */
         Queued: {
@@ -2429,12 +2460,46 @@ export interface components {
              */
             experiments: boolean;
         };
+        /** SubtopicView */
+        SubtopicView: {
+            /** Name */
+            name: string;
+            /** Paper Ids */
+            paper_ids: string[];
+        };
         /** TextSection */
         TextSection: {
             /** Text */
             text: string;
             /** Title */
             title: string;
+        };
+        /**
+         * TopicScope
+         * @description How the Literature agent read the research topic, before searching: shown to the researcher, and used to
+         *     write the queries and to screen every paper (a paper must be about the key concepts, not just share words).
+         */
+        TopicScope: {
+            /**
+             * Concepts
+             * @description 2 to 4 distinct key concepts a relevant paper must be about, each a short specific phrase
+             */
+            concepts: string[];
+            /**
+             * Interpretation
+             * @description Two or three sentences: what the research topic is about, in the field's own terms
+             */
+            interpretation: string;
+            /**
+             * Other Readings
+             * @description Other plausible meanings of the topic (a short topic usually has some); empty only if it is clear
+             */
+            other_readings: string[];
+            /**
+             * Out Of Scope
+             * @description Neighbouring areas that share words with the topic but are not what it is about
+             */
+            out_of_scope: string[];
         };
         /** TopicView */
         TopicView: {

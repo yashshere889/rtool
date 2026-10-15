@@ -260,7 +260,9 @@ class DemoModel:
         paper = data.BY_TITLE.get(match.group(1)) if match else None
         if paper is None:
             return {"score": 3, "reason": "Same broad field only."}
-        return {"score": paper.relevance, "reason": paper.reason}
+        title = paper.title.lower()  # the demo plan's sub-topics, in order (see demo_llm)
+        covers = [n for n, word in enumerate(("stimulation", "spindle", "headband"), 1) if word in title]
+        return {"score": paper.relevance, "reason": paper.reason, "subtopics": covers}
 
     def extraction(self, request: ChatRequest) -> dict[str, Any]:
         match = re.search(r"^Paper title: (.+)$", _last(request), re.M)
@@ -404,11 +406,26 @@ def _results_text(prompt: str) -> str:
     return "\n\n".join(paragraphs) or "The experiment results are summarised in the tables."
 
 
+DEMO_SCOPE = {
+    "interpretation": (
+        "Whether sounds played in time with the slow oscillations of deep sleep strengthen memory consolidation, "
+        "and how the timing of the sounds matters."
+    ),
+    "concepts": ["auditory stimulation during sleep", "slow oscillations", "memory consolidation"],
+    "out_of_scope": ["sleep apnoea treatment", "music and sleep onset"],
+    "other_readings": [],
+}
+
+
 def demo_llm() -> MockLLM:
     model = DemoModel()
     llm = MockLLM()
     structured = {
-        "SearchPlan": {"queries": data.SEARCH_QUERIES, "must_cover": ["closed-loop stimulation", "spindles"]},
+        "TopicScope": DEMO_SCOPE,
+        "SearchPlan": {
+            "queries": data.SEARCH_QUERIES,
+            "must_cover": ["closed-loop stimulation", "spindles", "stimulation at home"],
+        },
         "RelevanceJudgment": model.relevance,
         "PaperExtraction": model.extraction,
         "PaperDigest": model.digest,

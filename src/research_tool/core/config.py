@@ -140,6 +140,9 @@ class LLMConfig(_Section):
     # If not, reasoning + JSON is done in two calls: think first, then format.
     structured_with_reasoning: bool = True
     reasoning_control: Literal["system_flag", "none"] = "system_flag"  # Nemotron: /think or /no_think
+    # Spell out each JSON field (name, type, description) at the end of structured prompts, and require
+    # every field in the constraint: the constraint alone never shows the model what a field is for.
+    describe_schema: bool = True
     server: LLMServerConfig = Field(default_factory=LLMServerConfig)
     profiles: dict[str, LLMProfile] = Field(default_factory=_default_profiles)
 

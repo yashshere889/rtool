@@ -20,6 +20,7 @@ import { GapsTab } from "./GapsTab";
 import { MapTab, type PaperFilter } from "./MapTab";
 import { OverviewTab } from "./OverviewTab";
 import { PaperCard, type Choice } from "./PaperCard";
+import { ScopeCard } from "./ScopeCard";
 import { SearchTab } from "./SearchTab";
 import { UploadDialog } from "./UploadDialog";
 
@@ -213,6 +214,14 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
         <Stat value={view.papers.filter((p) => p.needs_upload).length} label="need a PDF from you" />
         <Stat value={stats.verified_claims ?? 0} label="findings checked against a quote" />
       </div>
+
+      <ScopeCard
+        view={view}
+        onFilter={(f) => {
+          setFilter(f);
+          setTab("papers");
+        }}
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>

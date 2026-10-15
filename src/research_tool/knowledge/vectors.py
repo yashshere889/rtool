@@ -127,5 +127,24 @@ def agglomerative(vectors: Sequence[Sequence[float]], n_clusters: int) -> list[l
     return sorted((sorted(members) for members in clusters.values()), key=len, reverse=True)
 
 
+def absorb_small(groups: list[list[int]], vectors: Sequence[Sequence[float]], min_size: int = 3) -> list[list[int]]:
+    """Move the members of groups smaller than ``min_size`` into the most similar larger group.
+
+    Average linkage leaves outliers as groups of one or two; on the first real run (2026-10-12) that gave one
+    90-paper topic and six tiny ones, each then reported as a "thin topic". An outlier is a paper, not a topic.
+    """
+    large = [list(g) for g in groups if len(g) >= min_size]
+    if not large:
+        return groups
+    for group in (g for g in groups if len(g) < min_size):
+        for member in group:
+            best = max(
+                range(len(large)),
+                key=lambda i: sum(dot(vectors[member], vectors[j]) for j in large[i]) / len(large[i]),
+            )
+            large[best].append(member)
+    return sorted((sorted(g) for g in large), key=len, reverse=True)
+
+
 def suggested_clusters(n_items: int) -> int:
     return max(1, min(12, round(math.sqrt(n_items / 2))))

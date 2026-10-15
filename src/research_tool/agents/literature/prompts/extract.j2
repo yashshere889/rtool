@@ -2,11 +2,14 @@ Extract structured facts from the paper below, for a literature review on: {{ to
 
 Rules:
 - Use only what the paper text states. If something is not stated, leave it empty.
+- methods: the names of the methods, models, algorithms or tools the paper uses or proposes, as short names (1 to 6 words, e.g. "random forest", "BERT", "Kalman filter"), not descriptions of what was done.
+- datasets: the names of the datasets, benchmarks, environments or study populations, as short names (e.g. "ImageNet", "UK Biobank", "adults aged 60 to 80").
+- metrics: what was measured, as short names (e.g. "accuracy", "F1 score", "recall improvement").
 - Every "quote" must be copied word for word from the paper text: one complete sentence or clause. Never paraphrase a quote.
-- key_results: up to 8 concrete findings, with the method, dataset, metric and value whenever the paper states them.
+- key_results: up to 8 concrete findings, with the method, dataset, metric and value whenever the paper states them. A claim must not contain any number that is not in its quote.
 - limitations and future_work: only what the authors themselves say.
 {% if abstract_only %}
-- Only the abstract is available, so there will be few results; that is fine.
+- Only the abstract is available, so there will be few results; that is fine. Abstracts rarely state limitations: leave limitations and future_work empty unless the abstract states them.
 {% endif %}
 
 Paper title: {{ title }}

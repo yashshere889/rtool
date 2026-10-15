@@ -11,7 +11,7 @@ literature ─▶[review]─▶ hypotheses ─▶[pick 1 of 3]─▶ plan ─▶
 
 | agent | what it does |
 |---|---|
-| **Literature** | plans queries, searches OpenAlex / Semantic Scholar / arXiv, screens, snowballs citations, downloads open-access papers, extracts findings with verified quotes, builds a knowledge map and SQLite knowledge base |
+| **Literature** | writes down how it reads the topic (key concepts, what is out of scope), plans queries, searches OpenAlex / Semantic Scholar / arXiv, screens each paper against the key concepts, snowballs citations, downloads open-access papers (checking each copy is the paper), extracts findings with verified quotes and numbers, builds a knowledge map with quality checks and a SQLite knowledge base |
 | **Hypothesis** | mines gaps and contradictions, drafts grounded hypotheses, checks novelty and feasibility, scores them, offers 3 |
 | **Planner** | design, resources (checked on Hugging Face) and compute (fitted to Barkla's partitions and your budget) |
 | **fetch** | downloads the plan's datasets and models, quota-checked |

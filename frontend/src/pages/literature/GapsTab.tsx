@@ -54,7 +54,7 @@ export function GapsTab({ view, run }: { view: LiteratureView; run: RunDetail })
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title="Gaps in the collection" description="Found by counting: pairings nobody tested, thin or dated topics." />
+        <CardHeader title="Gaps in the collection" description="Found by counting: planned sub-topics with few papers, pairings nobody tested, dated topics." />
         <CardBody>
           {view.gaps.length ? (
             <ul className="space-y-4">

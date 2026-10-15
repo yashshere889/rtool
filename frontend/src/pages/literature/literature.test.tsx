@@ -5,10 +5,11 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { OpenGate, PaperDetail, RunDetail } from "@/api/types";
+import type { LiteratureView, OpenGate, PaperDetail, RunDetail } from "@/api/types";
 
 import { ChoicesBar } from "./LiteraturePage";
 import { PaperPanel } from "./PaperPanels";
+import { ScopeCard } from "./ScopeCard";
 import { UploadDialog } from "./UploadDialog";
 
 function wrap(children: ReactNode) {
@@ -76,6 +77,8 @@ describe("paper panels", () => {
     claims: [
       { index: 0, kind: "result", text: "Recall improved", quote: "Recall was higher.", verified: true, support: 1, method: "", dataset: "", metric: "recall", value: "2.3" },
       { index: 1, kind: "limitation", text: "Small sample", quote: "The sample was small.", verified: false, support: 0.4, method: "", dataset: "", metric: "", value: "" },
+      { index: 2, kind: "result", text: "Recall rose by 73%", quote: "Recall was higher.", verified: false, support: 1, method: "", dataset: "", metric: "", value: "", unquoted_numbers: ["73"] },
+      { index: 3, kind: "result", text: "64 adults improved", quote: "Recall was higher.", verified: true, support: 1, method: "", dataset: "", metric: "", value: "", unquoted_numbers: ["64"] },
     ],
     methods_section: "",
     section_titles: [],
@@ -91,12 +94,18 @@ describe("paper panels", () => {
   it("shows findings with their verification and a link into the paper", () => {
     render(wrap(<PaperPanel kind="findings" detail={detail} ctx={ctx} />));
     expect(screen.getByText("Recall improved")).toBeInTheDocument();
-    expect(screen.getByText(/Quote found in the paper \(100% match\)/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Quote found in the paper \(100% match\)/)).toHaveLength(2); // claims 0 and 3
     expect(screen.getByText("recall = 2.3")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Show in paper/ })).toHaveAttribute(
+    expect(screen.getAllByRole("link", { name: /Show in paper/ })[0]).toHaveAttribute(
       "href",
       "/runs/sleep/r1/literature/reader?paper=doi%3A1&claim=0",
     );
+  });
+
+  it("says when a real quote carries a number the paper does not contain", () => {
+    render(wrap(<PaperPanel kind="findings" detail={detail} ctx={ctx} />));
+    expect(screen.getByText(/Number not in the paper: 73/)).toBeInTheDocument();
+    expect(screen.getByText("Not in this quote: 64")).toBeInTheDocument();
   });
 
   it("warns when a quote was not found in the paper", () => {
@@ -161,5 +170,43 @@ describe("keeping and dropping papers", () => {
     expect(screen.getByText("A short summary.")).toBeInTheDocument();
     expect(screen.getByText(/AI-written · not checked against quotes/)).toBeInTheDocument();
     expect(screen.getByText(/numbers not found in the paper's text/)).toBeInTheDocument();
+  });
+});
+
+describe("ScopeCard", () => {
+  const view = {
+    scope: {
+      interpretation: "LLM agents that carry out research.",
+      concepts: ["LLM-based agents", "automating research"],
+      out_of_scope: ["multi-agent reinforcement learning"],
+      other_readings: ["agent-based simulation of research communities"],
+    },
+    subtopics: [
+      { name: "idea generation", paper_ids: ["doi:1", "doi:2"] },
+      { name: "paper writing", paper_ids: [] },
+    ],
+    quality: [
+      { check: "screening", value: "500 of 507 (99%) candidates passed; lowest score 6", ok: false, note: "Screening kept almost everything" },
+      { check: "full text", value: "71 of 100 (71%) papers read in full", ok: true, note: "" },
+    ],
+  } as unknown as LiteratureView;
+
+  it("shows how the topic was read and what to look at", async () => {
+    const onFilter = vi.fn();
+    render(wrap(<ScopeCard view={view} onFilter={onFilter} />));
+    expect(screen.getByRole("heading", { name: "How the topic was read" })).toBeInTheDocument();
+    expect(screen.getByText("LLM-based agents")).toBeInTheDocument();
+    expect(screen.getByText("multi-agent reinforcement learning")).toBeInTheDocument();
+    expect(screen.getByText("agent-based simulation of research communities")).toBeInTheDocument();
+    expect(screen.getByText("(1 to look at)")).toBeInTheDocument();
+    expect(screen.getByText("Screening kept almost everything.")).toBeInTheDocument();
+    expect(screen.queryByText(/^\.$/)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /idea generation/ }));
+    expect(onFilter).toHaveBeenCalledWith({ label: "Sub-topic: idea generation", ids: ["doi:1", "doi:2"] });
+  });
+
+  it("shows nothing for a corpus built before topics were read", () => {
+    const { container } = render(wrap(<ScopeCard view={{ ...view, scope: null, quality: [] } as LiteratureView} onFilter={() => {}} />));
+    expect(container).toBeEmptyDOMElement();
   });
 });

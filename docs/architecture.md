@@ -90,6 +90,10 @@ Episodes are requeued if preempted (low-priority partitions): `TERM` makes the
 episode stop cleanly within Slurm's grace period, and the requeued job — same
 id — reclaims its own lease and resumes. One episode per run at a time (a lease
 file); a time-limit warning (`USR1` 10 min before) queues the continuation.
+If vLLM cannot start on a node (e.g. its `/dev/shm` is full), the stage is left as
+it was, the node goes into `state/bad_nodes.json` for a day, and the next GPU
+episode asks Slurm to `--exclude` it; after three such failures the run waits
+for a human (`llm_server_failed` events name the node and the root cause).
 
 ## The LLM layer
 
@@ -100,6 +104,10 @@ model. The client gives them:
   structured outputs), validated with Pydantic; invalid output is shown back
   with the error and retried. A reply that ran out of tokens (greedy decoding
   repeating itself) is retried briefly re-prompted and sampled instead.
+- the JSON constraint only limits which tokens come next: the model never reads
+  the schema. So every structured prompt ends with its fields spelled out (name,
+  type, description), and the constraint requires every field
+  (`llm.describe_schema`); before this, 88 of 98 paper extractions had no method.
 - reasoning on/off via Nemotron's `/think` / `/no_think`; reasoning is split
   from the answer. With reasoning on, JSON is produced in a second call.
 - `parallel(...)` — many requests at once (32 on Barkla), batched by vLLM.
@@ -113,7 +121,12 @@ The model is good but small, so every step is narrow and checked by code:
 
 | risk | guard |
 |---|---|
-| invented findings | every extracted claim carries a quote that must match the paper text (fuzzy, ≥ 0.85) |
+| wrong field | before searching, the Literature agent writes down how it reads the topic (key concepts, what is out of scope), shown at the literature checkpoint; queries must combine concepts |
+| lenient screening | each paper is checked against the key concepts (yes / partly / no) and scored from that checklist, not from the model's own 0-10 (which gave every one of 507 candidates 6-10); papers on an out-of-scope area score at most 3; ties for the size cap go to papers linked by citation to the others, then to the model's own score, and only then to citation count (which favoured old papers from a neighbouring field) |
+| wrong downloads | a copy counts only if it has the paper's title near the start and at least 4× the abstract's length of text (landing pages and arXiv's "no HTML" page do not); otherwise the next link is tried |
+| invented findings | every extracted claim carries a quote that must match the paper text (fuzzy, ≥ 0.85), and every number the claim states must appear in the paper |
+| fake gaps | gaps rest on evidence: planned sub-topics with at most one paper, a method left out of a dataset that at least two papers test alongside the method's own datasets, dated topics; outlier papers are not "thin topics"; a digest written from part of a paper may not say the paper "does not state" something |
+| unnoticed problems | the literature checkpoint shows quality checks (screening spread, full text, quotes found, invented numbers, named methods, sub-topic coverage, citation following); `python -m research_tool.agents.literature.measure <run>` measures any run |
 | invented citations | hypotheses cite verified quotes; reports may only cite corpus keys |
 | invented numbers | reports write results as placeholders (`{{mean:acc:new}}`) filled from the results; any other number must appear in the material the section was written from |
 | wrong statistics | all statistics are computed deterministically (t-tests, exact rank tests, CIs, Holm's correction whenever there are several comparisons); results that do not vary across seeds get no p-value; tests the plan names that rtool does not run (e.g. ANOVA) are said to be translated |

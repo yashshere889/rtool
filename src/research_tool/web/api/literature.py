@@ -22,7 +22,7 @@ from ...core.fs import atomic_write_json
 from ...core.run import RunHandle
 from ...knowledge.store import KnowledgeStore
 from ...knowledge.verify import locate_quote
-from ...schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord
+from ...schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord, QualityCheck, TopicScope
 from ...tools.report.render import bibtex_subset
 from ..deps import get_run
 
@@ -100,6 +100,11 @@ class OpenProblemView(BaseModel):
     paper_ids: list[str]
 
 
+class SubtopicView(BaseModel):
+    name: str  # a sub-topic the search plan said the corpus should cover
+    paper_ids: list[str]  # included papers that screening found to cover it
+
+
 class LiteratureView(BaseModel):
     stage: str  # the stage that produced the corpus
     corpus_version: int
@@ -116,6 +121,9 @@ class LiteratureView(BaseModel):
     timeline: dict[str, int]
     overview: str  # cites papers as [bib_key]; ``keys`` resolves them
     keys: dict[str, str]  # bib key -> paper id
+    scope: TopicScope | None = None  # how the agent read the topic (None for corpora built before it existed)
+    subtopics: list[SubtopicView] = Field(default_factory=list)
+    quality: list[QualityCheck] = Field(default_factory=list)  # measured at the end of the stage
 
 
 class DigestView(BaseModel):
@@ -140,6 +148,7 @@ class ClaimView(BaseModel):
     dataset: str
     metric: str
     value: str
+    unquoted_numbers: list[str] = Field(default_factory=list)  # numbers the claim states that its quote does not
 
 
 class PaperRef(BaseModel):
@@ -341,6 +350,12 @@ def literature(project: str, run_id: str, request: Request) -> LiteratureView:
         timeline=km.timeline if km else {},
         overview=km.overview if km else "",
         keys={p.bib_key: p.id for p in lit.corpus.papers if p.bib_key},
+        scope=lit.corpus.scope,
+        subtopics=[
+            SubtopicView(name=name, paper_ids=[p.id for p in lit.corpus.included() if name in p.subtopics])
+            for name in lit.corpus.must_cover
+        ],
+        quality=km.quality if km else [],
     )
 
 

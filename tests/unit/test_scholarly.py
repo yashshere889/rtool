@@ -9,7 +9,15 @@ import httpx
 import pytest
 
 from research_tool.tools.http import HttpError, PoliteHttp, RateLimiter, redact
-from research_tool.tools.scholarly.base import bib_key, normalize_arxiv, normalize_doi, paper_id, title_key
+from research_tool.tools.scholarly.base import (
+    PaperHit,
+    arxiv_from_doi,
+    bib_key,
+    normalize_arxiv,
+    normalize_doi,
+    paper_id,
+    title_key,
+)
 from research_tool.tools.scholarly.merge import PaperIndex
 from research_tool.tools.scholarly.sources import (
     ArxivSource,
@@ -211,3 +219,13 @@ def test_rate_limiter_spaces_requests() -> None:
     now[0] += 1.0
     limiter.wait()
     assert sleeps == [3.0, 2.0]
+
+
+def test_arxiv_dois_give_the_arxiv_id() -> None:
+    """OpenAlex often knows a preprint only by its DataCite DOI; without the id, arxiv.org was never tried."""
+    assert arxiv_from_doi("https://doi.org/10.48550/arXiv.2510.18515") == "2510.18515"
+    assert arxiv_from_doi("10.1109/access.2026.3734747") is None and arxiv_from_doi(None) is None
+    hit = PaperHit(source="openalex", source_id="W1", title="T", doi="10.48550/arxiv.2510.18515v2")
+    assert hit.arxiv_id == "2510.18515"
+    kept = PaperHit(source="arxiv", source_id="1", title="T", doi="10.48550/arxiv.1", arxiv_id="2101.00001")
+    assert kept.arxiv_id == "2101.00001"

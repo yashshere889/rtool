@@ -18,6 +18,7 @@ export function paperStatus(paper: PaperCardData): { label: string; tone: Tone }
 }
 
 export const GAP_KINDS: Record<string, string> = {
+  uncovered_subtopic: "Sub-topic with few papers",
   untested_combination: "Untested combination",
   thin_topic: "Few papers on this topic",
   stale_topic: "No recent work",

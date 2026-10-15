@@ -7,7 +7,10 @@ Rules:
 - design: the study design in one sentence.
 - sample: who or what was studied (participants, datasets, systems).
 - procedure: the main steps, in two to four short sentences.
-- gaps: up to three open questions or weaknesses that this paper leaves, judged from its own text.
+- gaps: up to three open questions or weaknesses this paper leaves. Base them on the limitations and future work the authors state (listed below), or on what the text plainly shows, such as a small sample or a single test setting.
+{% if partial %}
+- You see only part of the paper, so never write that it "does not state", "does not address" or "does not report" something: it may do so in the part you cannot see.
+{% endif %}
 
 Facts already extracted from the paper:
 Problem: {{ facts.problem }}
@@ -15,10 +18,11 @@ Approach: {{ facts.approach }}
 {% if facts.methods %}Methods: {{ facts.methods | join(", ") }}
 {% endif %}{% if facts.datasets %}Data: {{ facts.datasets | join(", ") }}
 {% endif %}{% for r in facts.key_results[:4] %}Result: {{ r.claim }}
-{% endfor %}{% for l in facts.limitations[:3] %}Limitation: {{ l.statement }}
+{% endfor %}{% for l in facts.limitations[:3] %}Limitation stated by the authors: {{ l.statement }}
+{% endfor %}{% for f in facts.future_work[:2] %}Future work stated by the authors: {{ f.statement }}
 {% endfor %}
 Paper title: {{ title }}
-Paper text:
+Paper text{% if partial %} (part of it){% endif %}:
 <<<
 {{ text }}
 >>>

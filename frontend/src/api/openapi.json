@@ -388,6 +388,13 @@
       "title": "Text",
       "type": "string"
      },
+     "unquoted_numbers": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Unquoted Numbers",
+      "type": "array"
+     },
      "value": {
       "title": "Value",
       "type": "string"
@@ -406,6 +413,7 @@
      "quote",
      "support",
      "text",
+     "unquoted_numbers",
      "value",
      "verified"
     ],
@@ -1382,6 +1390,11 @@
       "title": "Complete",
       "type": "boolean"
      },
+     "correction": {
+      "default": "",
+      "title": "Correction",
+      "type": "string"
+     },
      "figures": {
       "items": {
        "type": "string"
@@ -1430,12 +1443,20 @@
       "default": "",
       "title": "Tables Path",
       "type": "string"
+     },
+     "warnings": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
      }
     },
     "required": [
      "code_fingerprint",
      "comparisons",
      "complete",
+     "correction",
      "figures",
      "gpu_hours_requested",
      "jobs",
@@ -1443,7 +1464,8 @@
      "results_path",
      "runs",
      "summaries",
-     "tables_path"
+     "tables_path",
+     "warnings"
     ],
     "title": "ExperimentResults",
     "type": "object"
@@ -2113,12 +2135,29 @@
       "title": "Papers",
       "type": "array"
      },
+     "quality": {
+      "items": {
+       "$ref": "#/components/schemas/QualityCheck"
+      },
+      "title": "Quality",
+      "type": "array"
+     },
      "queries": {
       "items": {
        "type": "string"
       },
       "title": "Queries",
       "type": "array"
+     },
+     "scope": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TopicScope"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "stage": {
       "title": "Stage",
@@ -2130,6 +2169,13 @@
       },
       "title": "Stats",
       "type": "object"
+     },
+     "subtopics": {
+      "items": {
+       "$ref": "#/components/schemas/SubtopicView"
+      },
+      "title": "Subtopics",
+      "type": "array"
      },
      "timeline": {
       "additionalProperties": {
@@ -2160,9 +2206,12 @@
      "open_problems",
      "overview",
      "papers",
+     "quality",
      "queries",
+     "scope",
      "stage",
      "stats",
+     "subtopics",
      "timeline",
      "topic",
      "topics"
@@ -3273,6 +3322,36 @@
      "token"
     ],
     "title": "Producer",
+    "type": "object"
+   },
+   "QualityCheck": {
+    "description": "One measured property of the literature stage's output, for the researcher at the review gate.",
+    "properties": {
+     "check": {
+      "title": "Check",
+      "type": "string"
+     },
+     "note": {
+      "default": "",
+      "title": "Note",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "value": {
+      "title": "Value",
+      "type": "string"
+     }
+    },
+    "required": [
+     "check",
+     "note",
+     "ok",
+     "value"
+    ],
+    "title": "QualityCheck",
     "type": "object"
    },
    "Queued": {
@@ -4669,6 +4748,27 @@
     "title": "StopRequest",
     "type": "object"
    },
+   "SubtopicView": {
+    "properties": {
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "paper_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Paper Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "name",
+     "paper_ids"
+    ],
+    "title": "SubtopicView",
+    "type": "object"
+   },
    "TextSection": {
     "properties": {
      "text": {
@@ -4685,6 +4785,52 @@
      "title"
     ],
     "title": "TextSection",
+    "type": "object"
+   },
+   "TopicScope": {
+    "description": "How the Literature agent read the research topic, before searching: shown to the researcher, and used to\nwrite the queries and to screen every paper (a paper must be about the key concepts, not just share words).",
+    "properties": {
+     "concepts": {
+      "description": "2 to 4 distinct key concepts a relevant paper must be about, each a short specific phrase",
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "title": "Concepts",
+      "type": "array"
+     },
+     "interpretation": {
+      "description": "Two or three sentences: what the research topic is about, in the field's own terms",
+      "title": "Interpretation",
+      "type": "string"
+     },
+     "other_readings": {
+      "description": "Other plausible meanings of the topic (a short topic usually has some); empty only if it is clear",
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 3,
+      "title": "Other Readings",
+      "type": "array"
+     },
+     "out_of_scope": {
+      "description": "Neighbouring areas that share words with the topic but are not what it is about",
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 5,
+      "title": "Out Of Scope",
+      "type": "array"
+     }
+    },
+    "required": [
+     "concepts",
+     "interpretation",
+     "other_readings",
+     "out_of_scope"
+    ],
+    "title": "TopicScope",
     "type": "object"
    },
    "TopicView": {

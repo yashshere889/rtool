@@ -1,9 +1,24 @@
-Rate how useful this paper is for the research topic below, on a scale from 0 to 10.
-10 = directly about the topic and likely to be cited; 6 = clearly related, useful background; 3 = same broad field only; 0 = unrelated.
+Decide whether this paper belongs in a literature review on the research topic below.
 
 Research topic: {{ brief.topic }}
 {% if brief.questions %}
 Research questions: {{ brief.questions | join("; ") }}
+{% endif %}
+{% if scope %}
+What the topic is about: {{ scope.interpretation }}
+Key concepts:
+{% for c in scope.concepts %}
+{{ loop.index }}. {{ c }}
+{% endfor %}
+{% if scope.out_of_scope %}
+Out of scope: {{ scope.out_of_scope | join("; ") }}
+{% endif %}
+{% endif %}
+{% if subtopics %}
+Sub-topics the review should cover:
+{% for s in subtopics %}
+{{ loop.index }}. {{ s }}
+{% endfor %}
 {% endif %}
 {% if feedback %}
 Researcher feedback to take into account: {{ feedback | join(" ") }}
@@ -11,3 +26,13 @@ Researcher feedback to take into account: {{ feedback | join(" ") }}
 
 Paper: {{ paper.title }} ({{ paper.year or "year unknown" }}{% if paper.venue %}, {{ paper.venue }}{% endif %})
 Abstract: {{ paper.abstract or "(no abstract available; judge from the title)" }}
+
+First write the reason: what the paper itself studies, then how that relates to the topic.
+{% if scope %}
+Then, for each key concept in order, say whether the paper is about it: "yes", "partly" (it touches the concept, or only uses it as a tool), or "no". Sharing a word with a concept is not enough: a paper on electrical power transformers is not about "transformer neural networks".
+Set out_of_scope to true if the paper is mainly about one of the out-of-scope areas.
+{% endif %}
+{% if subtopics %}
+In subtopics, give the numbers of the sub-topics above that the paper covers (none is fine).
+{% endif %}
+Last, the overall score from 0 to 10: 10 = directly about the topic and likely to be cited; 6 = clearly related, useful background; 3 = same broad field only; 0 = unrelated.
