@@ -316,6 +316,10 @@ def episode(
             run, slurm=slurm, max_seconds=max(60.0, budget), episode_id=f"ep-{self_job}" if self_job else None
         )
         _print_result(run, result)
+        if result.outcome is Outcome.BUSY:
+            # Another episode holds the run (or took it over from this one) and schedules what comes
+            # next; submitting here too would start a second chain of episodes.
+            return
         next_job = schedule_next(run, slurm, result, self_job_id=self_job)
         if next_job is None and ActionInbox(run.actions_dir).pending():
             # decisions that arrived after this episode last looked would otherwise wait for the next kick

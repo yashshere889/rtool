@@ -21,6 +21,7 @@ Stage lifecycle::
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import traceback
 import uuid
@@ -49,7 +50,7 @@ from .errors import (
     SuspendRequested,
 )
 from .events import EventLog
-from .fs import FileLease, now_iso, sha256_text
+from .fs import FileLease, LeaseKeeper, LeaseLost, now_iso, sha256_text
 from .pipeline import GateKind, GateSpec, ResolvedPipeline, ResolvedStage, get_by_path, resolve_pipeline
 from .registry import AgentRegistry
 from .registry import registry as default_registry
@@ -150,14 +151,21 @@ class Engine:
         registry: AgentRegistry = default_registry,
         episode_id: str | None = None,
         stage_filter: Callable[[ResolvedStage], bool] | None = None,
+        lease_heartbeat: float | None = None,
     ) -> None:
-        """``stage_filter`` limits which ready stages this episode may run (e.g. no LLM stages on a CPU node)."""
+        """``stage_filter`` limits which ready stages this episode may run (e.g. no LLM stages on a CPU node).
+
+        ``lease_heartbeat`` is how often (seconds) the run lease is renewed while the episode
+        works; the default is a third of ``episode.lease_ttl_seconds``.
+        """
         self.run = run
         self.config = run.config
         self.services = services or Services()
         self.clock = self.services.clock
         self.episode_id = episode_id or f"ep-{uuid.uuid4().hex[:8]}"
         self.stage_filter = stage_filter
+        self.lease_heartbeat = lease_heartbeat
+        self._keeper: LeaseKeeper | None = None
         self._deferred: set[str] = set()
         self.pipeline: ResolvedPipeline = resolve_pipeline(run.spec.pipeline, registry)
         self._ancestors = {sid: self.pipeline.ancestors(sid) for sid in self.pipeline.order}
@@ -180,10 +188,13 @@ class Engine:
             holder = lease.holder()
             owner = holder.owner if holder else "another episode"
             return AdvanceResult(Outcome.BUSY, message=f"run is held by {owner}")
+        # Stages run for hours, far longer than the lease's ttl: renew it from a thread meanwhile.
+        keeper = self._keeper = LeaseKeeper(lease, self.lease_heartbeat)
         deadline = None if max_seconds is None else self.clock() + max_seconds
         ran: list[str] = []
         time_up = False
         try:
+            keeper.start()
             self._load()
             assert self.run_state is not None
             self.run_state.active_episode = self.episode_id
@@ -193,7 +204,8 @@ class Engine:
             self._recover()
             self._propagate_staleness(None)  # artifacts may have been changed outside the engine
             while True:
-                lease.renew()
+                keeper.renew()
+                keeper.check()
                 self._apply_actions()
                 self._poll_jobs()
                 stage_id = self._next_runnable()
@@ -208,22 +220,37 @@ class Engine:
             self.run_state.last_outcome = result.outcome.value
             self.events.emit("episode_finished", outcome=result.outcome.value, ran=ran)
             return result
+        except LeaseLost as exc:
+            # Another episode took the run over (we stalled for longer than the ttl). It owns the
+            # state now and recovers the stage we were in; leave everything to it.
+            self.events.emit("lease_lost", error=str(exc), ran=ran)
+            return AdvanceResult(Outcome.BUSY, ran=ran, message=f"stopped: {exc}")
         finally:
-            if self.run_state is not None:
+            keeper.stop()
+            if self.run_state is not None and keeper.lost is None:
                 self.run_state.active_episode = None
-                self._save_run()
+                with contextlib.suppress(LeaseLost):
+                    self._save_run()
             lease.release()
+            self._keeper = None
 
     # ------------------------------------------------------------- persistence
     def _load(self) -> None:
         self.run_state = self.states.load_run() or RunState(run_id=self.run.run_id, nonce=uuid.uuid4().hex[:12])
         self.stages = self.states.load_stages(self.pipeline.order)
 
+    def _guard(self) -> None:
+        """Stop (LeaseLost) rather than write over the state of an episode that took the run over."""
+        if self._keeper is not None:
+            self._keeper.check()
+
     def _save_run(self) -> None:
         assert self.run_state is not None
+        self._guard()
         self.states.save_run(self.run_state)
 
     def _save(self, st: StageState) -> None:
+        self._guard()
         self.states.save_stage(st)
 
     def _recover(self) -> None:
@@ -426,6 +453,7 @@ class Engine:
     def _finish_commit(self, sid: str) -> None:
         rs = self.pipeline.stage(sid)
         st = self.stages[sid]
+        self._guard()
         versions = StagedOutputs(self.store, sid).commit(self._producer(rs, st), dict(st.input_versions))
         for name in rs.agent_produces:
             if name not in versions:  # committed before a crash; its staging file is already gone
@@ -748,6 +776,7 @@ class Engine:
             if action.id in self.run_state.processed_actions:
                 self.inbox.archive(path, action, {"status": "duplicate"})
                 continue
+            self._guard()  # an action may write artifacts and workspace files, not only state
             try:
                 outcome = {"status": "applied", **self._apply_action(action)}
                 self.events.emit("action_applied", action=action.kind.value, by=action.by, outcome=outcome)

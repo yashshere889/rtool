@@ -1,9 +1,9 @@
 """An in-process Slurm stand-in, persisted to a JSON file.
 
 Jobs move PENDING -> RUNNING -> (outcome) one step per ``tick()``, respecting
-``afterany``/``afterok`` dependencies. Outcomes can be scripted per job name to
-test failure handling. Because state lives in a file, a "crashed" engine and a
-fresh one see the same jobs.
+``afterany``/``afterok`` and ``singleton`` dependencies. Outcomes can be scripted
+per job name to test failure handling. Because state lives in a file, a "crashed"
+engine and a fresh one see the same jobs.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ class FakeSlurm:
         self._reload()
         return self._data["jobs"]
 
-    def _deps_state(self, job: dict[str, Any]) -> str:
+    def _deps_state(self, job_id: str, job: dict[str, Any]) -> str:
         spec = job["spec"]
         deps = [self._data["jobs"].get(d) for d in spec.get("dependency", [])]
         if any(d is None for d in deps):
@@ -115,7 +115,21 @@ class FakeSlurm:
             return "waiting"
         if spec.get("dependency_type") == "afterok" and any(s is not JobState.COMPLETED for s in states):
             return "broken"
+        if spec.get("singleton") and self._singleton_blocked(job_id, spec["name"]):
+            return "waiting"
         return "ok"
+
+    def _singleton_blocked(self, job_id: str, name: str) -> bool:
+        """As Slurm does: a job of the same name is running, or was submitted earlier and is still pending."""
+        for other_id, other in self._data["jobs"].items():
+            if other_id == job_id or other["spec"]["name"] != name:
+                continue
+            state = JobState(other["state"])
+            if state in (JobState.RUNNING, JobState.COMPLETING) or (
+                state is JobState.PENDING and int(other_id) < int(job_id)
+            ):
+                return True
+        return False
 
     def tick(self, steps: int = 1) -> None:
         for _ in range(steps):
@@ -123,7 +137,7 @@ class FakeSlurm:
             for job_id, job in self._data["jobs"].items():
                 state = JobState(job["state"])
                 if state is JobState.PENDING:
-                    deps = self._deps_state(job)
+                    deps = self._deps_state(job_id, job)
                     if deps == "ok":
                         job["state"] = JobState.RUNNING.value
                     elif deps == "broken":

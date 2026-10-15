@@ -116,6 +116,22 @@ def test_rendered_script_follows_barkla_rules(tmp_path: Path) -> None:
     assert "( python train.py --epochs 3 ) &" in script
 
 
+def test_singleton_dependency(tmp_path: Path) -> None:
+    def dependency_lines(**kw: object) -> list[str]:
+        script = render_script(gpu_job(tmp_path, **kw), sentinel_dir=tmp_path / "s", log_dir=tmp_path / "l")
+        return [line for line in script.splitlines() if line.startswith(("#SBATCH --dependency", "#SBATCH --kill"))]
+
+    assert dependency_lines(dependency=["11", "12"], singleton=True) == [
+        "#SBATCH --dependency=afterany:11:12,singleton",  # ',': both must hold
+        "#SBATCH --kill-on-invalid-dep=yes",
+    ]
+    assert dependency_lines(singleton=True) == ["#SBATCH --dependency=singleton"]  # can never become invalid
+    assert dependency_lines(dependency=["7"], dependency_type="afterok", singleton=True)[0] == (
+        "#SBATCH --dependency=afterok:7,singleton"
+    )
+    assert dependency_lines() == []
+
+
 def _run_script(script: Path, env: dict[str, str]) -> subprocess.Popen[bytes]:
     return subprocess.Popen(["bash", str(script)], env=os.environ | env, cwd=script.parent)
 

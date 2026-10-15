@@ -67,6 +67,9 @@ def episode_job_spec(
         ntasks=None if needs_llm else 1,
         dependency=list(dependency or []),
         dependency_type="afterany",
+        # Slurm never runs two episodes of a run at once, even if two kicks race (UI + CLI, or two
+        # UI requests) and both submit: the second waits for the first to end, then finds less to do.
+        singleton=True,
         modules=list(ep.modules),
         requeue=True,  # episodes resume where they stopped, so preemption only costs time
         signal=f"B:USR1@{ep.signal_seconds}" if ep.signal_seconds else None,
@@ -86,8 +89,10 @@ def choose_gpu(run: RunHandle, slurm: SlurmClient) -> tuple[GPUChoice, float | N
         return choices[0], None
     starts: list[float | None] = []
     for choice in choices:
+        # Without `singleton`, which would make every choice wait for this very episode to end.
+        spec = episode_job_spec(run, needs_llm=True, gpu=choice).model_copy(update={"singleton": False})
         try:
-            starts.append(slurm.estimate_start(episode_job_spec(run, needs_llm=True, gpu=choice)))
+            starts.append(slurm.estimate_start(spec))
         except RToolError:
             starts.append(None)  # e.g. a partition missing from the site profile
     known = [s for s in starts if s is not None]

@@ -133,8 +133,12 @@ def render_script(spec: JobSpec, *, sentinel_dir: Path, log_dir: Path) -> str:
     ]
     if array:
         header.append(f"#SBATCH -a {spec.array}")
+    dependencies = [f"{spec.dependency_type}:{':'.join(spec.dependency)}"] if spec.dependency else []
+    if spec.singleton:
+        dependencies.append("singleton")
+    if dependencies:
+        header.append(f"#SBATCH --dependency={','.join(dependencies)}")  # ',' = all of them
     if spec.dependency:
-        header.append(f"#SBATCH --dependency={spec.dependency_type}:{':'.join(spec.dependency)}")
         header.append("#SBATCH --kill-on-invalid-dep=yes")
     if spec.signal:
         header.append(f"#SBATCH --signal={spec.signal}")

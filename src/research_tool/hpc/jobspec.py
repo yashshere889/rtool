@@ -55,6 +55,9 @@ class JobSpec(BaseModel):
     array: str | None = None
     dependency: list[str] = Field(default_factory=list)
     dependency_type: Literal["afterany", "afterok"] = "afterany"
+    # Slurm's `singleton`: start only once no other job of this name (and user) is running, nor
+    # queued ahead of it. Combined with `dependency` (both must hold): --dependency=afterany:12,singleton
+    singleton: bool = False
     env: dict[str, str] = Field(default_factory=dict)
     modules: list[str] = Field(default_factory=list)
     requeue: bool = False

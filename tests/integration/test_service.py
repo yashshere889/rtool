@@ -121,3 +121,18 @@ def test_an_episode_wakes_the_next_one_for_late_decisions(runs_root: Path, monke
     assert result.exit_code == 0, result.output
     record = EpisodeTracker(run, build_slurm(run)).current()
     assert record is not None and record["reason"] == "pending_actions"
+
+
+def test_a_busy_episode_submits_nothing(runs_root: Path) -> None:
+    """An episode that finds the run held must not submit more, even with decisions queued: the holder does that."""
+    from research_tool.core.fs import FileLease
+
+    run = new_run(runs_root)
+    ActionInbox(run.actions_dir).submit(Action(kind=ActionKind.APPROVE))
+    with FileLease(run.lease_path, owner="ep-41"):  # another episode is working on the run
+        result = CliRunner().invoke(app, ["episode", str(run.root)])
+    assert result.exit_code == 0, result.output
+    assert "busy" in result.output
+    assert EpisodeTracker(run, build_slurm(run)).current() is None
+    assert build_slurm(run).jobs == {}  # type: ignore[attr-defined]
+    assert ActionInbox(run.actions_dir).pending()  # left for the holder

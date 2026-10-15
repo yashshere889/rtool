@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from research_tool.core.config import load_config
 from research_tool.core.engine import Outcome
 from research_tool.core.events import EventLog
@@ -21,6 +23,8 @@ from research_tool.hpc.episode import (
     submit_episode,
 )
 from research_tool.hpc.fake_slurm import FakeSlurm
+from research_tool.hpc.jobspec import JobSpec
+from research_tool.hpc.slurm import JobState
 from research_tool.llm.client import LLMClient
 from research_tool.llm.mock_backend import MockLLM
 from research_tool.testing.harness import make_run
@@ -53,6 +57,7 @@ def test_episode_job_spec(runs_root: Path) -> None:
     assert "--config " + str(Path("~/site.yaml").expanduser()) in gpu.command
     cpu = episode_job_spec(run, needs_llm=False)
     assert cpu.partition == "nodes" and cpu.gpus is None and cpu.ntasks == 1
+    assert gpu.singleton and cpu.singleton and gpu.name == cpu.name == f"rtool-ep-{run.run_id}"
 
 
 CHOICES = {
@@ -80,6 +85,7 @@ def test_llm_episodes_take_the_gpu_that_starts_soonest(runs_root: Path) -> None:
     job = submit_episode(run, slurm, needs_llm=True, reason="test")
     spec = slurm.jobs[job]["spec"]  # type: ignore[index]
     assert spec["partition"] == "gpu-l40s-low" and spec["gpus"]["type"] == "l40s" and spec["requeue"]
+    assert spec["singleton"]  # but priced without it: it would make every choice wait for the running episode
     submitted = [e for e in EventLog(run.events_path, run.run_id) if e["kind"] == "episode_submitted"][-1]["data"]
     assert submitted["partition"] == "gpu-l40s-low" and submitted["expected_start"]
     # an earlier choice is kept when it starts nearly as soon
@@ -176,3 +182,27 @@ def test_llm_needed_looks_only_at_what_can_run_next(runs_root: Path, mock_llm: M
     assert result.open_gates[0]["gate"] == "numbers_review"
     # approving lets `analyze` run next; `write` (which needs the LLM) is further away
     assert not llm_needed(run)
+
+
+def test_racing_kicks_never_run_two_episodes_at_once(runs_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two kicks that both look before either records its job submit two episodes; Slurm runs them in turn."""
+    run = make_run(runs_root, JOB)
+    slurm = FakeSlurm(run.jobs_dir / "fake_slurm.json")
+    experiment = slurm.submit(JobSpec(name="experiment", partition="nodes", command="true", workdir=run.root))
+    monkeypatch.setattr(EpisodeTracker, "current", lambda self, ignore=None: None)  # neither saw the other's job
+    first = submit_episode(run, slurm, needs_llm=False, reason="ui")
+    second = submit_episode(run, slurm, needs_llm=True, reason="cli")
+    after_experiment = submit_episode(run, slurm, needs_llm=False, reason="waiting_job", dependency=[experiment])
+    assert first and second and after_experiment
+
+    def running() -> list[str]:
+        return sorted(job_id for job_id, job in slurm.jobs.items() if job["state"] == JobState.RUNNING.value)
+
+    slurm.tick()
+    assert running() == sorted([experiment, first])  # jobs of other names are not held back
+    slurm.tick()  # the first episode ends, then the next one in line starts
+    assert running() == [second]  # its own dependency is met, but an episode is running
+    slurm.tick()
+    assert running() == [after_experiment]
+    slurm.tick()
+    assert running() == []

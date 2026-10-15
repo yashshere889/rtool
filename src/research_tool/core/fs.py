@@ -13,6 +13,7 @@ import json
 import os
 import socket
 import tempfile
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -21,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .errors import LeaseHeld
+from .errors import ControlFlow, LeaseHeld
 
 
 def now_iso() -> str:
@@ -183,6 +184,11 @@ class FileLease:
             raise LeaseHeld(f"lease {self.path} was taken over by {taker}")
         atomic_write_json(self.path, asdict(self._info()))
 
+    def still_ours(self) -> bool:
+        """Does the lease file still name us? (A read only; an unreadable file means a contender is writing it.)"""
+        info = self.holder()
+        return self._held and info is not None and info.owner == self.owner
+
     def release(self) -> None:
         if not self._held:
             return
@@ -199,3 +205,65 @@ class FileLease:
 
     def __exit__(self, *exc: object) -> None:
         self.release()
+
+
+class LeaseLost(ControlFlow):
+    """Our lease was taken over while we worked: stop now and write nothing more.
+
+    A ``ControlFlow`` signal, so a broad ``except Exception`` in agent code cannot swallow it.
+    """
+
+
+class LeaseKeeper:
+    """Renews a held lease from a daemon thread, so the work under it may run far longer than ``ttl``.
+
+    It renews every ``interval`` seconds (default ``ttl / 3``). Should the lease be taken over all
+    the same (the holder stalled for longer than ``ttl``: a hung filesystem, a stopped process),
+    renewing stops and :meth:`check` raises :class:`LeaseLost`. The holder calls ``check`` before
+    every write to shared state, so it never writes over the new holder's.
+    """
+
+    def __init__(self, lease: FileLease, interval: float | None = None) -> None:
+        self.lease = lease
+        self.interval = interval if interval is not None else lease.ttl / 3
+        self.lost: str | None = None
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> LeaseKeeper:
+        self._thread = threading.Thread(target=self._beat, name=f"lease-{self.lease.owner}", daemon=True)
+        self._thread.start()
+        return self
+
+    def _beat(self) -> None:
+        while not self._stop.wait(self.interval):
+            if not self.renew():
+                return
+
+    def renew(self) -> bool:
+        """Renew now. False once the lease is lost; a storage error is only retried at the next beat."""
+        with self._lock:
+            if self.lost is None and not self._stop.is_set():
+                try:
+                    self.lease.renew()
+                except LeaseHeld as exc:
+                    self.lost = str(exc)
+                except OSError:
+                    pass  # e.g. a Lustre hiccup: the lease lasts ttl, and there are two more beats before then
+        return self.lost is None
+
+    def check(self) -> None:
+        """Raise LeaseLost unless the lease is still ours."""
+        if self.lost is None and not self.lease.still_ours():
+            info = self.lease.holder()
+            self.lost = f"lease {self.lease.path} was taken over by {info.owner if info else 'another process'}"
+        if self.lost is not None:
+            raise LeaseLost(self.lost)
+
+    def stop(self) -> None:
+        """Stop renewing (the lease stays held until released)."""
+        with self._lock:  # waits for a renewal in flight; none starts after this
+            self._stop.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join()
