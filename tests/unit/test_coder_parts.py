@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import math
 import shutil
@@ -13,7 +14,14 @@ from pathlib import Path
 import pytest
 
 from research_tool.agents.coder import stats
-from research_tool.agents.coder.agent import extract_code, file_listing, static_problems
+from research_tool.agents.coder.agent import (
+    condition_code_removed,
+    extract_code,
+    fallback_metrics,
+    file_listing,
+    smoke_warnings,
+    static_problems,
+)
 from research_tool.agents.coder.env import ExperimentEnv
 from research_tool.agents.coder.playbook import (
     declared_requirements,
@@ -22,11 +30,18 @@ from research_tool.agents.coder.playbook import (
     merge_requirements,
     valid_requirement,
 )
-from research_tool.agents.coder.results import aggregate, render_figures, render_tables, results_payload, validate
+from research_tool.agents.coder.results import (
+    aggregate,
+    render_figures,
+    render_tables,
+    results_payload,
+    validate,
+    variation_notes,
+)
 from research_tool.core.config import ExperimentsConfig
 from research_tool.hpc.sbatch import render_script
 from research_tool.packs import available_packs, load_pack
-from research_tool.schemas.code import RunRecord
+from research_tool.schemas.code import RunRecord, SmokeResult
 from research_tool.testing.samples import sample_plan as plan
 from research_tool.testing.samples import sample_records as records
 from research_tool.tools.report.numbers import fmt, fmt_p
@@ -50,6 +65,24 @@ def test_tests_on_a_known_example() -> None:
     same = stats.paired_t([1.0, 1.0], [1.0, 1.0])
     assert same.p_value == 1.0 and same.difference == 0  # no noise, no difference
     assert stats.holm([0.01, 0.04, 0.03, None]) == pytest.approx([0.03, 0.06, 0.06, None])
+
+
+def test_no_variation_across_seeds_is_never_significant() -> None:
+    fixed, other = [0.91] * 6, [0.90] * 6  # the experiment ignores the seed
+    for result in (
+        stats.paired_t(fixed[:3], other[:3]),  # p = 0 before
+        stats.welch_t(fixed[:3], other[:3]),  # p = 0 before
+        stats.wilcoxon_signed_rank(fixed, other),  # six identical pairs: p = 0.031 before
+        stats.mann_whitney(fixed[:5], other[:5]),  # complete separation, 5 vs 5: p = 0.008 before
+    ):
+        assert result.p_value is None and result.no_variation and result.difference == pytest.approx(0.01)
+    same = stats.wilcoxon_signed_rank([1.0, 1.0], [1.0, 1.0])
+    assert same.p_value == 1.0 and same.no_variation  # identical: no difference claimed either way
+    rounding = [0.1 + 0.2, 0.3, 0.3]  # 0.30000000000000004: the same value up to rounding
+    assert stats.flat(rounding) and stats.welch_t(rounding, [0.2] * 3).p_value is None
+    assert not stats.flat([0.3]) and not stats.flat([0.3, 0.3001])
+    one_fixed = stats.welch_t([0.91, 0.93, 0.92], [0.90] * 3)  # a deterministic baseline is still testable
+    assert one_fixed.p_value is not None and not one_fixed.no_variation
 
 
 # --------------------------------------------------------------- playbook
@@ -82,7 +115,7 @@ def test_playbook_details() -> None:
 
 
 # ---------------------------------------------------------- code handling
-GOOD = "def run(condition, seed, resources, smoke, workdir):\n    return {'acc': 1.0}\n"
+GOOD = "def run(condition, seed, resources, smoke, workdir):\n    return {'acc': 1.0 if condition == 'a' else 0.5}\n"
 
 
 def test_extract_code_and_static_checks(tmp_path: Path) -> None:
@@ -98,6 +131,89 @@ def test_extract_code_and_static_checks(tmp_path: Path) -> None:
         undefined = "def run(condition, seed, resources, smoke, workdir):\n    return {'acc': missing_name}\n"
         path.write_text(undefined)
         assert any("missing_name" in p for p in static_problems(undefined, path))
+
+
+def test_static_checks_for_fake_results(tmp_path: Path) -> None:
+    path = tmp_path / "experiment.py"
+    ignores = "def run(condition, seed, resources, smoke, workdir):\n    return {'acc': seed / 10}\n"
+    path.write_text(ignores)
+    assert "never uses its `condition`" in static_problems(ignores, path)[0]
+    by_name = "def run(**kwargs):\n    return {'acc': 1.0 if kwargs['condition'] == 'a' else 0.5}\n"
+    path.write_text(by_name)
+    assert static_problems(by_name, path) == []
+    masked = GOOD.replace(
+        "    return", "    try:\n        x = 1 / 0\n    except Exception:\n        return {'acc': 0.0}\n    return"
+    )
+    path.write_text(masked)
+    assert static_problems(masked, path) == [
+        "line 4: a broad `except` returns fixed metric values, which turns a crash into fake results; "
+        "let the exception propagate (rtool records failed runs and repairs them)"
+    ]
+
+
+def _handler(clause: str) -> ast.Module:
+    return ast.parse(f"def train():\n    try:\n        return {{'acc': fit()}}\n{clause}")
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "    except Exception:\n        return {'acc': 0.0, 'loss': -1}\n",
+        "    except:\n        return {m: 0.5 for m in METRICS}\n",
+        "    except (ValueError, builtins.BaseException) as exc:\n        print(exc)\n        return dict(acc=0)\n",
+        "    except Exception:\n        metrics = {'acc': 0.0}\n        return metrics\n",
+    ],
+)
+def test_broad_except_with_fixed_metrics_is_flagged(clause: str) -> None:
+    assert fallback_metrics(_handler(clause)) == [4]
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "    except ValueError:\n        return {'acc': 0.0}\n",  # narrow: a deliberate, specific case
+        "    except Exception:\n        log(); raise\n",
+        "    except Exception:\n        return {'acc': float('nan')}\n",  # run.py rejects non-finite metrics anyway
+        "    except Exception:\n        return {'acc': fallback()}\n",
+        "    except Exception:\n        return {}\n",
+    ],
+)
+def test_other_handlers_are_not_flagged(clause: str) -> None:
+    assert fallback_metrics(_handler(clause)) == []
+
+
+def test_rewrites_that_drop_condition_code() -> None:
+    conditions = ["base", "new"]
+    table = "CONDITIONS = {'base': 'the baseline', 'new': 'the new method'}\n"
+    before = (
+        table + "def run(condition, seed, resources, smoke, workdir):\n    lr = 0.1 if condition == 'new' else 0.01\n"
+    )
+    dropped = table + "def run(condition, seed, resources, smoke, workdir):\n    lr = 0.01\n    print(condition)\n"
+    # the skeleton's CONDITIONS table only describes the conditions, so it does not count
+    assert condition_code_removed(before, dropped, conditions) == [
+        "the condition name 'new' no longer appears in the code"
+    ]
+    blind = before.replace("condition == 'new'", "seed == 'new'")
+    assert condition_code_removed(before, blind, conditions) == ["run() no longer uses its `condition` argument"]
+    assert condition_code_removed(before, before.replace("== 'new'", "in ('new', 'other')"), conditions) == []
+    broken = before.replace("else 0.01", "else (0.01")  # does not parse, but still mentions 'new'
+    assert condition_code_removed(before, broken, conditions) == []
+    assert condition_code_removed(before, "def run(:\n", conditions) == [
+        "the condition name 'new' no longer appears in the code"
+    ]
+
+
+def test_smoke_warnings() -> None:
+    def smoke(condition: str, seed: int, acc: float) -> SmokeResult:
+        return SmokeResult(condition=condition, seed=seed, ok=True, metrics={"acc": acc, "loss": 1 - acc})
+
+    assert smoke_warnings([smoke("base", 0, 0.5), smoke("new", 0, 0.6), smoke("base", 1, 0.52)], "base") == []
+    seedless = smoke_warnings([smoke("base", 0, 0.5), smoke("new", 0, 0.6), smoke("base", 1, 0.5)], "base")
+    assert len(seedless) == 1 and "`base` gave identical smoke metrics with seeds 0 and 1" in seedless[0]
+    blind = smoke_warnings([smoke("base", 0, 0.5), smoke("new", 0, 0.5), smoke("base", 1, 0.52)], "base")
+    assert len(blind) == 1 and "all 2 conditions gave identical smoke metrics" in blind[0]
+    assert smoke_warnings([smoke("base", 0, 0.5), smoke("base", 1, 0.52)], "base") == []  # baseline only
+    assert smoke_warnings([], "base") == []
 
 
 def test_file_listing(tmp_path: Path) -> None:
@@ -135,6 +251,34 @@ def test_aggregate_and_render(tmp_path: Path) -> None:
     assert "| new vs base | 0.0667 |" in table and "![acc](figures/acc.svg)" in table
     wilcoxon = aggregate(plan(test="Wilcoxon signed-rank test"), records())[1][0]
     assert wilcoxon.test == "Wilcoxon signed-rank" and wilcoxon.p_value == pytest.approx(0.25)
+
+
+def test_results_without_seed_variation_are_flagged() -> None:
+    fixed = [
+        RunRecord(condition=c, seed=s, status="ok", metrics={"acc": v, "loss": 1 - v})
+        for c, v in (("base", 0.90), ("new", 0.91))
+        for s in (0, 1, 2)
+    ]
+    for p in (plan(correction="holm"), plan(test="Wilcoxon signed-rank test"), plan(test="Mann-Whitney U test")):
+        summaries, comparisons = aggregate(p, fixed)
+        assert comparisons and all(c.no_seed_variation and c.p_value is None for c in comparisons)
+        assert not any(c.significant or c.better for c in comparisons)
+    notes = variation_notes(p, fixed, comparisons)
+    assert notes[0] == (
+        "no variation across seeds for `base` (acc, loss), `new` (acc, loss): "
+        "the experiment may ignore the seed or return fixed values"
+    )
+    assert notes[1].startswith("not testable, so not significant: `new` vs `base` on acc, `new` vs `base` on loss")
+    assert "| n/a (no variation across seeds) |" in render_tables(p, fixed, summaries, comparisons, {})
+    one_fixed = [
+        r if r.condition == "new" else r.model_copy(update={"metrics": {"acc": 0.6, "loss": 0.4}}) for r in records()
+    ]
+    comparisons = aggregate(plan(), one_fixed)[1]
+    assert all(c.p_value is not None and not c.no_seed_variation for c in comparisons)  # still a valid test
+    assert variation_notes(plan(), one_fixed, comparisons) == [
+        "no variation across seeds for `base` (acc, loss): the experiment may ignore the seed or return fixed values"
+    ]
+    assert variation_notes(plan(), records(), aggregate(plan(), records())[1]) == []
 
 
 def test_partial_results_still_aggregate() -> None:

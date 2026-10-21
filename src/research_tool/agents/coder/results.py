@@ -165,6 +165,7 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
                     p_value=result.p_value,
                     effect_size=result.effect_size,
                     n=result.n,
+                    no_seed_variation=result.no_variation,
                 )
             )
     adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}.get(correction)
@@ -176,6 +177,29 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
         if comparison.significant:
             comparison.better = (comparison.difference > 0) == direction[comparison.metric]
     return summaries, comparisons
+
+
+def variation_notes(plan: ExperimentPlan, records: list[RunRecord], comparisons: list[Comparison]) -> list[str]:
+    """Notes on results that do not vary across seeds (they reach the Writer and the Reviewer)."""
+    ok = [r for r in records if r.status == "ok"]
+    fixed = []
+    for condition in (c.name for c in plan.run_conditions()):
+        same = [m.name for m in plan.metrics if stats.flat([r.metrics[m.name] for r in ok if r.condition == condition])]
+        if same:
+            fixed.append(f"`{condition}` ({', '.join(same)})")
+    notes = []
+    if fixed:
+        notes.append(
+            f"no variation across seeds for {', '.join(fixed)}: the experiment may ignore the seed or return "
+            "fixed values"
+        )
+    untested = [f"`{c.condition}` vs `{c.baseline}` on {c.metric}" for c in comparisons if c.no_seed_variation]
+    if untested:
+        notes.append(
+            f"not testable, so not significant: {', '.join(untested)} (both sides give the same value for every "
+            "seed, so there is no noise to test a difference against)"
+        )
+    return notes
 
 
 # --------------------------------------------------------- tables, figures
@@ -212,9 +236,10 @@ def render_tables(
                 "|---|---|---|---|---|---|---|",
             ]
             for c in rows:
+                p = fmt_p(c.p_value) + (" (no variation across seeds)" if c.no_seed_variation else "")
                 lines.append(
                     f"| {c.condition} vs {c.baseline} | {fmt(c.difference)} | {fmt_ci(c.ci_low, c.ci_high)} "
-                    f"| {c.test} | {fmt_p(c.p_value)} | {fmt_p(c.p_adjusted) if c.p_adjusted is not None else '-'} "
+                    f"| {c.test} | {p} | {fmt_p(c.p_adjusted) if c.p_adjusted is not None else '-'} "
                     f"| {fmt(c.effect_size)} |"
                 )
         if metric.name in figures:
