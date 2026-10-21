@@ -3,7 +3,8 @@
 Means with t-based 95 % confidence intervals, paired and Welch t-tests, exact
 Wilcoxon signed-rank and Mann-Whitney U tests for the small samples typical of
 seeds-per-condition, Cohen's d, and Holm/Bonferroni corrections. Every number
-the Writer reports comes from here, deterministically.
+the Writer reports comes from here, deterministically. When nothing varies
+across seeds there is no noise to test against, and no difference is significant.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 ALPHA = 0.05
+FLAT = 1e-9  # a spread below this fraction of the values' size is rounding, not seed-to-seed variation
 
 
 def mean(xs: Sequence[float]) -> float:
@@ -26,6 +28,15 @@ def stdev(xs: Sequence[float]) -> float:
         return 0.0
     m = mean(xs)
     return math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
+
+
+def flat(xs: Sequence[float]) -> bool:
+    """At least two values, all the same up to floating-point rounding.
+
+    Seeds that all give the same value mean the experiment ignores the seed or
+    returns fixed numbers; there is no noise to test a difference against.
+    """
+    return len(xs) >= 2 and max(xs) - min(xs) <= FLAT * max(abs(x) for x in xs)
 
 
 # ------------------------------------------------------- t distribution
@@ -107,16 +118,23 @@ class TestResult:
     p_value: float | None
     effect_size: float | None
     n: int
+    no_variation: bool = False  # neither side varied across seeds: the test is undefined (see _degenerate)
 
 
 def _like(base: TestResult, test: str, *, p_value: float | None) -> TestResult:
     """A rank test's result: its own statistic and p-value, the t-based CI and effect size of ``base``."""
-    return TestResult(test, base.difference, base.ci_low, base.ci_high, None, p_value, base.effect_size, base.n)
+    return TestResult(
+        test, base.difference, base.ci_low, base.ci_high, None, p_value, base.effect_size, base.n, base.no_variation
+    )
 
 
-def _degenerate(diff: float) -> float:
-    """p-value when every value is identical within groups: no noise at all."""
-    return 1.0 if diff == 0 else 0.0
+def _degenerate(test: str, diff: float, n: int) -> TestResult:
+    """No variation across seeds, so no noise estimate: a difference is never significant.
+
+    Identical values (difference 0) keep p = 1; any other difference gets no
+    p-value at all instead of the p = 0 that an infinite t would give.
+    """
+    return TestResult(test, diff, diff, diff, None, 1.0 if diff == 0 else None, None, n, no_variation=True)
 
 
 def paired_t(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> TestResult:
@@ -124,9 +142,11 @@ def paired_t(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> Te
     n, md = len(d), mean(d)
     if n < 2:
         return TestResult("paired t-test", md, md, md, None, None, None, n)
+    if flat(a) and flat(b):
+        return _degenerate("paired t-test", md, n)
     sd = stdev(d)
-    if sd == 0:
-        return TestResult("paired t-test", md, md, md, None, _degenerate(md), None, n)
+    if sd == 0:  # both conditions vary, yet differ by exactly the same amount for every seed
+        return TestResult("paired t-test", md, md, md, None, 1.0 if md == 0 else 0.0, None, n)
     se = sd / math.sqrt(n)
     t = md / se
     half = t_critical(n - 1, alpha) * se
@@ -142,8 +162,8 @@ def welch_t(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> Tes
     va, vb = stdev(a) ** 2 / na, stdev(b) ** 2 / nb
     se = math.sqrt(va + vb)
     pooled = math.sqrt(((na - 1) * stdev(a) ** 2 + (nb - 1) * stdev(b) ** 2) / (na + nb - 2))
-    if se == 0:
-        return TestResult("Welch t-test", diff, diff, diff, None, _degenerate(diff), None, n)
+    if se == 0 or (flat(a) and flat(b)):  # one fixed group is fine (a one-sample test against it); two are not
+        return _degenerate("Welch t-test", diff, n)
     df = (va + vb) ** 2 / (va**2 / (na - 1) + vb**2 / (nb - 1))
     t = diff / se
     half = t_critical(df, alpha) * se
@@ -170,6 +190,9 @@ def wilcoxon_signed_rank(a: Sequence[float], b: Sequence[float], alpha: float = 
     """Exact two-sided test over all sign flips (fine for the handful of seeds per condition)."""
     paired = paired_t(a, b, alpha)  # the CI and effect size reported alongside
     result = _like(paired, "Wilcoxon signed-rank", p_value=None)
+    if paired.no_variation:  # fixed values on both sides: ranks would call it significant from 6 seeds
+        result.p_value = paired.p_value
+        return result
     d = [x - y for x, y in zip(a, b, strict=True) if x != y]
     if not d:
         result.p_value = 1.0
@@ -195,6 +218,8 @@ def mann_whitney(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -
     welch = welch_t(a, b, alpha)
     na, nb = len(a), len(b)
     result = _like(welch, "Mann-Whitney U", p_value=welch.p_value)
+    if welch.no_variation:  # two fixed values: complete separation would look significant from 4 seeds each
+        return result
     if na == 0 or nb == 0 or math.comb(na + nb, na) > 200_000:
         return result  # too many arrangements to enumerate; keep the Welch p-value
     ranks = _ranks([*a, *b])

@@ -276,3 +276,69 @@ def test_runs_that_never_ran_are_resubmitted_unchanged(runs_root: Path, tmp_path
     assert (
         bundle.fixes[-1].signature == "not_run" and ArtifactStore(run.artifacts_dir).get("experiment_results").complete
     )
+
+
+IGNORES_THE_SEED = """# requirements:
+
+
+def run(condition, seed, resources, smoke, workdir):
+    acc = 0.90 if condition == "base" else 0.91
+    return {"acc": acc, "loss": 1 - acc}
+"""
+
+
+def test_results_that_ignore_the_seed_are_flagged_and_never_significant(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    svc = services(run, coder_llm(IGNORES_THE_SEED))
+    summary = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["summary"]
+    assert "for 2 condition(s), with 1 warning(s) to check first" in summary["message"]
+    assert "`base` gave identical smoke metrics with seeds 0 and 1" in summary["warnings"]
+    assert "base seed 1 ok" in summary["smoke"]
+    queue(run, ActionKind.APPROVE)  # not fatal: some experiments are deterministic by design
+    advance(run, svc, Outcome.WAITING_JOB)
+    svc.slurm.finish_all()  # type: ignore[union-attr]
+    advance(run, svc, Outcome.DONE)
+    store = ArtifactStore(run.artifacts_dir)
+    results = store.get("experiment_results")
+    acc = results.comparison("new", "acc")
+    assert acc is not None and acc.p_value is None and acc.no_seed_variation and not acc.significant
+    assert any("no variation across seeds" in note and "ignore the seed" in note for note in results.notes)
+    assert store.get("code_bundle").warnings == [summary["warnings"]]
+
+
+CRASHES_FOR_NEW = GOOD.replace(
+    "    rng = random", '    if smoke and condition == "new":\n        raise KeyError("label")\n    rng = random'
+)
+DROPS_THE_CONDITIONS = GOOD.replace('0.65 if condition == "base" else 0.72', "0.65")
+
+
+def test_a_fix_that_drops_the_conditions_stops_for_a_human(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    svc = services(run, coder_llm(CRASHES_FOR_NEW, fix=DROPS_THE_CONDITIONS))
+    failed = advance(run, svc, Outcome.NEEDS_HUMAN)
+    error = failed.failed[0]["error"]
+    assert "removed condition-specific code" in error and "'new' no longer appears" in error
+    assert "run() no longer uses its `condition` argument" in error and "retry" in error
+    workspace = run.work_dir("code")
+    assert (workspace / "code" / "experiment.py").read_text() == CRASHES_FOR_NEW  # the rewrite never ran
+    assert [p.read_text() for p in (workspace / "logs").glob("experiment.rejected-*.py")] == [DROPS_THE_CONDITIONS]
+    (workspace / "code" / "experiment.py").write_text(GOOD)  # the researcher fixes it
+    queue(run, ActionKind.RETRY, stage="code", payload={"resume": True})
+    assert advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["gate"] == "gpu_runs"
+
+
+MASKS_FAILURES = GOOD.replace(
+    "    acc = level + rng.uniform(-0.01, 0.01)\n",
+    "    try:\n        acc = level + rng.uniform(-0.01, 0.01)\n"
+    '    except Exception:\n        return {"acc": 0.5, "loss": 0.5}\n',
+)
+
+
+def test_a_fix_that_hides_failures_goes_back_to_the_model(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path, config={"max_fix_rounds": 2})
+    llm = coder_llm(CRASHES_IN_SMOKE, fix=MASKS_FAILURES)
+    failed = advance(run, services(run, llm), Outcome.NEEDS_HUMAN)  # the model keeps sending the same fix
+    fixes = [r.messages[-1].content for r in llm.calls if "fails. Fix it" in r.messages[-1].content]
+    assert len(fixes) == 2 and "KeyError: 'label'" in fixes[0]
+    assert "a broad `except` returns fixed metric values" in fixes[1]  # caught before the smoke test ran it
+    assert "a broad `except`" in failed.failed[0]["error"]

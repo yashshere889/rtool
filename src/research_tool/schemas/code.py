@@ -20,6 +20,7 @@ class CodeFile(BaseModel):
 
 class SmokeResult(BaseModel):
     condition: str
+    seed: int | None = None
     ok: bool
     seconds: float = 0.0
     metrics: dict[str, float] = Field(default_factory=dict)
@@ -43,6 +44,7 @@ class CodeBundle(BaseModel):
     container: str | None = None
     requirements: list[str] = Field(default_factory=list)  # pip packages installed next to the code
     smoke: list[SmokeResult] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)  # smoke runs that ignored the seed or condition
     fixes: list[FixRecord] = Field(default_factory=list)
     readme_path: str = ""  # run-relative
     fingerprint: str = ""  # hash over all files: results belong to exactly this code
@@ -86,6 +88,7 @@ class Comparison(BaseModel):
     n: int
     significant: bool = False
     better: bool | None = None  # in the metric's preferred direction (None if not significant)
+    no_seed_variation: bool = False  # both sides gave one fixed value for every seed: no p-value, never significant
 
 
 @artifact_type("experiment_results")

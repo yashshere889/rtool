@@ -51,7 +51,9 @@ from .results import (
     render_tables,
     results_payload,
     validate,
+    variation_notes,
 )
+from .stats import flat
 
 SYSTEM = (
     "You are a careful research software engineer. Write correct, simple, runnable Python that follows "
@@ -61,6 +63,7 @@ GATE = "gpu_runs"
 HARNESS = ("run.py", "launch.py")
 _BLOCK = re.compile(r"```(?:python|py)?[ \t]*\r?\n(.*?)```", re.S)
 RUN_ARGS = ("condition", "seed", "resources", "smoke", "workdir")
+BROAD = ("Exception", "BaseException")
 
 
 class CoderConfig(BaseModel):
@@ -77,19 +80,140 @@ def extract_code(text: str) -> str | None:
     return code.strip() + "\n" if re.search(r"^def run\(", code, re.M) else None
 
 
+def run_function(tree: ast.Module) -> ast.FunctionDef | None:
+    return next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run"), None)
+
+
+def uses_condition(run: ast.FunctionDef) -> bool:
+    """Does run()'s body read ``condition`` (or ``kwargs["condition"]``, or hand on ``locals()``)?"""
+    nodes = [node for stmt in run.body for node in ast.walk(stmt)]
+    for node in nodes:
+        if isinstance(node, ast.Name) and node.id == "condition" and isinstance(node.ctx, ast.Load):
+            return True
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("locals", "vars"):
+            return True
+    return run.args.kwarg is not None and any(isinstance(n, ast.Constant) and n.value == "condition" for n in nodes)
+
+
+def run_uses_condition(source: str) -> bool | None:
+    """:func:`uses_condition` for a whole file; None if it does not parse or has no run()."""
+    try:
+        run = run_function(ast.parse(source))
+    except SyntaxError:
+        return None
+    return None if run is None else uses_condition(run)
+
+
+def _number(node: ast.expr) -> bool:
+    """A literal int or float (possibly signed), not a bool."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        node = node.operand
+    return isinstance(node, ast.Constant) and type(node.value) in (int, float)
+
+
+def _fixed_metrics(node: ast.expr | None) -> bool:
+    """A dict of fixed numbers: ``{"acc": 0.0}``, ``{m: 0.0 for m in METRICS}`` or ``dict(acc=0.0)``."""
+    if isinstance(node, ast.Dict):
+        return bool(node.values) and None not in node.keys and all(_number(v) for v in node.values)
+    if isinstance(node, ast.DictComp):
+        return _number(node.value)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
+        return bool(node.keywords) and not node.args and all(k.arg and _number(k.value) for k in node.keywords)
+    return False
+
+
+def _broad(handler: ast.ExceptHandler) -> bool:
+    """A bare ``except:`` or one that catches Exception or BaseException."""
+    if handler.type is None:
+        return True
+    types = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return any((getattr(t, "id", None) or getattr(t, "attr", None)) in BROAD for t in types)
+
+
+def fallback_metrics(tree: ast.Module) -> list[int]:
+    """Lines of broad ``except`` handlers that return fixed metric values instead of failing."""
+    lines = []
+    for handler in (n for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler) and _broad(n)):
+        nodes = [node for stmt in handler.body for node in ast.walk(stmt)]
+        fixed = {
+            t.id
+            for n in nodes
+            if isinstance(n, ast.Assign) and _fixed_metrics(n.value)
+            for t in n.targets
+            if isinstance(t, ast.Name)
+        }
+        returned = [n.value for n in nodes if isinstance(n, ast.Return)]
+        if any(_fixed_metrics(v) or (isinstance(v, ast.Name) and v.id in fixed) for v in returned):
+            lines.append(handler.lineno)
+    return lines
+
+
+def condition_literals(source: str, conditions: list[str]) -> set[str]:
+    """Condition names written as string literals, outside the skeleton's descriptive ``CONDITIONS`` table."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {c for c in conditions if re.search(rf"""['"]{re.escape(c)}['"]""", source)}
+    table = {
+        id(node)
+        for stmt in tree.body
+        if isinstance(stmt, (ast.Assign, ast.AnnAssign))
+        and any(
+            isinstance(t, ast.Name) and t.id == "CONDITIONS"
+            for t in (stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target])
+        )
+        for node in ast.walk(stmt)
+    }
+    return {
+        n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in conditions and id(n) not in table
+    }
+
+
+def condition_code_removed(before: str, after: str, conditions: list[str]) -> list[str]:
+    """Signs that a rewrite dropped condition-specific code; empty if there are none."""
+    lost = sorted(condition_literals(before, conditions) - condition_literals(after, conditions))
+    signs = [f"the condition name {name!r} no longer appears in the code" for name in lost]
+    if run_uses_condition(before) and run_uses_condition(after) is False:
+        signs.append("run() no longer uses its `condition` argument")
+    return signs
+
+
 def static_problems(source: str, path: Path) -> list[str]:
-    """Syntax, the run() signature and undefined names, checked without running anything."""
+    """Syntax, the run() signature, undefined names and fake-result patterns, checked without running anything.
+
+    Ignoring ``condition`` and a broad ``except`` that returns fixed metrics are
+    problems (the repair loop fixes them), not gate warnings: neither has a
+    legitimate use in an experiment, since run.py already records failed runs.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError as exc:
         return [f"SyntaxError: {exc.msg} (line {exc.lineno})"]
-    run = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run"), None)
+    run = run_function(tree)
     if run is None:
         return ["experiment.py must define a top-level function run(...)"]
     names = {a.arg for a in [*run.args.args, *run.args.kwonlyargs]}
     missing = [a for a in RUN_ARGS if a not in names]
     if missing and run.args.kwarg is None:
         return [f"run() must accept {', '.join(RUN_ARGS)} (missing: {', '.join(missing)})"]
+    problems = []
+    if not uses_condition(run):
+        problems.append(
+            "run() never uses its `condition` argument, so every condition would give the same results; "
+            "make run() do what each condition describes"
+        )
+    problems += [
+        f"line {line}: a broad `except` returns fixed metric values, which turns a crash into fake results; "
+        "let the exception propagate (rtool records failed runs and repairs them)"
+        for line in fallback_metrics(tree)
+    ]
+    return problems + undefined_names(path)
+
+
+def undefined_names(path: Path) -> list[str]:
+    """ruff's undefined-name findings for the file, if ruff is available."""
     ruff = shutil.which("ruff") or str(Path(sys.executable).with_name("ruff"))
     if not Path(ruff).exists():
         return []
@@ -135,6 +259,33 @@ def file_listing(path: Path, limit: int) -> str:
             if len(found) >= limit:
                 return ", ".join(found) + ", ..."
     return ", ".join(found)
+
+
+def same_metrics(a: dict[str, float], b: dict[str, float]) -> bool:
+    return a.keys() == b.keys() and all(flat([a[k], b[k]]) for k in a)
+
+
+def smoke_warnings(results: list[SmokeResult], baseline: str) -> list[str]:
+    """Signs in passing smoke runs that run() ignores the seed or the condition.
+
+    Shown at the gpu_runs gate, never fatal: some experiments are deterministic
+    by design, and a tiny smoke problem can give equal numbers by chance.
+    """
+    if not results:
+        return []
+    warnings = []
+    base = [r for r in results if r.condition == baseline]
+    if len(base) >= 2 and same_metrics(base[0].metrics, base[1].metrics):
+        warnings.append(
+            f"`{baseline}` gave identical smoke metrics with seeds {base[0].seed} and {base[1].seed}: run() may "
+            "ignore the seed or return fixed values (fine only if the experiment is deterministic by design)"
+        )
+    first = [r for r in results if r.seed == results[0].seed]  # one run per condition, same seed
+    if len(first) >= 2 and all(same_metrics(r.metrics, first[0].metrics) for r in first[1:]):
+        warnings.append(
+            f"all {len(first)} conditions gave identical smoke metrics: run() may not implement the conditions"
+        )
+    return warnings
 
 
 @register_agent("coder")
@@ -324,9 +475,13 @@ class CoderSession:
                 raise StageFailed("the model did not return experiment.py in a ```python block", needs_human=True)
             self.save_source(code, "llm")
         self.state.pop("gate_feedback", None)
+        self.check()
+        self.goto("smoke")
+
+    def check(self) -> None:
+        """Static problems go through the repair loop after writing and before every smoke test (fixes add some)."""
         while problems := static_problems(self.source(), self.code / "experiment.py"):
             self.repair(Diagnosis("static_check", problems[0]), log="\n".join(problems), condition="", phase="check")
-        self.goto("smoke")
 
     def gpu_text(self) -> str:
         c = self.plan.compute
@@ -339,6 +494,7 @@ class CoderSession:
             if sha256_text(self.source()) != self.marker().get("sha"):
                 self.record(phase="smoke", signature="human_edit", action="re-tested the researcher's edits")
         while True:
+            self.check()
             installed = self.env.install(self.requirements(), log_path=self.logs / "install.log")
             if installed is not None and not installed.ok:
                 self.repair(
@@ -356,14 +512,18 @@ class CoderSession:
             self.repair(diagnosis, log=log, condition=condition, phase="smoke")
 
     def run_smoke(self) -> tuple[str, Diagnosis, str] | None:
+        """Every condition (or only the baseline) with the first seed, then the baseline with a second seed."""
         baseline = next((c.name for c in self.plan.conditions if c.is_baseline), self.conditions[0])
         conditions = self.conditions if self.cfg.smoke_all_conditions else [baseline]
-        seed = self.plan.seeds[0] if self.plan.seeds else 0
+        seeds = self.plan.seeds or [0]
+        seed = seeds[0]
+        second = next((s for s in seeds if s != seed), seed + 1)  # does the seed change anything?
         smoke_dir = self.ctx.workspace.mkdir("smoke")
         results: list[SmokeResult] = []
         failure = None
-        for condition in conditions:
-            out = smoke_dir / f"{condition}.json"
+        for condition, s in [*((c, seed) for c in conditions), (baseline, second)]:
+            name = condition if s == seed else f"{condition}__{s}"
+            out = smoke_dir / f"{name}.json"
             out.unlink(missing_ok=True)
             run = self.env.run(
                 [
@@ -371,19 +531,21 @@ class CoderSession:
                     "--condition",
                     condition,
                     "--seed",
-                    str(seed),
+                    str(s),
                     "--output",
                     str(out),
                     "--smoke",
                     "--workdir",
-                    str(self.scratch / "smoke" / condition),
+                    str(self.scratch / "smoke" / name),
                 ],
-                log_path=self.logs / f"smoke-{condition}.log",
+                log_path=self.logs / f"smoke-{name}.log",
                 timeout_s=self.ctx.app_config.experiments.smoke_timeout_s,
             )
             data, problem = read_output(out, self.metric_names)
             if run.ok and data is not None:
-                results.append(SmokeResult(condition=condition, ok=True, seconds=run.seconds, metrics=data["metrics"]))
+                results.append(
+                    SmokeResult(condition=condition, seed=s, ok=True, seconds=run.seconds, metrics=data["metrics"])
+                )
                 continue
             log = run.tail(200)
             found = diagnose(log, exit_code=run.exit_code, timed_out=run.timed_out)
@@ -395,10 +557,14 @@ class CoderSession:
                 )
             elif run.ok:
                 found = Diagnosis("contract", problem)
-            results.append(SmokeResult(condition=condition, ok=False, seconds=run.seconds, error=found.summary))
+            results.append(SmokeResult(condition=condition, seed=s, ok=False, seconds=run.seconds, error=found.summary))
             failure = (condition, found, "\n".join(log.splitlines()[-80:]))
             break
         self.state["smoke"] = [r.model_dump() for r in results]
+        warnings = [] if failure else smoke_warnings(results, baseline)
+        self.state["smoke_warnings"] = warnings
+        if warnings:
+            self.ctx.emit("smoke_warning", warnings=warnings)
         return failure
 
     # --------------------------------------------------------------- repair
@@ -450,10 +616,40 @@ class CoderSession:
             if code is None:
                 action = "the model returned no code; trying again"
             else:
+                removed = condition_code_removed(self.source(), code, self.conditions)
+                if removed:
+                    self.reject_rewrite(code, removed, diagnosis=diagnosis, phase=phase)
                 self.save_source(code, "llm")
                 action = "rewrote experiment.py (LLM)"
         self.record(phase=phase, signature=diagnosis.signature, action=action, detail=diagnosis.summary)
         self.ctx.checkpoint()
+
+    def reject_rewrite(self, code: str, removed: list[str], *, diagnosis: Diagnosis, phase: str) -> None:
+        """Stop for a person: the model "fixed" the code by dropping what makes the conditions differ.
+
+        experiment.py stays as it was; the rejected rewrite is kept in the logs for comparison.
+        """
+        rejected = self.logs / f"experiment.rejected-{self.state.get('fix_rounds', 0)}.py"
+        atomic_write_text(rejected, code)
+        self.record(
+            phase=phase,
+            signature="condition_code_removed",
+            action="rejected the model's rewrite",
+            detail="; ".join(removed),
+        )
+        self.state["needs_human"] = True
+        if phase == "full":  # once fixed: a smoke test, a fresh approval and every run again
+            self.state.get("_gates", {}).pop(GATE, None)
+            self.state.pop("pending", None)
+            self.goto("smoke")
+        self.ctx.checkpoint()
+        where = self.ctx.workspace.path("code/experiment.py")
+        raise StageFailed(
+            f"the model's fix for '{diagnosis.summary}' removed condition-specific code ({'; '.join(removed)}), "
+            f"so the conditions might no longer differ. {where} is unchanged; the rejected rewrite is {rejected}. "
+            "Fix experiment.py by hand, then run `rtool retry <run> --resume`.",
+            needs_human=True,
+        )
 
     def playbook_applies(self, diagnosis: Diagnosis) -> bool:
         """Can the playbook handle this without the LLM? (No side effects.)"""
@@ -484,16 +680,23 @@ class CoderSession:
         runs = planned_runs(self.plan)
         hours = self.gpu_hours(len(runs), self.plan.compute.time_limit)
         smoke = [SmokeResult.model_validate(r) for r in self.state.get("smoke", [])]
+        warnings = list(self.state.get("smoke_warnings", []))
         c = self.plan.compute
         summary = {
             "message": (
-                f"Smoke tests passed on CPU for {len(smoke)} condition(s). Approve to run {len(runs)} jobs on "
-                f"{c.partition} ({self.gpu_text()}, up to {c.time_limit} each; at most {hours:g} GPU-hours). "
-                "Reject with feedback to have the code revised first."
+                f"Smoke tests passed on CPU for {len({r.condition for r in smoke})} condition(s)"
+                + (f", with {len(warnings)} warning(s) to check first" if warnings else "")
+                + f". Approve to run {len(runs)} jobs on {c.partition} ({self.gpu_text()}, up to {c.time_limit} "
+                f"each; at most {hours:g} GPU-hours). Reject with feedback to have the code revised first."
             ),
-            "smoke": ", ".join(f"{r.condition} ok in {r.seconds:g}s" for r in smoke),
+            "smoke": ", ".join(
+                f"{r.condition}{'' if r.seed == smoke[0].seed else f' seed {r.seed}'} ok in {r.seconds:g}s"
+                for r in smoke
+            ),
             "review_files": [str(self.code / "experiment.py"), str(self.code / "config.json")],
         }
+        if warnings:
+            summary["warnings"] = "; ".join(warnings)
         decision = self.ctx.gate(GATE, summary)
         if decision.approved:
             self.state.setdefault("pending", [list(r) for r in runs])  # a rerun keeps its own list
@@ -661,6 +864,7 @@ class CoderSession:
         )
         if comparisons:
             notes.append(f"comparisons use the {comparisons[0].test} against the baseline")
+        notes += variation_notes(self.plan, records, comparisons)
         payload = results_payload(records, notes)
         problems = validate(payload, self.plan.results_schema)
         if problems:
@@ -719,6 +923,7 @@ class CoderSession:
             container=self.ctx.app_config.experiments.container,
             requirements=self.requirements(),
             smoke=[SmokeResult.model_validate(r) for r in self.state.get("smoke", [])],
+            warnings=list(self.state.get("smoke_warnings", [])),
             fixes=[FixRecord.model_validate(f) for f in self.state.get("fixes", [])],
             readme_path=self.ctx.relative(readme),
             fingerprint=fingerprint,
@@ -749,10 +954,13 @@ class CoderSession:
             "## Smoke tests",
             "",
             *[
-                f"- `{r['condition']}`: "
+                f"- `{r['condition']}`"
+                + (f" (seed {r['seed']})" if r.get("seed") is not None else "")
+                + ": "
                 + (f"ok in {r['seconds']:g} s" if r["ok"] else f"failed: {r.get('error', '')}")
                 for r in self.state.get("smoke", [])
             ],
+            *[f"- Warning: {w}" for w in self.state.get("smoke_warnings", [])],
         ]
         fixes = self.state.get("fixes", [])
         if fixes:
