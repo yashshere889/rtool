@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import random
 import shutil
 import subprocess
 import sys
@@ -83,6 +84,31 @@ def test_no_variation_across_seeds_is_never_significant() -> None:
     assert not stats.flat([0.3]) and not stats.flat([0.3, 0.3001])
     one_fixed = stats.welch_t([0.91, 0.93, 0.92], [0.90] * 3)  # a deterministic baseline is still testable
     assert one_fixed.p_value is not None and not one_fixed.no_variation
+
+
+def shared_noise(level: float, seeds: range) -> list[float]:
+    """LLM "simulation" code: a hardcoded level per condition plus noise seeded by the seed alone."""
+    return [level + random.Random(seed).uniform(-0.01, 0.01) for seed in seeds]
+
+
+def test_a_constant_paired_difference_is_never_significant() -> None:
+    base, new = shared_noise(0.65, range(3)), shared_noise(0.72, range(3))  # the differences are exactly equal
+    jittered = shared_noise(0.18, range(6)), shared_noise(0.10, range(6))  # equal up to floating-point rounding
+    for result in (
+        stats.paired_t(new, base),  # sd of the differences 0: p = 0 before
+        stats.paired_t(*jittered),  # sd 9e-18: p = 3e-81 before
+        stats.wilcoxon_signed_rank(*jittered),  # six equal differences: p = 0.031 before
+    ):
+        assert result.p_value is None and result.constant_difference and not result.no_variation
+        assert result.statistic is None and result.effect_size is None and result.ci_low == result.ci_high
+    assert stats.paired_t(new, base).difference == pytest.approx(0.07)
+    same = stats.paired_t(base, list(base))  # both vary but never differ: no difference claimed either way
+    assert same.p_value == 1.0 and same.constant_difference
+    independent = [0.72 + random.Random(f"new-{seed}").uniform(-0.01, 0.01) for seed in range(3)]
+    measured = stats.paired_t(independent, base)  # noise drawn per condition: a real test, and still significant
+    assert measured.p_value is not None and measured.p_value < stats.ALPHA and not measured.constant_difference
+    assert stats.flat([1e-17, -1e-17], scale=0.7) and not stats.flat([1e-17, -1e-17])  # rounding at the inputs' size
+    assert not stats.flat([0.07, 0.08], scale=0.7)
 
 
 # --------------------------------------------------------------- playbook
@@ -279,6 +305,25 @@ def test_results_without_seed_variation_are_flagged() -> None:
         "no variation across seeds for `base` (acc, loss): the experiment may ignore the seed or return fixed values"
     ]
     assert variation_notes(plan(), records(), aggregate(plan(), records())[1]) == []
+
+
+def test_results_with_a_fixed_offset_are_flagged() -> None:
+    offset = [
+        RunRecord(condition=c, seed=s, status="ok", metrics={"acc": acc, "loss": 1 - acc})
+        for c, level in (("base", 0.65), ("new", 0.72))
+        for s, acc in enumerate(shared_noise(level, range(3)))
+    ]
+    for p in (plan(correction="holm"), plan(test="Wilcoxon signed-rank test")):
+        summaries, comparisons = aggregate(p, offset)
+        assert comparisons and all(c.constant_difference and c.p_value is None for c in comparisons)
+        assert not any(c.significant or c.better or c.no_seed_variation for c in comparisons)
+    assert variation_notes(p, offset, comparisons) == [
+        "not testable, so not significant: `new` vs `base` on acc (difference 0.07), `new` vs `base` on loss "
+        "(difference -0.07) (the difference is identical for every seed: it may be a fixed offset rather than a "
+        "measured effect)"
+    ]
+    assert "| n/a (same difference for every seed) |" in render_tables(p, offset, summaries, comparisons, {})
+    assert not any(c.constant_difference for c in aggregate(plan(), records())[1])  # differences that vary
 
 
 def test_partial_results_still_aggregate() -> None:

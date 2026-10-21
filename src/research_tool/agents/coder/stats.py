@@ -4,7 +4,8 @@ Means with t-based 95 % confidence intervals, paired and Welch t-tests, exact
 Wilcoxon signed-rank and Mann-Whitney U tests for the small samples typical of
 seeds-per-condition, Cohen's d, and Holm/Bonferroni corrections. Every number
 the Writer reports comes from here, deterministically. When nothing varies
-across seeds there is no noise to test against, and no difference is significant.
+across seeds there is no noise to test against, and no difference is significant;
+the same holds when both conditions vary but differ by the same amount every seed.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 import itertools
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 ALPHA = 0.05
 FLAT = 1e-9  # a spread below this fraction of the values' size is rounding, not seed-to-seed variation
@@ -30,13 +31,18 @@ def stdev(xs: Sequence[float]) -> float:
     return math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
 
 
-def flat(xs: Sequence[float]) -> bool:
+def flat(xs: Sequence[float], scale: float | None = None) -> bool:
     """At least two values, all the same up to floating-point rounding.
 
     Seeds that all give the same value mean the experiment ignores the seed or
     returns fixed numbers; there is no noise to test a difference against.
+    Rounding is judged against ``scale``, by default the values' own size; pass
+    the size of the inputs when ``xs`` are differences between larger numbers.
     """
-    return len(xs) >= 2 and max(xs) - min(xs) <= FLAT * max(abs(x) for x in xs)
+    if len(xs) < 2:
+        return False
+    size = max(abs(x) for x in xs) if scale is None else scale
+    return max(xs) - min(xs) <= FLAT * size
 
 
 # ------------------------------------------------------- t distribution
@@ -119,22 +125,25 @@ class TestResult:
     effect_size: float | None
     n: int
     no_variation: bool = False  # neither side varied across seeds: the test is undefined (see _degenerate)
+    constant_difference: bool = False  # both varied, but a - b was the same for every seed (see _degenerate)
 
 
 def _like(base: TestResult, test: str, *, p_value: float | None) -> TestResult:
-    """A rank test's result: its own statistic and p-value, the t-based CI and effect size of ``base``."""
-    return TestResult(
-        test, base.difference, base.ci_low, base.ci_high, None, p_value, base.effect_size, base.n, base.no_variation
-    )
+    """A rank test's result: its own statistic and p-value, the t-based CI, effect size and flags of ``base``."""
+    return replace(base, test=test, statistic=None, p_value=p_value)
 
 
-def _degenerate(test: str, diff: float, n: int) -> TestResult:
-    """No variation across seeds, so no noise estimate: a difference is never significant.
+def _degenerate(test: str, diff: float, n: int, *, constant_difference: bool = False) -> TestResult:
+    """No noise estimate, so a difference is never significant.
 
-    Identical values (difference 0) keep p = 1; any other difference gets no
-    p-value at all instead of the p = 0 that an infinite t would give.
+    Either neither side varies across seeds, or (``constant_difference``) both do
+    but differ by the same amount every seed, which is what a hardcoded offset
+    plus shared seeded noise gives. Identical values (difference 0) keep p = 1;
+    any other difference gets no p-value at all instead of the p = 0 that an
+    infinite t would give.
     """
-    return TestResult(test, diff, diff, diff, None, 1.0 if diff == 0 else None, None, n, no_variation=True)
+    p = 1.0 if diff == 0 else None
+    return TestResult(test, diff, diff, diff, None, p, None, n, not constant_difference, constant_difference)
 
 
 def paired_t(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> TestResult:
@@ -144,9 +153,9 @@ def paired_t(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> Te
         return TestResult("paired t-test", md, md, md, None, None, None, n)
     if flat(a) and flat(b):
         return _degenerate("paired t-test", md, n)
+    if flat(d, scale=max(abs(x) for x in (*a, *b))):  # both vary, yet differ by the same amount for every seed
+        return _degenerate("paired t-test", md, n, constant_difference=True)
     sd = stdev(d)
-    if sd == 0:  # both conditions vary, yet differ by exactly the same amount for every seed
-        return TestResult("paired t-test", md, md, md, None, 1.0 if md == 0 else 0.0, None, n)
     se = sd / math.sqrt(n)
     t = md / se
     half = t_critical(n - 1, alpha) * se
@@ -190,7 +199,7 @@ def wilcoxon_signed_rank(a: Sequence[float], b: Sequence[float], alpha: float = 
     """Exact two-sided test over all sign flips (fine for the handful of seeds per condition)."""
     paired = paired_t(a, b, alpha)  # the CI and effect size reported alongside
     result = _like(paired, "Wilcoxon signed-rank", p_value=None)
-    if paired.no_variation:  # fixed values on both sides: ranks would call it significant from 6 seeds
+    if paired.no_variation or paired.constant_difference:  # no noise: six equal differences would give p = 0.031
         result.p_value = paired.p_value
         return result
     d = [x - y for x, y in zip(a, b, strict=True) if x != y]

@@ -89,6 +89,7 @@ class Comparison(BaseModel):
     significant: bool = False
     better: bool | None = None  # in the metric's preferred direction (None if not significant)
     no_seed_variation: bool = False  # both sides gave one fixed value for every seed: no p-value, never significant
+    constant_difference: bool = False  # both varied, but differed by the same amount every seed: likewise untested
 
 
 @artifact_type("experiment_results")

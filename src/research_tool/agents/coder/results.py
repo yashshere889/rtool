@@ -166,6 +166,7 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
                     effect_size=result.effect_size,
                     n=result.n,
                     no_seed_variation=result.no_variation,
+                    constant_difference=result.constant_difference,
                 )
             )
     adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}.get(correction)
@@ -180,7 +181,7 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
 
 
 def variation_notes(plan: ExperimentPlan, records: list[RunRecord], comparisons: list[Comparison]) -> list[str]:
-    """Notes on results that do not vary across seeds (they reach the Writer and the Reviewer)."""
+    """Notes on results, or differences, that do not vary across seeds (they reach the Writer and the Reviewer)."""
     ok = [r for r in records if r.status == "ok"]
     fixed = []
     for condition in (c.name for c in plan.run_conditions()):
@@ -198,6 +199,16 @@ def variation_notes(plan: ExperimentPlan, records: list[RunRecord], comparisons:
         notes.append(
             f"not testable, so not significant: {', '.join(untested)} (both sides give the same value for every "
             "seed, so there is no noise to test a difference against)"
+        )
+    offsets = [
+        f"`{c.condition}` vs `{c.baseline}` on {c.metric} (difference {fmt(c.difference)})"
+        for c in comparisons
+        if c.constant_difference
+    ]
+    if offsets:
+        notes.append(
+            f"not testable, so not significant: {', '.join(offsets)} (the difference is identical for every seed: "
+            "it may be a fixed offset rather than a measured effect)"
         )
     return notes
 
@@ -236,7 +247,8 @@ def render_tables(
                 "|---|---|---|---|---|---|---|",
             ]
             for c in rows:
-                p = fmt_p(c.p_value) + (" (no variation across seeds)" if c.no_seed_variation else "")
+                why = "no variation across seeds" if c.no_seed_variation else "same difference for every seed"
+                p = fmt_p(c.p_value) + (f" ({why})" if c.no_seed_variation or c.constant_difference else "")
                 lines.append(
                     f"| {c.condition} vs {c.baseline} | {fmt(c.difference)} | {fmt_ci(c.ci_low, c.ci_high)} "
                     f"| {c.test} | {p} | {fmt_p(c.p_adjusted) if c.p_adjusted is not None else '-'} "

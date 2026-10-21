@@ -31,6 +31,8 @@ from research_tool.schemas.plan import (
 )
 from research_tool.testing.harness import make_run, queue
 
+# Noise is drawn per condition: one rng per seed shared by both conditions would make the difference identical
+# for every seed, which the statistics treat as a fixed offset (not testable), not a measured effect.
 GOOD = """# requirements:
 import random
 
@@ -38,7 +40,7 @@ BATCH_SIZE = 16
 
 
 def run(condition, seed, resources, smoke, workdir):
-    rng = random.Random(seed)
+    rng = random.Random(f"{condition}-{seed}")
     level = 0.65 if condition == "base" else 0.72
     acc = level + rng.uniform(-0.01, 0.01)
     return {"acc": acc, "loss": 1 - acc}
@@ -309,7 +311,9 @@ def test_results_that_ignore_the_seed_are_flagged_and_never_significant(runs_roo
 CRASHES_FOR_NEW = GOOD.replace(
     "    rng = random", '    if smoke and condition == "new":\n        raise KeyError("label")\n    rng = random'
 )
-DROPS_THE_CONDITIONS = GOOD.replace('0.65 if condition == "base" else 0.72', "0.65")
+DROPS_THE_CONDITIONS = GOOD.replace('0.65 if condition == "base" else 0.72', "0.65").replace(
+    'random.Random(f"{condition}-{seed}")', "random.Random(seed)"
+)
 
 
 def test_a_fix_that_drops_the_conditions_stops_for_a_human(runs_root: Path, tmp_path: Path) -> None:

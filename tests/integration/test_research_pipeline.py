@@ -112,13 +112,14 @@ def add_downstream_rules(llm: Any) -> None:
     )
 
 
+# Noise is drawn per condition: a shared seeded rng would give the same difference every seed (a fixed offset).
 EXPERIMENT = '''"""Closed-loop stimulation, simulated."""
 # requirements:
 import random
 
 
 def run(condition, seed, resources, smoke, workdir):
-    rng = random.Random(seed)
+    rng = random.Random(f"{condition}-{seed}")
     gain = (0.10 if condition == "sham" else 0.18) + rng.uniform(-0.01, 0.01)
     return {"recall_gain": gain}
 '''
