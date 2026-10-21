@@ -7,7 +7,15 @@ from pathlib import Path
 import httpx
 import pytest
 
-from research_tool.agents.planner.checks import design_issues, fit_compute, format_time, results_schema, slug
+from research_tool.agents.planner.checks import (
+    design_issues,
+    fit_compute,
+    format_time,
+    normalise_core,
+    one_primary,
+    results_schema,
+    slug,
+)
 from research_tool.core.config import load_config
 from research_tool.schemas.plan import ComputeEstimate, Condition, Metric, PlanCore, ResourceChoice, ResourceSpec
 from research_tool.tools.http import PoliteHttp
@@ -64,21 +72,42 @@ def test_compute_problems_are_reported(config) -> None:  # noqa: ANN001
     assert any("allows 3-00:00:00" in i for i in issues) and any("budget is 50" in i for i in issues)
 
 
-def test_design_rules() -> None:
-    core = PlanCore(
+def core_with(metrics: list[dict]) -> PlanCore:
+    return PlanCore(
         objective="o",
         design="d",
         independent_variables=[{"name": "x", "description": "x"}],
         dependent_variables=[{"name": "y", "description": "y"}],
         conditions=[{"name": "a", "description": "a"}, {"name": "a", "description": "b"}],
-        metrics=[{"name": "acc", "definition": "accuracy"}],
+        metrics=metrics,
         statistical_tests=[{"test": "t", "comparison": "a vs b"}],
         n_seeds=1,
         procedure=["1", "2", "3"],
         expected_results="r",
     )
+
+
+def test_design_rules() -> None:
+    core = core_with([{"name": "acc", "definition": "accuracy"}])
     issues = " ".join(design_issues(core, min_seeds=3))
     assert "baseline" in issues and "unique" in issues and "at least 3 seeds" in issues
+    assert "primary" not in issues
+
+
+def test_exactly_one_primary_metric() -> None:
+    unmarked = normalise_core(core_with([{"name": "Acc", "definition": "a"}, {"name": "F1", "definition": "f"}]))
+    assert [m.primary for m in unmarked.metrics] == [True, False]  # none marked: the first one is primary
+    marked = normalise_core(
+        core_with([{"name": "acc", "definition": "a"}, {"name": "f1", "definition": "f", "primary": True}])
+    )
+    assert [m.primary for m in marked.metrics] == [False, True]  # the planner's choice is kept
+    several = normalise_core(
+        core_with(
+            [{"name": "acc", "definition": "a", "primary": True}, {"name": "f1", "definition": "f", "primary": True}]
+        )
+    )
+    assert any("exactly one metric as the primary outcome" in i for i in design_issues(several, min_seeds=1))
+    assert [m.primary for m in one_primary(several.metrics)] == [True, False]  # unresolved after repair: the first
 
 
 def test_results_schema_shape() -> None:

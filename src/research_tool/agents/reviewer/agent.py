@@ -217,17 +217,24 @@ class Reviewing:
         return problems(text, self.values, keys, allowed_numbers=self.allowed_numbers(section, original))
 
     def facts(self) -> str:
-        lines = []
-        for c in self.results.comparisons:
+        """The comparisons, confirmatory (the pre-registered primary outcome) first, then the exploratory ones."""
+        lines = [
+            f"- Pre-registered primary outcome: {self.plan.primary_metric().name}. Its comparisons are confirmatory; "
+            "all others are exploratory and must not be presented as the main finding or as confirming the hypothesis"
+        ]
+        for c in sorted(self.results.comparisons, key=lambda c: c.analysis != "confirmatory"):
             verdict = (
                 "not significant"
                 if not c.significant
                 else ("significantly better" if c.better else "significantly worse")
             )
             key = f"{c.metric}:{c.condition}"
+            p = self.values[f"p:{key}"].text
+            if c.p_adjusted is not None:
+                p += f", {c.correction.capitalize()}-corrected {self.values[f'p_adj:{key}'].text}"
             lines.append(
-                f"- {c.condition} vs {c.baseline} on {c.metric}: difference {self.values[f'diff:{key}'].text} "
-                f"({self.values[f'diff_ci:{key}'].text}), {self.values[f'p:{key}'].text} ({c.test}) — {verdict}"
+                f"- {c.analysis.capitalize()}: {c.condition} vs {c.baseline} on {c.metric}: difference "
+                f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}), {p} ({c.test}) — {verdict}"
             )
         ok = sum(1 for r in self.results.runs if r.status == "ok")
         lines.append(f"- {ok} of {len(self.results.runs)} planned runs produced results")

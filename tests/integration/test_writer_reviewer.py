@@ -60,7 +60,12 @@ def is_audit(request: ChatRequest) -> bool:
 
 
 def seed(
-    runs_root: Path, *, runs: list | None = None, stages: list[dict] | None = None, fixes: list | None = None
+    runs_root: Path,
+    *,
+    runs: list | None = None,
+    stages: list[dict] | None = None,
+    fixes: list | None = None,
+    primary: str = "acc",
 ) -> RunHandle:
     run = make_run(
         runs_root,
@@ -78,7 +83,7 @@ def seed(
     (run.root / "code").mkdir()
     (run.root / "code" / "experiment.py").write_text(EXPERIMENT)
     (run.root / "code" / "config.json").write_text(json.dumps({"seeds": [0, 1, 2], "resources": {"data": "/x"}}))
-    p = plan()
+    p = plan(primary=primary)
     runs = runs if runs is not None else records()
     summaries, comparisons = aggregate(p, runs)
     corpus = Corpus(
@@ -315,6 +320,24 @@ def test_code_audit_fails_closed(runs_root: Path) -> None:
     review = ArtifactStore(run.artifacts_dir).get("review")
     check = next(c for c in review.checks if c.name == "code matches the plan")
     assert review.verdict == "needs_human" and not check.ok and "no audit returned a valid answer" in check.detail
+
+
+def test_the_report_leads_with_the_primary_outcome(runs_root: Path) -> None:
+    run = seed(runs_root, primary="loss")
+    llm = writer_llm()
+    Engine(run, services(run, llm)).advance()
+    prompts = [r.messages[-1].content for r in llm.calls]
+    results = next(p for p in prompts if p.startswith('Write the "Results" section'))
+    assert results.index("Primary outcome (pre-registered) `loss`") < results.index("Exploratory metric `acc`")
+    assert "`new` vs `base` (confirmatory)" in results and "`new` vs `base` (exploratory)" in results
+    assert "Holm-corrected {{p_adj:loss:new}}" in results  # two comparisons: corrected by default
+    store = ArtifactStore(run.artifacts_dir)
+    text = (run.root / store.get("report").markdown_path).read_text()
+    assert text.index("**`loss`** (lower is better; primary outcome)") < text.index("**`acc`** (higher is better;")
+    assert "| `new` vs `base` | confirmatory |" in text and "The primary outcome, `loss`, was fixed" in text
+    review = next(p for p in prompts if p.startswith("Review this research report"))
+    facts = review.split("## Facts from the experiment")[1]
+    assert facts.index("Confirmatory: new vs base on loss") < facts.index("Exploratory: new vs base on acc")
 
 
 def test_failed_checks_need_a_human(runs_root: Path) -> None:

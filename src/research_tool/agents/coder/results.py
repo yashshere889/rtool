@@ -10,7 +10,7 @@ import math
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ...schemas.code import Comparison, MetricSummary, RunRecord
 from ...schemas.plan import ExperimentPlan
@@ -101,16 +101,28 @@ def validate(data: Any, schema: dict[str, Any], where: str = "$") -> list[str]:
 
 
 # ------------------------------------------------------------ statistics
-def _test_family(plan: ExperimentPlan) -> tuple[str, str]:
-    """(test, correction) chosen from the plan's statistical tests (free text written by the planner)."""
+def _test_family(plan: ExperimentPlan) -> tuple[str, Literal["holm", "bonferroni"]]:
+    """(test, correction) chosen from the plan's statistical tests (free text written by the planner).
+
+    The correction is Holm unless the plan asks for Bonferroni (and not Holm); ``aggregate`` applies it
+    whenever there is more than one comparison. A plan that says "none" (or names a correction we do not
+    implement) still gets Holm: "none" is the field's default, so it cannot be told apart from a planner
+    that never considered the question, and an uncorrected family of metrics x conditions is how false
+    positives get reported. The raw p-values stay in the results next to the adjusted ones.
+    """
     text = " ".join(f"{t.test} {t.comparison}" for t in plan.statistical_tests).lower()
     corrections = " ".join(t.correction for t in plan.statistical_tests).lower()
     test = "wilcoxon" if "wilcoxon" in text else "mann-whitney" if re.search(r"mann|whitney", text) else "t"
-    correction = "holm" if "holm" in corrections else "bonferroni" if "bonferroni" in corrections else "none"
-    return test, correction
+    return test, "bonferroni" if "bonferroni" in corrections and "holm" not in corrections else "holm"
 
 
 def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[MetricSummary], list[Comparison]]:
+    """Summaries per (condition, metric) and comparisons of every condition with the baseline.
+
+    Comparisons on the plan's primary metric are confirmatory (the pre-registered test of the hypothesis),
+    all others exploratory. The correction is applied within each of the two analyses, so exploratory
+    metrics never dilute the primary test, and exploratory results are still corrected among themselves.
+    """
     ok = [r for r in records if r.status == "ok"]
     conditions = [c.name for c in plan.run_conditions()]
     summaries: list[MetricSummary] = []
@@ -133,6 +145,7 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
             )
     baseline = next((c.name for c in plan.conditions if c.is_baseline), plan.conditions[0].name)
     family, correction = _test_family(plan)
+    primary = plan.primary_metric().name
     comparisons: list[Comparison] = []
     for metric in plan.metrics:
         base = {r.seed: r.metrics[metric.name] for r in ok if r.condition == baseline}
@@ -166,16 +179,20 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
                     effect_size=result.effect_size,
                     n=result.n,
                     no_seed_variation=result.no_variation,
+                    analysis="confirmatory" if metric.name == primary else "exploratory",
                 )
             )
-    adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}.get(correction)
-    adjusted = adjust([c.p_value for c in comparisons]) if adjust else [c.p_value for c in comparisons]
+    adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}[correction] if len(comparisons) > 1 else None
     direction = {m.name: m.higher_is_better for m in plan.metrics}
-    for comparison, p in zip(comparisons, adjusted, strict=True):
-        comparison.p_adjusted = p if adjust else None
-        comparison.significant = p is not None and p < stats.ALPHA
-        if comparison.significant:
-            comparison.better = (comparison.difference > 0) == direction[comparison.metric]
+    for analysis in ("confirmatory", "exploratory"):
+        members = [c for c in comparisons if c.analysis == analysis]
+        adjusted = adjust([c.p_value for c in members]) if adjust else [c.p_value for c in members]
+        for comparison, p in zip(members, adjusted, strict=True):
+            if adjust:
+                comparison.p_adjusted, comparison.correction = p, correction
+            comparison.significant = p is not None and p < stats.ALPHA
+            if comparison.significant:
+                comparison.better = (comparison.difference > 0) == direction[comparison.metric]
     return summaries, comparisons
 
 
@@ -212,6 +229,8 @@ def render_tables(
 ) -> str:
     ok = sum(1 for r in records if r.status == "ok")
     baseline = next((c.name for c in plan.conditions if c.is_baseline), "")
+    primary = plan.primary_metric()
+    correction = next((c.correction for c in comparisons if c.correction != "none"), "none")
     lines = [
         "# Experiment results",
         "",
@@ -219,11 +238,20 @@ def render_tables(
         f"({len(plan.run_conditions())} conditions x {len(plan.seeds)} seeds).",
         "Means with 95 % confidence intervals (t distribution); comparisons are against the baseline "
         f"`{baseline}` (difference = condition minus baseline).",
+        f"The primary outcome, fixed when the plan was approved, is `{primary.name}`: its comparisons are "
+        "confirmatory, all others exploratory."
+        + (
+            f" p-values are adjusted ({correction.capitalize()}) within the confirmatory and within the "
+            "exploratory comparisons."
+            if correction != "none"
+            else ""
+        ),
         "",
     ]
-    for metric in plan.metrics:
+    for metric in plan.metrics_primary_first():
         direction = "higher" if metric.higher_is_better else "lower"
-        lines += [f"## `{metric.name}` ({direction} is better)", "", metric.definition, ""]
+        role = "primary outcome" if metric is primary else "exploratory"
+        lines += [f"## `{metric.name}` ({direction} is better; {role})", "", metric.definition, ""]
         lines += ["| condition | n | mean | 95 % CI | std |", "|---|---|---|---|---|"]
         for s in (s for s in summaries if s.metric == metric.name):
             label = f"{s.condition} (baseline)" if s.condition == baseline else s.condition
@@ -232,15 +260,15 @@ def render_tables(
         if rows:
             lines += [
                 "",
-                "| comparison | difference | 95 % CI | test | p | p (adjusted) | effect size |",
-                "|---|---|---|---|---|---|---|",
+                "| comparison | analysis | difference | 95 % CI | test | p | p (adjusted) | effect size |",
+                "|---|---|---|---|---|---|---|---|",
             ]
             for c in rows:
                 p = fmt_p(c.p_value) + (" (no variation across seeds)" if c.no_seed_variation else "")
                 lines.append(
-                    f"| {c.condition} vs {c.baseline} | {fmt(c.difference)} | {fmt_ci(c.ci_low, c.ci_high)} "
-                    f"| {c.test} | {p} | {fmt_p(c.p_adjusted) if c.p_adjusted is not None else '-'} "
-                    f"| {fmt(c.effect_size)} |"
+                    f"| {c.condition} vs {c.baseline} | {c.analysis} | {fmt(c.difference)} "
+                    f"| {fmt_ci(c.ci_low, c.ci_high)} | {c.test} | {p} "
+                    f"| {fmt_p(c.p_adjusted) if c.p_adjusted is not None else '-'} | {fmt(c.effect_size)} |"
                 )
         if metric.name in figures:
             lines += ["", f"![{metric.name}]({figures[metric.name]})"]

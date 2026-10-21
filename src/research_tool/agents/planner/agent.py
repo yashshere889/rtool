@@ -25,7 +25,7 @@ from ...schemas.plan import ComputeEstimate, ExperimentPlan, PlanCore, ResourceP
 from ...tools.http import PoliteHttp
 from ...tools.resources.checks import HubChecker, ResourceChecker
 from ..common import SYSTEM, compute_profile, open_corpus_kb
-from .checks import design_issues, fit_compute, normalise_core, resource_issues, results_schema
+from .checks import design_issues, fit_compute, normalise_core, one_primary, resource_issues, results_schema
 
 
 class PlannerConfig(BaseModel):
@@ -123,7 +123,7 @@ class PlannerAgent(Agent):
             controls=core.controls,
             conditions=core.conditions,
             ablations=core.ablations,
-            metrics=core.metrics,
+            metrics=one_primary(core.metrics),
             statistical_tests=core.statistical_tests,
             seeds=seeds,
             procedure=core.procedure,
@@ -185,7 +185,7 @@ class PlannerAgent(Agent):
 
 
 def render_markdown(plan: ExperimentPlan, h: Hypothesis) -> str:
-    c = plan.compute
+    c, primary = plan.compute, plan.primary_metric()
     lines = [
         f"# Experiment plan: {h.title}",
         "",
@@ -208,16 +208,27 @@ def render_markdown(plan: ExperimentPlan, h: Hypothesis) -> str:
         *[f"- `{x.name}`{' (baseline)' if x.is_baseline else ''}: {x.description}" for x in plan.conditions],
         *[f"- `{x.name}` (ablation): {x.description}" for x in plan.ablations],
         "",
+        "## Primary outcome (pre-registered)",
+        "",
+        f"`{primary.name}` ({'higher' if primary.higher_is_better else 'lower'} is better): {primary.definition}",
+        "",
+        "Approving this plan fixes it: the comparisons on this metric are the confirmatory test of the "
+        "hypothesis, and the report presents them first."
+        + (" Every other metric is reported as exploratory." if len(plan.metrics) > 1 else ""),
+        "",
         "## Metrics",
         "",
         *[
-            f"- `{m.name}` ({'higher' if m.higher_is_better else 'lower'} is better): {m.definition}"
+            f"- `{m.name}` ({'higher' if m.higher_is_better else 'lower'} is better"
+            f"{'; primary' if m is primary else '; exploratory'}): {m.definition}"
             for m in plan.metrics
         ],
         "",
         "## Statistics",
         "",
         *[f"- {t.test}: {t.comparison} (alpha {t.alpha}, correction: {t.correction})" for t in plan.statistical_tests],
+        "- multiple comparisons: p-values are adjusted (Holm, or Bonferroni if a test above asks for it) "
+        "within the confirmatory and within the exploratory comparisons",
         f"- seeds per condition: {len(plan.seeds)}",
         "",
         "## Procedure",

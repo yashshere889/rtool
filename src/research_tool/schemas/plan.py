@@ -27,13 +27,19 @@ class Metric(BaseModel):
     name: str = Field(description="Short identifier, e.g. 'accuracy' or 'recall_gain'")
     definition: str
     higher_is_better: bool = True
+    primary: bool = Field(
+        default=False,
+        description="True for exactly one metric: the primary outcome that decides the hypothesis (pre-registered)",
+    )
 
 
 class StatisticalTest(BaseModel):
     test: str = Field(description="e.g. 'paired t-test', 'Wilcoxon signed-rank', 'bootstrap 95% CI'")
     comparison: str = Field(description="Which conditions or groups are compared, on which metric")
     alpha: float = 0.05
-    correction: str = Field(default="none", description="Multiple-comparison correction, if several tests")
+    correction: str = Field(
+        default="none", description="Multiple-comparison correction: 'holm' (used for several tests) or 'bonferroni'"
+    )
 
 
 # ------------------------------------------------------------- LLM outputs
@@ -120,6 +126,14 @@ class ExperimentPlan(BaseModel):
 
     def run_conditions(self) -> list[Condition]:
         return [*self.conditions, *self.ablations]
+
+    def primary_metric(self) -> Metric:
+        """The pre-registered primary outcome (the first metric in plans written before metrics were marked)."""
+        return next((m for m in self.metrics if m.primary), self.metrics[0])
+
+    def metrics_primary_first(self) -> list[Metric]:
+        primary = self.primary_metric()
+        return [primary, *(m for m in self.metrics if m is not primary)]
 
 
 # -------------------------------------------------------- fetch artifact

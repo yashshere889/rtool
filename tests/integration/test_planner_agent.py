@@ -88,7 +88,10 @@ def core(request: ChatRequest) -> dict[str, Any]:
             {"name": "Clean Labels", "description": "no noise", "is_baseline": fixed},
             {"name": "Noisy Labels", "description": "20% noise"},
         ],
-        "metrics": [{"name": "Accuracy", "definition": "test accuracy"}],
+        "metrics": [
+            {"name": "Macro F1", "definition": "macro-averaged F1", "primary": not fixed},
+            {"name": "Accuracy", "definition": "test accuracy", "primary": True},
+        ],
         "statistical_tests": [{"test": "paired t-test", "comparison": "clean vs noisy accuracy"}],
         "n_seeds": 3,
         "procedure": ["load IMDB", "flip labels", "fine-tune BERT", "evaluate"],
@@ -159,9 +162,13 @@ def test_plan_is_repaired_fitted_and_then_fetched(runs_root: Path, tmp_path: Pat
     assert result.outcome is Outcome.WAITING_GATE and result.open_gates[0]["gate"] == "plan_gate"
 
     plan = ArtifactStore(run.artifacts_dir).get("experiment_plan")
-    assert plan.issues == []  # the repair round fixed the missing baseline and the made-up dataset
+    assert plan.issues == []  # the repair round fixed the baseline, the two primary metrics and the dataset
     assert [c.name for c in plan.conditions] == ["clean_labels", "noisy_labels"] and plan.conditions[0].is_baseline
-    assert plan.metrics[0].name == "accuracy" and plan.seeds == [0, 1, 2]
+    assert [m.name for m in plan.metrics] == ["macro_f1", "accuracy"] and plan.seeds == [0, 1, 2]
+    assert [m.primary for m in plan.metrics] == [False, True]  # the planner's repaired choice, not the first
+    markdown = (run.root / plan.markdown_path).read_text()
+    assert "## Primary outcome (pre-registered)\n\n`accuracy` (higher is better)" in markdown
+    assert "- `macro_f1` (higher is better; exploratory)" in markdown
     assert plan.resources[0].identifier == "stanfordnlp/imdb" and all(r.verified for r in plan.resources)
     assert plan.compute.partition == "gpu-l40s" and plan.compute.runs == 6 and plan.compute.time_limit == "01:57:00"
     assert plan.results_schema["properties"]["runs"]["items"]["properties"]["condition"]["enum"] == [
@@ -170,6 +177,8 @@ def test_plan_is_repaired_fitted_and_then_fetched(runs_root: Path, tmp_path: Pat
     ]
     asked = [schema(r) for r in llm.calls]
     assert asked.count("PlanCore") == 2 and asked.count("ResourcePlan") == 2 and asked.count("ComputeEstimate") == 1
+    repair = [r for r in llm.calls if schema(r) == "PlanCore"][1].messages[-1].content
+    assert "mark exactly one metric as the primary outcome" in repair
     assert "experiment_plan.md" in result.open_gates[0]["summary"]["review_files"][0]
 
     queue(run, ActionKind.APPROVE)
