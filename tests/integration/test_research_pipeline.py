@@ -20,6 +20,7 @@ from test_literature_agent import (
     fake_pdf_to_text,
     make_llm,
 )
+from test_writer_reviewer import QUESTION, auditor
 
 from research_tool.agents.literature.toolkit import LiteratureToolkit
 from research_tool.core.actions import ActionKind
@@ -153,6 +154,7 @@ def add_report_rules(llm: Any) -> None:
         {"title": "Closed-loop stimulation and recall", "abstract": "Across {{runs_ok}} runs, recall improved."},
     )
     llm.add(lambda r: schema(r) == "Contradictions", {"items": []})
+    llm.add(lambda r: schema(r) == "CodeAuditDraft", auditor())
     llm.add(
         lambda r: schema(r) == "ReviewDraft",
         {
@@ -274,4 +276,11 @@ def test_topic_to_reviewed_report(runs_root: Path, tmp_path: Path) -> None:
     assert review.verdict == "accept", review.checks
     assert review.edited_sections == ["results"] and review.scores["soundness"] == 4
     assert all(check.ok for check in review.checks)
+    # the code audit read the experiment the Coder wrote and ran, and checked it against the plan
+    audit = next(r.messages[-1].content for r in llm.calls if schema(r) == "CodeAuditDraft")
+    assert 'gain = (0.10 if condition == "sham" else 0.18)' in audit and "- `recall_gain` (higher" in audit
+    assert QUESTION.findall(audit)[:2] == [("condition", "sham"), ("condition", "stim")]
+    assert [f.state for f in review.code_audit] == ["ok"] * 5
+    review_md = (run.root / review.review_path).read_text()
+    assert "## Code audit" in review_md and "- ok: held-out evaluation" in review_md
     assert "+" in (run.root / review.diff_path).read_text()  # the reviewer's edit, as a diff

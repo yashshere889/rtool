@@ -17,6 +17,10 @@ from ..core.artifacts import artifact_type, register_artifact_type
 Origin = Literal["rtool", "llm", "reviewer"]
 Severity = Literal["minor", "major"]
 Target = Literal["report", "experiment_results", "code_bundle", "experiment_plan"]
+# What the code audit asks: each condition does what the plan says, the conditions differ, evaluation is
+# on held-out data, each metric is computed as defined, automatic repairs did not weaken the experiment.
+AuditAspect = Literal["condition", "distinct", "held_out", "metric", "repairs"]
+AuditState = Literal["ok", "problem", "unconfirmed", "unanswered"]
 
 
 class ReportSection(BaseModel):
@@ -71,6 +75,20 @@ class ReviewIssue(BaseModel):
     severity: Severity = "minor"
 
 
+class AuditFinding(BaseModel):
+    """One question of the code audit after the vote of its samples."""
+
+    aspect: AuditAspect
+    subject: str = ""  # the condition or metric asked about
+    label: str  # e.g. "metric `acc`"
+    state: AuditState  # problem: raised by most audits; unconfirmed: by some; unanswered: most gave no answer
+    answered: int = 0  # audits that answered this question
+    raised_by: int = 0  # audits that answered "not ok"
+    problem: str = ""
+    fix: str = ""
+    severity: Severity = "minor"
+
+
 @artifact_type("review")
 class Review(BaseModel):
     verdict: Literal["accept", "needs_human"]
@@ -78,6 +96,7 @@ class Review(BaseModel):
     scores: dict[str, float] = Field(default_factory=dict)  # median over the judge samples, 1-5
     checks: list[Check] = Field(default_factory=list)
     issues: list[ReviewIssue] = Field(default_factory=list)
+    code_audit: list[AuditFinding] = Field(default_factory=list)
     edited_sections: list[str] = Field(default_factory=list)
     change_requests: list[str] = Field(default_factory=list)
     review_path: str = ""  # review.md, run-relative
@@ -112,3 +131,16 @@ class ReviewDraft(BaseModel):
     scores: Rubric
     summary: str = Field(description="Two or three sentences for the researcher")
     issues: list[ReviewIssue] = Field(default_factory=list, max_length=10)
+
+
+class AuditAnswer(BaseModel):
+    aspect: AuditAspect
+    subject: str = Field(default="", description="The condition or metric name the question gives; else empty")
+    ok: bool = Field(description="false only for a real problem you can point to in the code")
+    problem: str = Field(default="", description="If not ok: what the code does wrong, naming the lines")
+    fix: str = Field(default="", description="If not ok: what to change in experiment.py")
+    severity: Severity = Field(default="minor", description="'major' only if the results cannot be trusted as is")
+
+
+class CodeAuditDraft(BaseModel):
+    answers: list[AuditAnswer] = Field(default_factory=list, max_length=30, description="One per question")
