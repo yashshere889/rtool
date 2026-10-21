@@ -1,0 +1,71 @@
+{# The Reviewer's code audit. A domain pack may reword it (packs/<pack>/prompts/reviewer/code_audit.j2), but each
+   question must keep its aspect and subject: answers are matched to the questions by them. #}
+You are auditing the code of an experiment before anyone trusts its results. Compare experiment.py with the
+plan below, then answer each question at the end. Judge only from the code shown and name the lines you mean.
+
+How the code runs: rtool's harness calls `run(condition, seed, resources, smoke, workdir)` once per condition
+and seed, and the floats it returns are recorded as the metrics. With smoke=True the code may use a tiny
+problem; judge the full run (smoke=False).
+
+## The plan
+Design: {{ design }}
+
+Conditions:
+{% for c in conditions %}
+- `{{ c.name }}`{{ " (baseline)" if c.is_baseline else "" }}: {{ c.description }}
+{% endfor %}
+
+Metrics:
+{% for m in metrics %}
+- `{{ m.name }}` ({{ "higher" if m.higher_is_better else "lower" }} is better): {{ m.definition }}
+{% endfor %}
+
+Procedure:
+{% for step in procedure %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+
+## config.json (what run.py passes to the code)
+```json
+{{ config }}
+```
+
+## Automatic repairs made while the code was being tested
+{% for f in fixes %}
+{{ f.round }}. {{ f.phase }} · {{ f.signature }}: {{ f.action }}{% if f.detail %} — {{ f.detail }}{% endif %}
+
+{% else %}
+None.
+{% endfor %}
+
+## experiment.py (with line numbers)
+{% if omitted %}
+{{ omitted }} lines were left out to fit (marked "omitted"); do not report a problem only because code is not shown.
+{% endif %}
+```python
+{{ code }}
+```
+
+## Questions
+Give one answer per question, with its aspect and subject exactly as written. Set ok to false only for a real
+problem you can point to in the code; then say what is wrong (problem) and what to change (fix). Mark a problem
+"major" only if the results cannot be trusted without the change.
+{% for q in questions %}
+{{ loop.index }}. aspect "{{ q.aspect }}"{% if q.subject %}, subject "{{ q.subject }}"{% endif %}:
+{%- if q.aspect == "condition" %}
+ Does the full run of `{{ q.subject }}` do what the plan describes for it?
+{%- elif q.aspect == "distinct" %}
+ Do the conditions really differ in the code? Not ok if `condition` is ignored, a condition silently falls back
+to another, or two conditions run with the same settings.
+{%- elif q.aspect == "held_out" %}
+ Are the metrics computed on held-out data that was never used for training, tuning, early stopping or model
+selection? Not ok if evaluation data leaks into any of these. If nothing is trained or tuned, answer ok.
+{%- elif q.aspect == "metric" %}
+ Is `{{ q.subject }}` computed as its definition says (right formula, right data, not hard-coded)?
+{%- elif q.aspect == "repairs" %}
+ Did any automatic repair listed above weaken or bypass the experiment? Not ok if, for example, an error now
+returns made-up metrics, training was cut short, data was shrunk outside smoke mode, or a condition now runs the
+baseline.
+{%- endif %}
+
+{% endfor %}

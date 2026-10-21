@@ -46,7 +46,8 @@ e.g. the Coder's `gpu_runs` before spending GPU hours). Humans answer with
 
 **Change requests.** A later stage can ask the producer of one of its inputs
 to redo its work (`ctx.request_change(artifact=…)`): the Writer when planned
-conditions have no results, the Reviewer for major problems with the experiment.
+conditions have no results, the Reviewer for major problems with the experiment
+(including those its code audit finds in `experiment.py`).
 The engine marks the target stale with the request as feedback, re-runs it,
 then the requester. Rounds are capped (`revisions.max_rounds`); past the cap the
 `revision_limit` gate asks a human.

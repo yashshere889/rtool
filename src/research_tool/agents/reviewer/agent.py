@@ -1,21 +1,31 @@
-"""Reviewer: automated checks, a rubric review by independent samples, edits to the report, change requests.
+"""Reviewer: automated checks, a code audit, a rubric review by independent samples, edits, change requests.
 
 1. Automated checks — citations exist and were read, results only enter the
    text through placeholders, every planned condition is reported, runs
    completed, limitations are discussed, the run is reproducible.
-2. Rubric review — ``samples`` independent reviews (the ``judge`` profile);
+2. Code audit — ``samples`` independent audits (the ``judge`` profile) read
+   experiment.py, config.json, the plan and the repair history and answer
+   narrow questions: does each condition do what the plan says, do the
+   conditions differ, is evaluation on held-out data, is each metric computed
+   as defined, did an automatic repair weaken the experiment. A problem counts
+   only if most audits raise it. Leakage or a wrong metric shows in the code,
+   rarely in the report, which is all the rubric review sees.
+3. Rubric review — ``samples`` independent reviews (the ``judge`` profile);
    scores are their median, and an issue counts only if most reviews raise it.
-3. Edits — issues with the text are fixed by rewriting the prose sections
+4. Edits — issues with the text are fixed by rewriting the prose sections
    under the same rules as the Writer (facts sections are never edited by
-   the model). Problems with the experiment itself become change requests to
-   the stage that owns it; only major ones, since they can cost GPU hours.
-4. Verdict — ``accept`` only if every check passes, every median score
-   reaches ``min_score`` and nothing major is left open; otherwise a human
-   decides at the final gate. The edited report is ``final_report``.
+   the model). Problems with the experiment itself (major audit problems too)
+   become change requests to the stage that owns it; only major ones, since
+   they can cost GPU hours.
+5. Verdict — ``accept`` only if every check passes (the code audit's
+   included), every median score reaches ``min_score`` and nothing major is
+   left open; otherwise a human decides at the final gate. The edited report
+   is ``final_report``.
 """
 
 from __future__ import annotations
 
+import ast
 import difflib
 import math
 import shutil
@@ -34,7 +44,21 @@ from ...schemas.code import CodeBundle, ExperimentResults
 from ...schemas.common import ResearchBrief
 from ...schemas.literature import Corpus, KnowledgeMap
 from ...schemas.plan import ExperimentPlan
-from ...schemas.report import Check, Report, ReportSection, Review, ReviewDraft, ReviewIssue, Rubric
+from ...schemas.report import (
+    AuditAnswer,
+    AuditAspect,
+    AuditFinding,
+    AuditState,
+    Check,
+    CodeAuditDraft,
+    Report,
+    ReportSection,
+    Review,
+    ReviewDraft,
+    ReviewIssue,
+    Rubric,
+    Severity,
+)
 from ...tools.report.render import (
     assemble,
     bib_keys,
@@ -49,6 +73,7 @@ from ..common import SYSTEM
 
 EDITABLE = ("abstract", "introduction", "related_work", "results", "discussion", "conclusion")
 RESULT_SECTIONS = ("abstract", "results", "conclusion")
+AUDIT_CHECK = "code matches the plan"
 
 
 class ReviewerConfig(BaseModel):
@@ -56,15 +81,85 @@ class ReviewerConfig(BaseModel):
     agreement: float = Field(default=0.5, gt=0, le=1)  # share of reviews that must raise an issue
     min_score: float = Field(default=3.0, ge=1, le=5)  # every median rubric score must reach this to accept
     repair_rounds: int = Field(default=1, ge=0, le=3)
+    max_code_chars: int = Field(default=32000, ge=2000)  # experiment.py shown to the code audit (~8k tokens)
 
 
 def similar(a: str, b: str) -> bool:
     return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.45
 
 
+def audit_label(aspect: str, subject: str) -> str:
+    return {
+        "condition": f"condition `{subject}`",
+        "distinct": "conditions differ",
+        "held_out": "held-out evaluation",
+        "metric": f"metric `{subject}`",
+        "repairs": "automatic repairs",
+    }[aspect]
+
+
+def _bodies(source: str) -> list[tuple[int, int]]:
+    """Line slices of the bodies of top-level functions and classes other than ``run``, longest first."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    spans = []
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) or node.name == "run":
+            continue
+        body = node.body[1:] if ast.get_docstring(node) is not None and len(node.body) > 1 else node.body
+        first = body[0]
+        start = min([first.lineno, *(d.lineno for d in getattr(first, "decorator_list", []))]) - 1
+        spans.append((start, node.end_lineno or first.lineno))
+    return sorted(spans, key=lambda span: span[0] - span[1])
+
+
+def shown_code(source: str, limit: int) -> tuple[str, int]:
+    """``source`` with line numbers, cut to about ``limit`` characters, and the number of lines left out.
+
+    The bodies of the longest functions and classes go first, so every signature (and ``run``, which the
+    harness calls) stays visible; if that is not enough, the middle of the file goes too.
+    """
+    lines = source.splitlines()
+    numbered = [f"{i:>4}  {text}" for i, text in enumerate(lines, 1)]
+    keep = [True] * len(lines)
+    size = sum(len(n) + 1 for n in numbered)
+    for start, end in _bodies(source) if size > limit else []:
+        size -= sum(len(numbered[i]) + 1 for i in range(start, end) if keep[i])
+        keep[start:end] = [False] * (end - start)
+        if size <= limit:
+            break
+    if size > limit:
+        kept = [i for i, k in enumerate(keep) if k]
+        used, head, tail = 0, 0, len(kept)
+        while head < tail and used + len(numbered[kept[head]]) < limit * 2 // 3:
+            used += len(numbered[kept[head]]) + 1
+            head += 1
+        while tail > head and used + len(numbered[kept[tail - 1]]) < limit:
+            tail -= 1
+            used += len(numbered[kept[tail]]) + 1
+        for i in kept[head:tail]:
+            keep[i] = False
+    out, omitted, i = [], 0, 0
+    while i < len(lines):
+        if keep[i]:
+            out.append(numbered[i])
+            i += 1
+            continue
+        j = next((k for k in range(i, len(lines)) if keep[k]), len(lines))
+        indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
+        out.append(f"{'':>4}  {indent}# … lines {i + 1}-{j} omitted …")
+        omitted, i = omitted + j - i, j
+    return "\n".join(out), omitted
+
+
 @register_agent("reviewer")
 class ReviewerAgent(Agent):
-    description = "Checks and reviews the report, edits the text, and sends other problems back as change requests."
+    description = (
+        "Checks and reviews the report, audits the experiment code, edits the text, "
+        "and sends other problems back as change requests."
+    )
     consumes = (
         "research_brief",
         "report",
@@ -96,6 +191,7 @@ class Reviewing:
         self.paper_key = {p.id: p.bib_key for p in self.corpus.papers if p.bib_key}
         self.prompts = PromptLibrary.for_agent(__package__, "reviewer", pack=brief.domain_pack)
         self.provenance: dict[str, str] = {}
+        self.audit_omitted = 0  # lines of experiment.py the code audit did not see
 
     def render_prompt(self, name: str, **variables: Any) -> str:
         prompt = self.prompts.render(name, **variables)
@@ -199,6 +295,99 @@ class Reviewing:
         found.append(Check(name="no major findings left by the writer", ok=not majors, detail="; ".join(majors[:3])))
         return found
 
+    # ---------------------------------------------------------- code audit
+    def audit_questions(self) -> list[tuple[AuditAspect, str]]:
+        """(aspect, subject) of every question the audit must answer."""
+        questions: list[tuple[AuditAspect, str]] = [("condition", c.name) for c in self.plan.run_conditions()]
+        questions += [("distinct", ""), ("held_out", "")]
+        questions += [("metric", m.name) for m in self.plan.metrics]
+        if self.bundle.fixes:
+            questions.append(("repairs", ""))
+        return questions
+
+    def audit(self) -> tuple[list[AuditFinding], Check, int]:
+        """The audit's findings, its check and how many audits replied."""
+        root = self.ctx.absolute(self.bundle.root)
+        code = root / "experiment.py"
+        if not code.exists():
+            return [], Check(name=AUDIT_CHECK, ok=False, detail=f"no experiment.py in {self.bundle.root}"), 0
+        config = root / "config.json"
+        config_text = config.read_text(encoding="utf-8") if config.exists() else "(missing)"
+        source = code.read_text(encoding="utf-8", errors="replace")
+        shown, self.audit_omitted = shown_code(source, self.cfg.max_code_chars)
+        questions = self.audit_questions()
+        prompt = self.render_prompt(
+            "code_audit.j2",
+            design=self.plan.design,
+            conditions=self.plan.run_conditions(),
+            metrics=self.plan.metrics,
+            procedure=self.plan.procedure,
+            config=config_text if len(config_text) <= 4000 else config_text[:4000] + "\n… (cut)",
+            fixes=self.bundle.fixes,
+            code=shown,
+            omitted=self.audit_omitted,
+            questions=[{"aspect": a, "subject": s} for a, s in questions],
+        )
+        replies = self.ctx.llm.parallel(
+            lambda _i: self.ctx.llm.structured(CodeAuditDraft, prompt, profile="judge", system=SYSTEM),
+            list(range(self.cfg.samples)),
+        )
+        drafts = [r for r in replies if isinstance(r, CodeAuditDraft)]
+        if not drafts:
+            failed = "no audit returned a valid answer; read experiment.py yourself"
+            return [], Check(name=AUDIT_CHECK, ok=False, detail=failed), 0
+        findings = self.audit_consensus(questions, drafts)
+        blocking = [f for f in findings if (f.state == "problem" and f.severity == "major") or f.state == "unanswered"]
+        noted = [f for f in findings if f.state == "problem" and f.severity == "minor"]
+        detail = "; ".join(
+            f"{f.label}: {f.problem}" if f.state == "problem" else f"{f.label}: unanswered" for f in blocking + noted
+        )
+        return findings, Check(name=AUDIT_CHECK, ok=not blocking, detail=detail), len(drafts)
+
+    def audit_consensus(
+        self, questions: list[tuple[AuditAspect, str]], drafts: list[CodeAuditDraft]
+    ) -> list[AuditFinding]:
+        """One finding per question: a problem only if most audits raise it."""
+        named = [*(c.name for c in self.plan.run_conditions()), *(m.name for m in self.plan.metrics)]
+        names = {n.lower(): n for n in named}
+        votes: dict[tuple[AuditAspect, str], dict[int, AuditAnswer]] = {}
+        for index, draft in enumerate(drafts):
+            for answer in draft.answers:
+                subject = answer.subject.strip(" `'\"") if answer.aspect in ("condition", "metric") else ""
+                ballot = votes.setdefault((answer.aspect, names.get(subject.lower(), subject)), {})
+                if index not in ballot or (ballot[index].ok and not answer.ok):  # one vote per audit
+                    ballot[index] = answer
+        need = max(1, math.ceil(self.cfg.agreement * len(drafts)))
+        extra = [k for k, b in votes.items() if k not in questions and any(not a.ok for a in b.values())]
+        findings = []
+        for aspect, subject in [*questions, *extra]:
+            answers = list(votes.get((aspect, subject), {}).values())
+            raised = [a for a in answers if not a.ok]
+            majors = sum(1 for a in raised if a.severity == "major")
+            severity: Severity = "major" if majors * 2 > len(raised) else "minor"
+            example = next((a for a in sorted(raised, key=lambda a: not a.problem) if a.severity == severity), None)
+            state: AuditState
+            if len(raised) >= need:
+                state = "problem"
+            elif len(answers) < need and (aspect, subject) in questions:
+                state = "unanswered"
+            else:
+                state = "unconfirmed" if raised else "ok"
+            findings.append(
+                AuditFinding(
+                    aspect=aspect,
+                    subject=subject,
+                    label=audit_label(aspect, subject),
+                    state=state,
+                    answered=len(answers),
+                    raised_by=len(raised),
+                    problem=example.problem if example else "",
+                    fix=example.fix if example else "",
+                    severity=severity,
+                )
+            )
+        return findings
+
     # -------------------------------------------------------------- review
     def drafts(self, checks: list[Check]) -> list[ReviewDraft]:
         prompt = self.render_prompt(
@@ -263,6 +452,8 @@ class Reviewing:
     def review(self) -> None:
         ctx = self.ctx
         checks = self.checks()
+        audit, audit_check, audits = self.audit()
+        checks.append(audit_check)
         try:
             drafts = self.drafts(checks)
         except LLMOutputError:
@@ -292,6 +483,14 @@ class Reviewing:
                 requests.append(f"{issue.target}: {issue.problem}")
             elif issue.target != "report":
                 open_issues.append(issue)
+        sent = [f for f in audit if f.state == "problem" and f.severity == "major"]
+        if sent:  # one request, so the Coder fixes them in one revision round
+            ctx.request_change(
+                artifact="code_bundle",
+                reason="reviewer (code audit): " + "; ".join(f"{f.label}: {f.problem}" for f in sent),
+                required_changes=[f.fix or f.problem for f in sent],
+            )
+            requests.append("code_bundle: code audit — " + ", ".join(f.label for f in sent))
 
         final_sections = [sections[s.id] for s in self.report.sections]
         out = ctx.workspace.mkdir("final")
@@ -318,6 +517,7 @@ class Reviewing:
             and all(v >= self.cfg.min_score for v in scores.values())
             and not requests
             and not any(i.severity == "major" for i in open_issues)
+            and not sent
         )
         review = Review(
             verdict="accept" if accept else "needs_human",
@@ -325,13 +525,14 @@ class Reviewing:
             scores=scores,
             checks=checks,
             issues=issues,
+            code_audit=audit,
             edited_sections=edited,
             change_requests=requests,
             diff_path=ctx.relative(diff_path),
         )
         review_path = out / "review.md"
         review.review_path = ctx.relative(review_path)
-        atomic_write_text(review_path, self.review_markdown(review, len(drafts), open_issues))
+        atomic_write_text(review_path, self.review_markdown(review, len(drafts), open_issues, audits))
         ctx.outputs.put("review", review, meta={"review": review.review_path, "prompts": self.provenance})
         final = self.report.model_copy(
             update={
@@ -352,7 +553,7 @@ class Reviewing:
             if source.exists():
                 shutil.copyfile(source, target / source.name)
 
-    def review_markdown(self, review: Review, samples: int, open_issues: list[ReviewIssue]) -> str:
+    def review_markdown(self, review: Review, samples: int, open_issues: list[ReviewIssue], audits: int) -> str:
         verdict = "accept" if review.verdict == "accept" else "needs a human decision"
         lines = [f"# Review: {self.report.title}", "", f"**Verdict: {verdict}.** {review.summary}", ""]
         if review.scores:
@@ -368,6 +569,7 @@ class Reviewing:
         lines += [
             f"- {'ok' if c.ok else 'PROBLEM'}: {c.name}" + (f" — {c.detail}" if c.detail else "") for c in review.checks
         ]
+        lines += ["", "## Code audit", "", *self.audit_markdown(review, audits)]
         if review.issues:
             lines += ["", "## Issues raised by most reviews", ""]
             for issue in review.issues:
@@ -381,3 +583,30 @@ class Reviewing:
         if review.edited_sections:
             lines += ["", f"Edited sections: {', '.join(review.edited_sections)} (diff: `{review.diff_path}`)."]
         return "\n".join(lines) + "\n"
+
+    def audit_markdown(self, review: Review, audits: int) -> list[str]:
+        if not review.code_audit:
+            check = next(c for c in review.checks if c.name == AUDIT_CHECK)
+            return [f"The code audit did not run: {check.detail}."]
+        need = max(1, math.ceil(self.cfg.agreement * audits))
+        lines = [
+            f"`experiment.py` checked against the plan by {audits} independent audits; a problem counts when {need} "
+            "or more raise it." + (f" {self.audit_omitted} lines were left out to fit." if self.audit_omitted else ""),
+            "",
+        ]
+        for f in review.code_audit:
+            of = f"of {audits} audits"
+            if f.state == "ok":
+                lines.append(f"- ok: {f.label}")
+            elif f.state == "problem":
+                where = "sent back to code_bundle" if f.severity == "major" else "open"
+                fix = f" — {f.fix}" if f.fix else ""
+                lines.append(
+                    f"- PROBLEM [{f.severity}] {f.label}: {f.problem}{fix} (raised by {f.raised_by} {of}; {where})"
+                )
+            elif f.state == "unconfirmed":
+                lines.append(f"- not confirmed: {f.label}: {f.problem} (raised by {f.raised_by} {of})")
+            else:
+                raised = f"; raised: {f.problem}" if f.problem else ""
+                lines.append(f"- unanswered: {f.label} (answered by {f.answered} {of}{raised})")
+        return lines

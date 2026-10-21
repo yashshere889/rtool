@@ -17,7 +17,7 @@ literature ─▶[review]─▶ hypotheses ─▶[pick 1 of 3]─▶ plan ─▶
 | **fetch** | downloads the plan's datasets and models, quota-checked |
 | **Coder** | writes `experiment.py` from a domain-pack skeleton, smoke-tests it on CPU, repairs failures (playbook first, then the model), runs the full experiment as a Slurm array after your approval, retries failed runs, and computes every statistic and figure deterministically |
 | **Writer** | writes the report: facts sections by code, prose by the model with results as placeholders filled from the data and citations limited to the corpus |
-| **Reviewer** | automated checks, three independent rubric reviews (median), edits the text, sends major experiment problems back as change requests |
+| **Reviewer** | automated checks, an audit of `experiment.py` against the plan (conditions, held-out data, metric definitions, repairs; majority of three), three independent rubric reviews (median), edits the text, sends major experiment problems back as change requests |
 
 ## Status
 
