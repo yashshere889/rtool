@@ -254,6 +254,7 @@ def test_topic_to_reviewed_report(runs_root: Path, tmp_path: Path) -> None:
     assert hypotheses.hypotheses[0].title == chosen.item["title"]
     plan = store.get("experiment_plan")
     assert plan.hypothesis == chosen.item["statement"] and not plan.issues
+    assert plan.primary_metric().name == "recall_gain" and plan.metrics[0].primary  # the only metric, by default
     manifest = store.get("resource_manifest")
     assert manifest.resources[0].status == "ready" and Path(manifest.resources[0].path).is_dir()
     # provenance: every artifact records which stage, agent and inputs produced it
@@ -263,6 +264,7 @@ def test_topic_to_reviewed_report(runs_root: Path, tmp_path: Path) -> None:
     assert results.complete and len(results.runs) == 6
     stim = results.comparison("stim", "recall_gain")
     assert stim is not None and stim.significant and stim.better
+    assert stim.analysis == "confirmatory" and stim.correction == "none"  # one comparison: nothing to correct
     report, final, review = store.get("report"), store.get("final_report"), store.get("review")
     text = (run.root / final.markdown_path).read_text()
     # numbers come from the results, citations from the corpus

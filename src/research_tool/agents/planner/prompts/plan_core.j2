@@ -34,6 +34,7 @@ Problems with the previous version that you must fix:
 Requirements:
 - Compare at least one baseline condition with the treatment condition(s); mark baselines with is_baseline = true.
 - Use short snake_case names for conditions and metrics.
+- Mark exactly one metric as the primary outcome (primary = true): the one whose comparison with the baseline decides the hypothesis. It is fixed before the experiment runs; every other metric is reported as exploratory.
 - Use at least {{ min_seeds }} seeds (independent runs) per condition, and statistical tests that fit the design.
 - Write the procedure as concrete steps a programmer can implement: loading data, preprocessing, training or analysis, evaluation, saving results.
 - Keep it achievable with the compute above within a few days.

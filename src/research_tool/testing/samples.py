@@ -9,10 +9,16 @@ from ..schemas.plan import ComputeRequest, Condition, ExperimentPlan, Metric, St
 ACCURACY = {"base": [0.65, 0.66, 0.63], "new": [0.71, 0.74, 0.69]}
 
 
-def sample_plan(test: str = "paired t-test", correction: str = "none") -> ExperimentPlan:
-    """Two conditions (``base`` is the baseline), metrics ``acc`` (higher is better) and ``loss``, seeds 0-2."""
+def sample_plan(test: str = "paired t-test", correction: str = "none", primary: str = "acc") -> ExperimentPlan:
+    """Two conditions (``base`` is the baseline), metrics ``acc`` (higher is better) and ``loss``, seeds 0-2.
+
+    ``primary`` names the pre-registered primary metric ("" marks none, like plans written before it existed).
+    """
     conditions = [Condition(name="base", description="b", is_baseline=True), Condition(name="new", description="n")]
-    metrics = [Metric(name="acc", definition="accuracy"), Metric(name="loss", definition="l", higher_is_better=False)]
+    metrics = [
+        Metric(name="acc", definition="accuracy", primary=primary == "acc"),
+        Metric(name="loss", definition="l", higher_is_better=False, primary=primary == "loss"),
+    ]
     return ExperimentPlan(
         hypothesis_id="h1",
         hypothesis="new beats base",

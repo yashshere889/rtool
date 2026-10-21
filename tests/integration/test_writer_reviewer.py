@@ -26,7 +26,9 @@ from research_tool.testing.samples import sample_records as records
 INITIAL = ["research_brief", "corpus", "knowledge_map", "experiment_plan", "experiment_results", "code_bundle"]
 
 
-def seed(runs_root: Path, *, runs: list | None = None, stages: list[dict] | None = None) -> RunHandle:
+def seed(
+    runs_root: Path, *, runs: list | None = None, stages: list[dict] | None = None, primary: str = "acc"
+) -> RunHandle:
     run = make_run(
         runs_root,
         {
@@ -40,7 +42,7 @@ def seed(runs_root: Path, *, runs: list | None = None, stages: list[dict] | None
     (run.root / "refs.bib").write_text("@article{smith2020,\n  title={Spindles}\n}\n")
     (run.root / "README.md").write_text("code")
     (run.root / "results.json").write_text("{}")
-    p = plan()
+    p = plan(primary=primary)
     runs = runs if runs is not None else records()
     summaries, comparisons = aggregate(p, runs)
     corpus = Corpus(
@@ -184,6 +186,24 @@ def test_major_experiment_problems_go_back_upstream(runs_root: Path) -> None:
     assert review.verdict == "needs_human" and review.change_requests
     raised = [e["data"] for e in EventLog(run.events_path, run.run_id) if e["kind"] == "change_request_raised"]
     assert raised[-1]["artifact"] == "experiment_results" and "fewer epochs" in raised[-1]["reason"]
+
+
+def test_the_report_leads_with_the_primary_outcome(runs_root: Path) -> None:
+    run = seed(runs_root, primary="loss")
+    llm = writer_llm()
+    Engine(run, services(run, llm)).advance()
+    prompts = [r.messages[-1].content for r in llm.calls]
+    results = next(p for p in prompts if p.startswith('Write the "Results" section'))
+    assert results.index("Primary outcome (pre-registered) `loss`") < results.index("Exploratory metric `acc`")
+    assert "`new` vs `base` (confirmatory)" in results and "`new` vs `base` (exploratory)" in results
+    assert "Holm-corrected {{p_adj:loss:new}}" in results  # two comparisons: corrected by default
+    store = ArtifactStore(run.artifacts_dir)
+    text = (run.root / store.get("report").markdown_path).read_text()
+    assert text.index("**`loss`** (lower is better; primary outcome)") < text.index("**`acc`** (higher is better;")
+    assert "| `new` vs `base` | confirmatory |" in text and "The primary outcome, `loss`, was fixed" in text
+    review = next(p for p in prompts if p.startswith("Review this research report"))
+    facts = review.split("## Facts from the experiment")[1]
+    assert facts.index("Confirmatory: new vs base on loss") < facts.index("Exploratory: new vs base on acc")
 
 
 def test_failed_checks_need_a_human(runs_root: Path) -> None:

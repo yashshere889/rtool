@@ -40,6 +40,8 @@ def test_value_table_covers_summaries_and_comparisons() -> None:
     assert values["ci:acc:new"].text.startswith("95% CI [")
     assert values["p:acc:new"].text == "p = 0.010" and values["runs_total"].text == "6"
     assert "diff:loss:new" in values and "mean:acc:base" in values
+    # two comparisons (acc and loss): Holm by default, each within its own analysis of one comparison
+    assert values["p_adj:acc:new"].text == "p = 0.010" and "p_adj:loss:new" in values
 
 
 def test_render_and_citations() -> None:

@@ -83,12 +83,22 @@ def fit_compute(estimate: ComputeEstimate, runs: int, config: AppConfig) -> tupl
 
 
 def normalise_core(core: PlanCore) -> PlanCore:
-    """Snake_case names, so they can be used as keys in results.json."""
+    """Snake_case names, so they can be used as keys in results.json; the first metric is primary if none is."""
     for condition in [*core.conditions, *core.ablations]:
         condition.name = slug(condition.name)
     for metric in core.metrics:
         metric.name = slug(metric.name)
+    if not any(m.primary for m in core.metrics):
+        core.metrics[0].primary = True
     return core
+
+
+def one_primary(metrics: list[Metric]) -> list[Metric]:
+    """Exactly one primary outcome: the first metric marked primary (repair rounds may not have settled it)."""
+    primary = next((m for m in metrics if m.primary), metrics[0])
+    for metric in metrics:
+        metric.primary = metric is primary
+    return metrics
 
 
 def design_issues(core: PlanCore, min_seeds: int) -> list[str]:
@@ -101,6 +111,12 @@ def design_issues(core: PlanCore, min_seeds: int) -> list[str]:
         issues.append(f"condition names must be unique: {duplicates}")
     if core.n_seeds < min_seeds:
         issues.append(f"use at least {min_seeds} seeds (independent runs) per condition, not {core.n_seeds}")
+    primary = [m.name for m in core.metrics if m.primary]
+    if len(primary) > 1:
+        issues.append(
+            f"mark exactly one metric as the primary outcome (primary = true), not {len(primary)}: {primary}; "
+            "the others are reported as exploratory"
+        )
     return issues
 
 

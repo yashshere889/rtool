@@ -71,16 +71,22 @@ INSTRUCTIONS = {
         "hypothesis relates to it. Use only the claims and topics in the material."
     ),
     "results": (
-        "Two to four paragraphs reporting what the experiment found, metric by metric, with the placeholders: "
-        "means with their confidence intervals, the difference to the baseline, its p-value and whether it is "
-        "significant. Report non-significant and negative results as plainly as positive ones."
+        "Two to four paragraphs reporting what the experiment found, with the placeholders: means with their "
+        "confidence intervals, the difference to the baseline, its p-value (the corrected one where given) and "
+        "whether it is significant. Start with the pre-registered primary outcome, the confirmatory test of the "
+        "hypothesis; then the other metrics, each called exploratory. Report non-significant and negative "
+        "results as plainly as positive ones."
     ),
     "discussion": (
-        "Three or four paragraphs: what the results mean for the hypothesis, how they relate to prior work "
-        "(cite it), then a paragraph that starts with 'Limitations.' covering threats to validity, failed or "
-        "missing runs and the small number of seeds, and finally future work."
+        "Three or four paragraphs: what the primary outcome means for the hypothesis (exploratory results can "
+        "suggest, never confirm), how the results relate to prior work (cite it), then a paragraph that starts "
+        "with 'Limitations.' covering threats to validity, failed or missing runs and the small number of "
+        "seeds, and finally future work."
     ),
-    "conclusion": "One paragraph: the hypothesis, the main result (placeholders) and the take-away.",
+    "conclusion": (
+        "One paragraph: the hypothesis, the result on the pre-registered primary outcome (placeholders) and the "
+        "take-away; mention other results only as exploratory."
+    ),
 }
 
 
@@ -262,15 +268,25 @@ class Drafting:
         return "\n".join(lines)
 
     def facts(self) -> str:
-        """The results in words, with placeholders: what the prose may say about our experiment."""
+        """The results in words, with placeholders: what the prose may say about our experiment.
+
+        The pre-registered primary outcome comes first; everything else is labelled exploratory.
+        """
         baseline = next((c.name for c in self.plan.conditions if c.is_baseline), "")
+        primary = self.plan.primary_metric()
         lines = ["Our results (placeholders render to the numbers):"]
         lines.append(
             "- Runs: {{runs_ok}} of {{runs_total}} planned runs produced results ({{seeds}} seeds per condition)."
         )
-        for metric in self.plan.metrics:
+        lines.append(
+            f"- The primary outcome `{primary.name}` was fixed in the approved plan before the experiment ran: its "
+            "comparisons are the confirmatory test of the hypothesis. All other results are exploratory and "
+            "cannot confirm it."
+        )
+        for metric in self.plan.metrics_primary_first():
             direction = "higher" if metric.higher_is_better else "lower"
-            lines.append(f"- Metric `{metric.name}` ({direction} is better): {metric.definition}")
+            role = "Primary outcome (pre-registered)" if metric is primary else "Exploratory metric"
+            lines.append(f"- {role} `{metric.name}` ({direction} is better): {metric.definition}")
             for s in (s for s in self.results.summaries if s.metric == metric.name):
                 tag = " (baseline)" if s.condition == baseline else ""
                 lines.append(
@@ -284,9 +300,12 @@ class Drafting:
                     else ("a significant improvement" if c.better else "a significant deterioration")
                 )
                 key = f"{metric.name}:{c.condition}"
+                p = f"{{{{p:{key}}}}}" + (
+                    f", {c.correction.capitalize()}-corrected {{{{p_adj:{key}}}}}" if c.p_adjusted is not None else ""
+                )
                 lines.append(
-                    f"  - `{c.condition}` vs `{c.baseline}`: difference {{{{diff:{key}}}}} ({{{{diff_ci:{key}}}}}), "
-                    f"{{{{p:{key}}}}} with the {c.test} — {verdict}."
+                    f"  - `{c.condition}` vs `{c.baseline}` ({c.analysis}): difference {{{{diff:{key}}}}} "
+                    f"({{{{diff_ci:{key}}}}}), {p} with the {c.test} — {verdict}."
                 )
         lines.append(f"- What the plan expected: {self.plan.expected_results}")
         lines += [f"- Note: {note}" for note in self.results.notes]
@@ -309,7 +328,8 @@ class Drafting:
     def methods(self) -> str:
         p, c = self.plan, self.plan.compute
         test = self.results.comparisons[0].test if self.results.comparisons else p.statistical_tests[0].test
-        corrections = sorted({t.correction for t in p.statistical_tests if t.correction and t.correction != "none"})
+        corrections = sorted({c.correction.capitalize() for c in self.results.comparisons if c.correction != "none"})
+        primary = p.primary_metric()
         lines = [
             f"**Design.** {p.design}",
             "",
@@ -323,17 +343,25 @@ class Drafting:
             "",
             "**Measures.** "
             + "; ".join(
-                f"`{m.name}` ({'higher' if m.higher_is_better else 'lower'} is better): {m.definition}"
-                for m in p.metrics
+                f"`{m.name}` ({'higher' if m.higher_is_better else 'lower'} is better"
+                f"{', primary outcome' if m is primary else ''}): {m.definition}"
+                for m in p.metrics_primary_first()
             )
-            + ".",
+            + f". The primary outcome, `{primary.name}`, was fixed in the plan before the experiment ran; its "
+            "comparisons with the baseline are confirmatory"
+            + (", all others exploratory." if len(p.metrics) > 1 else "."),
             "",
             "**Procedure.** " + " ".join(f"({i}) {step}" for i, step in enumerate(p.procedure, 1)),
             "",
             f"**Statistics.** Every condition ran with {len(p.seeds)} seeds ({', '.join(map(str, p.seeds))}). Each "
             f"condition is compared with the baseline using the {test} (paired by seed where all seeds succeeded); "
             "means are reported with 95% confidence intervals from the t distribution and effect sizes as Cohen's d"
-            + (f"; p-values are corrected for multiple comparisons ({', '.join(corrections)})" if corrections else "")
+            + (
+                f"; p-values are corrected for multiple comparisons ({', '.join(corrections)}) within the "
+                "confirmatory and within the exploratory comparisons"
+                if corrections
+                else ""
+            )
             + f". Significance level: {p.statistical_tests[0].alpha:g}.",
         ]
         if p.resources:
@@ -355,10 +383,12 @@ class Drafting:
 
     def result_tables(self, figures: dict[str, str]) -> str:
         baseline = next((c.name for c in self.plan.conditions if c.is_baseline), "")
+        primary = self.plan.primary_metric()
         lines: list[str] = []
-        for metric in self.plan.metrics:
+        for metric in self.plan.metrics_primary_first():
             direction = "higher" if metric.higher_is_better else "lower"
-            lines += [f"**`{metric.name}`** ({direction} is better)", ""]
+            role = "primary outcome" if metric is primary else "exploratory"
+            lines += [f"**`{metric.name}`** ({direction} is better; {role})", ""]
             lines += ["| condition | n | mean | 95% CI | std |", "|---|---|---|---|---|"]
             for s in (s for s in self.results.summaries if s.metric == metric.name):
                 name = f"`{s.condition}` (baseline)" if s.condition == baseline else f"`{s.condition}`"
@@ -367,14 +397,15 @@ class Drafting:
             if rows:
                 lines += [
                     "",
-                    "| comparison | difference | 95% CI | test | p | effect size (d) |",
-                    "|---|---|---|---|---|---|",
+                    "| comparison | analysis | difference | 95% CI | test | p | p (corrected) | effect size (d) |",
+                    "|---|---|---|---|---|---|---|---|",
                 ]
                 for c in rows:
-                    p = fmt_p(c.p_adjusted if c.p_adjusted is not None else c.p_value)
+                    adjusted = fmt_p(c.p_adjusted) if c.p_adjusted is not None else "-"
                     lines.append(
-                        f"| `{c.condition}` vs `{c.baseline}` | {fmt(c.difference)} | {fmt_ci(c.ci_low, c.ci_high)} "
-                        f"| {c.test} | {p} | {fmt(c.effect_size)} |"
+                        f"| `{c.condition}` vs `{c.baseline}` | {c.analysis} | {fmt(c.difference)} "
+                        f"| {fmt_ci(c.ci_low, c.ci_high)} | {c.test} | {fmt_p(c.p_value)} | {adjusted} "
+                        f"| {fmt(c.effect_size)} |"
                     )
             if metric.name in figures:
                 lines += ["", f"![{metric.name}: mean and 95% CI per condition]({figures[metric.name]})"]

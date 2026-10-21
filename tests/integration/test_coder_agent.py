@@ -64,7 +64,10 @@ def setup(runs_root: Path, tmp_path: Path, config: dict[str, Any] | None = None)
         Condition(name="base", description="baseline", is_baseline=True),
         Condition(name="new", description="n"),
     ]
-    metrics = [Metric(name="acc", definition="accuracy"), Metric(name="loss", definition="l", higher_is_better=False)]
+    metrics = [
+        Metric(name="acc", definition="accuracy", primary=True),
+        Metric(name="loss", definition="l", higher_is_better=False),
+    ]
     plan = ExperimentPlan(
         hypothesis_id="h1",
         hypothesis="The new method is more accurate",
@@ -150,11 +153,12 @@ def test_write_repair_approve_run_and_analyse(runs_root: Path, tmp_path: Path) -
     assert results.complete and len(results.runs) == 6
     acc = results.comparison("new", "acc")
     assert acc is not None and acc.significant and acc.better and acc.test == "paired t-test"
+    assert acc.analysis == "confirmatory" and results.comparison("new", "loss").analysis == "exploratory"  # type: ignore[union-attr]
     assert results.summary("base", "acc").n == 3  # type: ignore[union-attr]
     data = json.loads((run.root / results.results_path).read_text())
     assert len(data["runs"]) == 6 and all(set(r["metrics"]) == {"acc", "loss"} for r in data["runs"])
     assert all((run.root / f).read_text().startswith("<svg") for f in results.figures)
-    assert "| new vs base |" in (run.root / results.tables_path).read_text()
+    assert "| new vs base | confirmatory |" in (run.root / results.tables_path).read_text()
     assert [f.signature for f in bundle.fixes] == ["traceback"]
     assert {f.path: f.origin for f in bundle.files}["experiment.py"] == "llm"
     assert all(s.ok for s in bundle.smoke) and bundle.fingerprint == results.code_fingerprint

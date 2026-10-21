@@ -27,6 +27,7 @@ from research_tool.core.config import ExperimentsConfig
 from research_tool.hpc.sbatch import render_script
 from research_tool.packs import available_packs, load_pack
 from research_tool.schemas.code import RunRecord
+from research_tool.schemas.plan import Condition, ExperimentPlan
 from research_tool.testing.samples import sample_plan as plan
 from research_tool.testing.samples import sample_records as records
 from research_tool.tools.report.numbers import fmt, fmt_p
@@ -125,6 +126,7 @@ def test_aggregate_and_render(tmp_path: Path) -> None:
     assert acc.significant and acc.better is True and acc.p_adjusted is not None
     loss = next(c for c in comparisons if c.metric == "loss")
     assert loss.difference < 0 and loss.better is True  # lower loss is better
+    assert acc.analysis == "confirmatory" and loss.analysis == "exploratory"  # acc is the primary metric
     assert {(s.condition, s.metric) for s in summaries} == {(c, m) for c in ("base", "new") for m in ("acc", "loss")}
     payload = results_payload(records(), ["all good"])
     assert validate(payload, p.results_schema) == []
@@ -132,9 +134,58 @@ def test_aggregate_and_render(tmp_path: Path) -> None:
     figures = render_figures(p, summaries, tmp_path / "figures")
     assert set(figures) == {"acc", "loss"} and figures["acc"].read_text().startswith("<svg")
     table = render_tables(p, records(), summaries, comparisons, {"acc": "figures/acc.svg"})
-    assert "| new vs base | 0.0667 |" in table and "![acc](figures/acc.svg)" in table
+    assert "| new vs base | confirmatory | 0.0667 |" in table and "![acc](figures/acc.svg)" in table
+    assert "| new vs base | exploratory | -0.0667 |" in table and "primary outcome, fixed when" in table
+    assert (
+        "## `acc` (higher is better; primary outcome)" in table and "## `loss` (lower is better; exploratory)" in table
+    )
+    swapped = render_tables(plan(primary="loss"), records(), summaries, comparisons, {})
+    assert swapped.index("## `loss`") < swapped.index("## `acc`")  # the primary outcome comes first
     wilcoxon = aggregate(plan(test="Wilcoxon signed-rank test"), records())[1][0]
     assert wilcoxon.test == "Wilcoxon signed-rank" and wilcoxon.p_value == pytest.approx(0.25)
+
+
+def with_third_condition(p: ExperimentPlan) -> tuple[ExperimentPlan, list[RunRecord]]:
+    """``p`` plus a condition ``mid`` (slightly better than base), and the runs: two comparisons per metric."""
+    p = p.model_copy(update={"conditions": [*p.conditions, Condition(name="mid", description="m")]})
+    mid = [0.66, 0.70, 0.64]
+    runs = records() + [
+        RunRecord(condition="mid", seed=s, status="ok", metrics={"acc": mid[s], "loss": 1 - mid[s]}) for s in range(3)
+    ]
+    return p, runs
+
+
+def test_holm_by_default_within_each_analysis() -> None:
+    p, runs = with_third_condition(plan(correction="none"))  # "none" is the field default: not honoured
+    _, comparisons = aggregate(p, runs)
+    confirmatory = [c for c in comparisons if c.analysis == "confirmatory"]
+    exploratory = [c for c in comparisons if c.analysis == "exploratory"]
+    assert {c.metric for c in confirmatory} == {"acc"} and {c.metric for c in exploratory} == {"loss"}
+    assert all(c.correction == "holm" for c in comparisons)
+    # corrected within each analysis: the exploratory metric does not dilute the primary test
+    assert [c.p_adjusted for c in confirmatory] == pytest.approx(stats.holm([c.p_value for c in confirmatory]))
+    assert [c.p_adjusted for c in exploratory] == pytest.approx(stats.holm([c.p_value for c in exploratory]))
+    raw = {c.condition: c.p_value for c in confirmatory}
+    assert raw["mid"] is not None and raw["mid"] > 0.05 and all(c.p_adjusted >= c.p_value for c in comparisons)
+
+    p, runs = with_third_condition(plan(correction="Bonferroni"))
+    _, comparisons = aggregate(p, runs)
+    confirmatory = [c for c in comparisons if c.analysis == "confirmatory"]
+    assert all(c.correction == "bonferroni" for c in comparisons)
+    assert [c.p_adjusted for c in confirmatory] == pytest.approx(stats.bonferroni([c.p_value for c in confirmatory]))
+
+    p, runs = with_third_condition(plan(primary="loss"))
+    assert {c.metric for c in aggregate(p, runs)[1] if c.analysis == "confirmatory"} == {"loss"}
+    # plans written before metrics were marked: the first metric is primary
+    assert {c.metric for c in aggregate(plan(primary=""), records())[1] if c.analysis == "confirmatory"} == {"acc"}
+
+
+def test_a_single_comparison_is_not_corrected() -> None:
+    p = plan(correction="holm")
+    p = p.model_copy(update={"metrics": p.metrics[:1]})
+    (only,) = aggregate(p, records())[1]
+    assert only.correction == "none" and only.p_adjusted is None and only.significant
+    assert only.analysis == "confirmatory"
 
 
 def test_partial_results_still_aggregate() -> None:

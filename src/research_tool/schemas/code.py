@@ -81,11 +81,13 @@ class Comparison(BaseModel):
     test: str  # "paired t-test" (same seeds) or "Welch t-test"
     statistic: float | None = None
     p_value: float | None = None
-    p_adjusted: float | None = None  # after the plan's multiple-comparison correction, if any
+    p_adjusted: float | None = None  # after the multiple-comparison correction within its analysis, if any
+    correction: Literal["holm", "bonferroni", "none"] = "none"  # how p_adjusted was computed
     effect_size: float | None = None  # Cohen's d (d_z for paired data)
     n: int
     significant: bool = False
     better: bool | None = None  # in the metric's preferred direction (None if not significant)
+    analysis: Literal["confirmatory", "exploratory"] = "exploratory"  # confirmatory: on the primary metric
 
 
 @artifact_type("experiment_results")
