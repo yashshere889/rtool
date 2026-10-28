@@ -15,11 +15,16 @@ actually decided), and reports:
   (``llm_server_ready``) and how busy each episode kept the model: the union of the
   ``[ts - latency_s, ts]`` intervals of its ``llm_call`` events over the episode's length.
 
+``llm_server_failed`` is read in both shapes that exist: this module's own (episode, stage,
+``seconds``, ``node``) and the one ``server_failed()`` writes on the bad-node branch (no episode
+or stage, no ``seconds``; ``node``, ``excluded``, ``giving_up``).
+
 Event times have one-second resolution, so short intervals are approximate.
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
@@ -28,10 +33,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .actions import ActionInbox
+from .errors import RToolError
 from .events import EventLog
+from .fs import read_json
 from .run import RunHandle
 
 # Events that end a stage's turn on a node. gate_opened: its work is done and it waits for a person;
@@ -57,7 +64,7 @@ class EpisodeStats(BaseModel):
     reason: str | None = None  # why it was submitted: needs_llm, continue, waiting_job, action:approve, requeued...
     partition: str | None = None
     gpu: str | None = None  # what the node reported when vLLM started, else the GPU asked for
-    host: str | None = None
+    node: str | None = None  # where it ran, if a vLLM start said
     submitted: str | None = None
     started: str | None = None
     ended: str | None = None
@@ -74,12 +81,24 @@ class EpisodeStats(BaseModel):
     truncated: int = 0  # answers cut off at max_tokens (finish_reason=length)
     llm_busy_s: float = 0.0  # time with at least one LLM call in flight
     busy_fraction: float | None = None  # llm_busy_s / run_s
-    server_start_s: float | None = None  # vLLM cold start inside this episode
+    server_start_s: float | None = None  # seconds vLLM took to start (or fail) here, where the log has them
+    server_ready: bool = False  # it logged its own llm_server_ready
+    server_failures: int = 0  # vLLM starts that failed here
     first_llm_s: float | None = None  # start -> its first LLM call (bounds the cold start in logs without it)
 
     @property
     def on_gpu(self) -> bool:
-        return self.kind == "gpu" or self.server_start_s is not None
+        return self.kind == "gpu" or self.server_ready or self.server_failures > 0 or self.server_start_s is not None
+
+    def startup(self) -> tuple[float | None, bool]:
+        """Seconds this episode spent starting vLLM, and whether that is only an upper bound.
+
+        Without its own llm_server_ready (an older log, or one written by other code), the time
+        from the episode's start to its first LLM call bounds it.
+        """
+        if self.server_ready or self.first_llm_s is None or not self.on_gpu:
+            return self.server_start_s, False
+        return self.first_llm_s, True
 
 
 class GateStats(BaseModel):
@@ -126,9 +145,9 @@ class ServerStart(BaseModel):
     episode: str | None = None
     stage: str | None = None
     at: str
-    seconds: float
+    seconds: float | None = None  # None: not recorded (the bad-node branch logs failures without it)
     ok: bool = True
-    host: str | None = None
+    node: str | None = None
     gpu: str | None = None
     partition: str | None = None
     model: str | None = None
@@ -153,12 +172,14 @@ class WallTime(BaseModel):
     person_s: float = 0.0  # a gate waited for a decision
     jobs_s: float = 0.0  # an episode waited behind cluster jobs (and then in the queue)
     queue_s: float = 0.0  # an episode waited in the queue for a node
+    failed_s: float = 0.0  # a failed stage (or a run that gave up on vLLM) waited for a person to act
     idle_s: float = 0.0  # none of these (e.g. a decided gate with no episode submitted yet)
     gpu_episodes: int = 0
     gpu_run_s: float = 0.0  # time GPU episodes ran ...
-    gpu_cold_start_s: float = 0.0  # ... of which vLLM was starting
+    gpu_startup_s: float = 0.0  # ... of which vLLM was starting (at most: see gpu_startup_bounded)
     gpu_llm_busy_s: float = 0.0  # ... of which an LLM call was in flight (the rest: CPU work on a GPU node)
-    gpu_to_first_llm_s: float = 0.0  # ... of which came before each one's first LLM call
+    gpu_cold_start_s: float = 0.0  # start-up as recorded by llm_server_ready/failed events alone
+    gpu_startup_bounded: int = 0  # GPU episodes whose start-up is only the time to their first LLM call
 
 
 class RunStats(BaseModel):
@@ -247,7 +268,9 @@ class _Episode:
     ran: list[str] = field(default_factory=list)
     llm: _LLM = field(default_factory=_LLM)
     server_s: float | None = None
-    host: str | None = None
+    server_ready: bool = False
+    server_failures: int = 0
+    node: str | None = None
     gpu: str | None = None
 
     @property
@@ -302,6 +325,10 @@ class _Builder:
         self.open_gates: dict[tuple[str, str], _Gate] = {}
         self.auto_gates = 0
         self.action_kicks: list[float] = []  # episodes submitted because a person acted
+        self.acts: list[float] = []  # applied actions and episode starts: a person or the run moved on
+        self.action_created: list[float] = []  # when each processed action was queued
+        self.blocked: list[float] = []  # a stage failed, or the run stopped for a person (needs_human)
+        self.current: _Episode | None = None  # the latest episode, until it finishes
         self.servers: list[ServerStart] = []
         self.all_llm = _LLM()
         self.latency_s = 0.0
@@ -320,19 +347,31 @@ class _Builder:
             episode = _Episode(id=eid, attempt=self.attempts[eid], start=t, last=t)
             self.open_episodes[eid] = episode
             self.episodes.append(episode)
+            self.current = episode
+            self.acts.append(t)
             return
         episode = self.open_episodes.get(eid) if eid else None
+        if episode is None and not eid and kind in ("llm_server_ready", "llm_server_failed"):
+            episode = self.current  # logged without an episode id, by the episode that was running
         if episode is not None:
-            episode.last = t
+            episode.last = max(episode.last, t)
         if kind == "episode_finished" and episode is not None:
             episode.end = t
             episode.outcome = str(data.get("outcome", ""))
             episode.ran = list(data.get("ran") or [])
             self._end_episode(self.open_episodes.pop(episode.id), "interrupted")
+            if self.current is episode:
+                self.current = None
+            if episode.outcome == "needs_human":
+                self.blocked.append(t)
         elif kind == "episode_submitted" and data.get("job") is not None:
             self.submissions[str(data["job"])] = (t, dict(data))
             if str(data.get("reason", "")).startswith("action:"):
                 self.action_kicks.append(t)
+        elif kind == "action_applied":
+            self.acts.append(t)
+        elif kind == "stage_failed":
+            self.blocked.append(t)
         elif kind == "episode_not_started" and data.get("job") is not None:
             self.not_started[str(data["job"])] = (t, str(data.get("error", "")))
         elif kind == "llm_call":
@@ -361,23 +400,32 @@ class _Builder:
     def _server(
         self, t: float, kind: str, event: Mapping[str, Any], data: Mapping[str, Any], episode: _Episode | None
     ) -> None:
-        seconds = float(data.get("seconds") or 0.0)
+        seconds = None if data.get("seconds") is None else float(data["seconds"])
+        ok = kind == "llm_server_ready"
+        stage = event.get("stage")
+        if not stage and episode is not None:  # the stage it was starting for: the one running in that episode
+            stage = next((sid for sid, turn in self.open_turns.items() if turn.episode is episode), None)
         start = ServerStart(
-            episode=event.get("episode"),
-            stage=event.get("stage"),
+            episode=episode.id if episode is not None else event.get("episode"),
+            stage=stage,
             at=str(event.get("ts")),
-            seconds=round(seconds, 1),
-            ok=kind == "llm_server_ready",
-            host=data.get("host"),
+            seconds=_r(seconds),
+            ok=ok,
+            node=data.get("node") or data.get("host"),
             gpu=data.get("gpu"),
             partition=data.get("partition"),
             model=data.get("model"),
             error=data.get("error"),
         )
         self.servers.append(start)
+        if not ok and data.get("giving_up"):
+            self.blocked.append(t)  # repeated failures: the run stops until a person acts
         if episode is not None:
-            episode.server_s = (episode.server_s or 0.0) + seconds
-            episode.host = episode.host or start.host
+            if seconds is not None:
+                episode.server_s = (episode.server_s or 0.0) + seconds
+            episode.server_ready = episode.server_ready or ok
+            episode.server_failures += not ok
+            episode.node = episode.node or start.node
             episode.gpu = episode.gpu or start.gpu
 
     def _start_turn(self, t: float, stage: str, data: Mapping[str, Any], episode: _Episode | None) -> None:
@@ -454,6 +502,8 @@ class _Builder:
         """Find when a person decided each gate: their action's created_at, else the episode it kicked off."""
         decided: list[tuple[float, float, Mapping[str, Any]]] = []
         for action in actions:
+            with contextlib.suppress(KeyError, TypeError, ValueError):
+                self.action_created.append(epoch(action["created_at"]))
             outcome = action.get("outcome") or {}
             if action.get("kind") not in DECISIONS or outcome.get("status", "applied") != "applied":
                 continue
@@ -506,9 +556,11 @@ class _Builder:
                 run_s=_r(episode.stop - episode.start),
                 outcome=episode.outcome,
                 ran=episode.ran or list(dict.fromkeys(t.stage for t in self.turns if t.episode is episode)),
-                host=episode.host,
+                node=episode.node,
                 gpu=episode.gpu,
                 server_start_s=_r(episode.server_s),
+                server_ready=episode.server_ready,
+                server_failures=episode.server_failures,
             )
             if job and job in self.submissions:
                 matched.add(job)
@@ -578,7 +630,7 @@ class _Builder:
             if llm is not None:
                 row.llm_calls, row.prompt_tokens, row.completion_tokens = llm.calls, llm.prompt, llm.completion
                 row.truncated, row.llm_busy_s = llm.truncated, round(union_seconds(llm.intervals), 1)
-            row.server_start_s = round(sum(s.seconds for s in self.servers if s.stage == stage), 1)
+            row.server_start_s = round(sum(s.seconds or 0.0 for s in self.servers if s.stage == stage), 1)
         rank = {sid: i for i, sid in enumerate(order)}
         return sorted(by_stage.values(), key=lambda r: (rank.get(r.stage, len(rank)), r.first_started))
 
@@ -629,20 +681,27 @@ class _Builder:
                 jobs.append((submitted_at, began))
             else:
                 queue.append((max([submitted_at, *(ends[f"ep-{d}"] for d in deps)]), began))
-        run_s, person_s, jobs_s, queue_s, idle_s = split_wall_time([running, person, jobs, queue], start, end)
+        # A failed stage waits for a person until one acts (queues or applies an action) or an episode starts.
+        acts = sorted([*self.acts, *self.action_kicks, *self.action_created])
+        failed = [(s, next((a for a in acts if a > s), end)) for s in self.blocked]
+        layers = [running, person, jobs, queue, failed]
+        run_s, person_s, jobs_s, queue_s, failed_s, idle_s = split_wall_time(layers, start, end)
         gpu = [e for e in episodes if e.on_gpu and e.run_s is not None]
+        startups = [e.startup() for e in gpu]
         return WallTime(
             total_s=round(end - start, 1),
             running_s=round(run_s, 1),
             person_s=round(person_s, 1),
             jobs_s=round(jobs_s, 1),
             queue_s=round(queue_s, 1),
+            failed_s=round(failed_s, 1),
             idle_s=round(idle_s, 1),
             gpu_episodes=len(gpu),
             gpu_run_s=round(sum(e.run_s or 0.0 for e in gpu), 1),
-            gpu_cold_start_s=round(sum(e.server_start_s or 0.0 for e in gpu), 1),
+            gpu_startup_s=round(sum(seconds or 0.0 for seconds, _ in startups), 1),
             gpu_llm_busy_s=round(sum(e.llm_busy_s for e in gpu), 1),
-            gpu_to_first_llm_s=round(sum(e.first_llm_s or 0.0 for e in gpu), 1),
+            gpu_cold_start_s=round(sum(e.server_start_s or 0.0 for e in gpu), 1),
+            gpu_startup_bounded=sum(bounded for _, bounded in startups),
         )
 
 
@@ -699,10 +758,10 @@ def compute_stats(
         )
     if builder.episodes and not builder.submissions:
         stats.notes.append("no episode_submitted events: episodes ran locally, so there are no queue waits")
-    if builder.all_llm.calls and not builder.servers:
+    if stats.wall.gpu_startup_bounded:
         stats.notes.append(
-            "no llm_server_ready events: vLLM start-up was not recorded for this run; "
-            "the time from each episode's start to its first LLM call bounds it"
+            f"{stats.wall.gpu_startup_bounded} GPU episode(s) logged no llm_server_ready: their vLLM start-up "
+            "is bounded by the time from the episode's start to its first LLM call (shown as <=)"
         )
     return stats
 
@@ -711,6 +770,36 @@ def stats_from_files(events_path: Path, actions_dir: Path | None = None, **kwarg
     """Stats from an events.jsonl (and, if given, the run's actions directory)."""
     actions = ActionInbox(actions_dir).processed() if actions_dir is not None else []
     return compute_stats(EventLog(events_path, run_id=""), actions, **kwargs)
+
+
+def stats_for_run_dir(root: Path) -> RunStats:
+    """Stats for a run directory. When its run.json does not load (e.g. written by a newer rtool with
+    config keys this one does not know), they come from events.jsonl and actions/ alone."""
+    try:
+        run = RunHandle(root)
+    except (RToolError, ValueError) as exc:  # pydantic's ValidationError and JSONDecodeError are ValueErrors
+        events = Path(root) / "events.jsonl"
+        if not events.is_file():
+            raise
+        spec: dict[str, Any] = {}
+        with contextlib.suppress(Exception):
+            spec = dict(read_json(Path(root) / "run.json"))
+        try:
+            order = [str(stage["id"]) for stage in spec["pipeline"]["stages"]]
+        except (KeyError, TypeError):
+            order = []
+        stats = stats_from_files(events, Path(root) / "actions", run_id=str(spec.get("run_id", "")), stage_order=order)
+        stats.notes.append(f"run.json did not load ({_why(exc)}): read events.jsonl and actions/ only")
+        return stats
+    return run_stats(run)
+
+
+def _why(exc: Exception) -> str:
+    if isinstance(exc, ValidationError):
+        where = "config." if exc.title == "AppConfig" else ""  # where the key sits in run.json
+        problems = [f"{where}{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:3]]
+        return "; ".join(problems) + (f"; {exc.error_count() - 3} more" if exc.error_count() > 3 else "")
+    return str(exc).splitlines()[0] if str(exc) else type(exc).__name__
 
 
 def run_stats(run: RunHandle) -> RunStats:

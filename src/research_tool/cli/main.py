@@ -44,7 +44,7 @@ from ..core.run import RunHandle, resolve_run_path
 from ..core.secrets import load_secrets
 from ..core.services import LLMEndpoint, build_llm, build_services, build_slurm
 from ..core.state import StageStatus
-from ..core.stats import run_stats, stats_from_files
+from ..core.stats import stats_for_run_dir, stats_from_files
 from ..hpc.episode import SAFETY_MARGIN_S, llm_needed, run_episode, schedule_next, submit_episode
 from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
@@ -791,8 +791,9 @@ def stats(
         path = Path(run_ref)
         if path.suffix == ".jsonl" and path.is_file():
             report = stats_from_files(path, path.parent / "actions")
-        else:
-            report = run_stats(_open_run(run_ref, runs_root))
+        else:  # no RunHandle: a run.json from a newer rtool may not load, and the log is all it needs
+            root = runs_root or load_config(*default_config_files()).paths.resolved_runs_root()
+            report = stats_for_run_dir(resolve_run_path(run_ref, root))
         if as_json:
             typer.echo(report.model_dump_json(indent=2))
         else:

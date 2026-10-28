@@ -61,7 +61,7 @@ def node_facts(env: Mapping[str, str] | None = None) -> dict[str, str | None]:
     """Where a server runs: node, GPU and Slurm job (recorded in events for `rtool stats`)."""
     env = os.environ if env is None else env
     return {
-        "host": env.get("SLURMD_NODENAME") or socket.gethostname(),
+        "node": env.get("SLURMD_NODENAME") or socket.gethostname().split(".")[0],
         "gpu": gpu_names(),
         "devices": env.get("CUDA_VISIBLE_DEVICES") or env.get("SLURM_JOB_GPUS"),
         "partition": env.get("SLURM_JOB_PARTITION"),

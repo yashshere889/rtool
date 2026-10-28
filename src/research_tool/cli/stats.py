@@ -36,11 +36,13 @@ def tokens(n: int) -> str:
     return f"{n / 1000:.1f}k" if n >= 10_000 else str(n)
 
 
-def startup(e: EpisodeStats, *, recorded: bool) -> str:
-    """vLLM start-up time; for a log without it, at most the time to the episode's first LLM call."""
-    if e.server_start_s is not None or recorded:
-        return duration(e.server_start_s)
-    return f"<={duration(e.first_llm_s)}" if e.on_gpu and e.first_llm_s is not None else "-"
+def startup(e: EpisodeStats) -> str:
+    """vLLM start-up time ("<=": only bounded by the time to the episode's first LLM call)."""
+    seconds, bounded = e.startup()
+    text = "-" if seconds is None else ("<=" if bounded else "") + duration(seconds)
+    if e.server_failures and not e.server_ready:
+        text = "failed" if seconds is None else f"{text} failed"
+    return text
 
 
 def table(title: str, *columns: str, left: int = 1) -> Table:
@@ -76,17 +78,19 @@ def print_stats(stats: RunStats, console: Console) -> None:
         ("a gate waited for a person", wall.person_s),
         ("an episode waited behind cluster jobs", wall.jobs_s),
         ("an episode waited in the queue", wall.queue_s),
+        ("a failed stage or run waited for a person", wall.failed_s),
         ("none of these", wall.idle_s),
     ):
         t.add_row(label, duration(seconds), share(seconds, wall.total_s))
     console.print(t)
     if wall.gpu_episodes:
-        before = wall.gpu_cold_start_s if stats.servers else wall.gpu_to_first_llm_s
-        other = max(0.0, wall.gpu_run_s - before - wall.gpu_llm_busy_s)
-        starting = "vLLM starting" if stats.servers else "before the first LLM call"
+        other = max(0.0, wall.gpu_run_s - wall.gpu_startup_s - wall.gpu_llm_busy_s)
+        n = wall.gpu_startup_bounded
+        starting = f"vLLM starting {'at most ' if n else ''}{share(wall.gpu_startup_s, wall.gpu_run_s)}"
+        if n:
+            starting += f" ({n} of {wall.gpu_episodes} bounded by their first LLM call)"
         console.print(
-            f"GPU episodes: {wall.gpu_episodes}, running {duration(wall.gpu_run_s)}: "
-            f"{starting} {share(before, wall.gpu_run_s)}, "
+            f"GPU episodes: {wall.gpu_episodes}, running {duration(wall.gpu_run_s)}: {starting}, "
             f"LLM busy {share(wall.gpu_llm_busy_s, wall.gpu_run_s)}, "
             f"other work {share(other, wall.gpu_run_s)}\n"
         )
@@ -104,7 +108,7 @@ def print_stats(stats: RunStats, console: Console) -> None:
             queue,
             duration(e.run_s),
             share(e.llm_busy_s, e.run_s) if e.llm_calls else "-",
-            startup(e, recorded=bool(stats.servers)),
+            startup(e),
         )
     console.print(t)
     if any(e.after_jobs for e in stats.episodes):
@@ -168,7 +172,7 @@ def print_stats(stats: RunStats, console: Console) -> None:
                 when(v.at),
                 escape(v.episode or "-"),
                 escape(v.stage or "-"),
-                escape(" ".join(x for x in (v.partition, v.host) if x) or "-"),
+                escape(" ".join(x for x in (v.partition, v.node) if x) or "-"),
                 escape((v.gpu or "-").removeprefix("NVIDIA ")),
                 "ready" if v.ok else escape(f"failed: {(v.error or '')[:60]}"),
                 duration(v.seconds),

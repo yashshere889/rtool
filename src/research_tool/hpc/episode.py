@@ -236,6 +236,8 @@ class LazyLLM:
         return self._client
 
     def _start_server(self, stage: str | None) -> ServerHandle:
+        # Merging with claude/beautiful-curie-f3646e: keep one llm_server_failed emitter, its server_failed()
+        # in run_episode, and fold seconds/gpu/partition/job into it, so a failure is not logged twice.
         started = time.monotonic()
         try:
             handle = VLLMServer(self.config.llm, self.log_dir).start()

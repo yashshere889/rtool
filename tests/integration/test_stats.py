@@ -15,7 +15,15 @@ from research_tool.core.actions import ActionKind
 from research_tool.core.engine import Outcome
 from research_tool.core.events import EventLog
 from research_tool.core.run import RunHandle
-from research_tool.core.stats import RunStats, compute_stats, iso, run_stats, split_wall_time, union_seconds
+from research_tool.core.stats import (
+    RunStats,
+    compute_stats,
+    iso,
+    run_stats,
+    split_wall_time,
+    stats_for_run_dir,
+    union_seconds,
+)
 from research_tool.hpc import episode as episode_module
 from research_tool.hpc.episode import LazyLLM, run_episode, schedule_next, submit_episode
 from research_tool.hpc.fake_slurm import FakeSlurm
@@ -70,7 +78,7 @@ EVENTS = [
         "literature",
         seconds=180.0,
         model="nemotron",
-        host="gpu45",
+        node="gpu45",
         gpu="NVIDIA L40S, 46068 MiB",
         devices="0",
         partition="gpu-l40s",
@@ -125,7 +133,7 @@ EVENTS = [
     ev(7402, "episode_finished", "ep-104", outcome="continue", ran=["code"]),
     ev(7502, "episode_started", "ep-105", number=6),
     ev(7503, "stage_started", "ep-105", "report", agent="writer", attempt=1, resumed=False),
-    ev(7533, "llm_server_failed", "ep-105", "report", seconds=30.0, host="gpu47", error="vLLM exited with code 1"),
+    ev(7533, "llm_server_failed", "ep-105", "report", seconds=30.0, node="gpu47", error="vLLM exited with code 1"),
     ev(7590, "episode_submitted", job="106", needs_llm=True, reason="rtool run", dependency=[], partition="gpu-l40s"),
     ev(7600, "episode_not_started", job="106", error="no secrets file"),
 ]
@@ -166,12 +174,13 @@ def test_episodes() -> None:
     )  # fmt: skip
     gpu = episodes["102", 1]
     assert (gpu.kind, gpu.wait_s, gpu.queue_s, gpu.run_s, gpu.outcome) == ("gpu", 601, 601, 459, "unfinished")
-    assert (gpu.host, gpu.gpu, gpu.server_start_s) == ("gpu45", "NVIDIA L40S, 46068 MiB", 180)
+    assert (gpu.node, gpu.gpu, gpu.server_start_s, gpu.server_ready) == ("gpu45", "NVIDIA L40S, 46068 MiB", 180, True)
+    assert gpu.startup() == (180, False)
     assert (gpu.llm_calls, gpu.truncated, gpu.llm_busy_s, gpu.busy_fraction) == (4, 1, 38, 0.083)
     assert (gpu.prompt_tokens, gpu.completion_tokens, gpu.ran) == (400, 40, ["literature"])
     requeued = episodes["102", 2]
     assert (requeued.reason, requeued.wait_s, requeued.queue_s, requeued.server_start_s) == ("requeued", 300, 300, 60)
-    assert requeued.outcome == "waiting_gate" and requeued.host == "gpu46"
+    assert requeued.outcome == "waiting_gate" and requeued.node == "gpu46"  # read from the older field name
     after_jobs = episodes["104", 1]
     assert (after_jobs.wait_s, after_jobs.queue_s, after_jobs.after_jobs) == (3601, None, ["900"])
     continuation = episodes["105", 1]  # queued behind its own predecessor: counted from when that ended
@@ -220,8 +229,104 @@ def test_logs_without_vllm_start_events_bound_it_by_the_first_llm_call() -> None
     stats = compute_stats(old, DECIDED)
     gpu = next(e for e in stats.episodes if e.job == "102")
     assert (gpu.server_start_s, gpu.first_llm_s) == (None, 181)  # first call started at 822, the episode at 641
-    assert stats.wall.gpu_to_first_llm_s == 181 and stats.wall.gpu_cold_start_s == 0
-    assert any("first LLM call bounds it" in note for note in stats.notes)
+    assert gpu.startup() == (181, True)
+    wall = stats.wall
+    assert (wall.gpu_startup_s, wall.gpu_startup_bounded, wall.gpu_cold_start_s) == (181, 1, 0)
+    assert any(note.startswith("1 GPU episode(s) logged no llm_server_ready") for note in stats.notes)
+
+
+# The code stage fails and the episode stops for a person; a week later they retry.
+FAILED = [
+    ev(0, "episode_submitted", job="201", needs_llm=False, reason="rtool run", dependency=[], partition="nodes"),
+    ev(10, "episode_started", "ep-201", number=1),
+    ev(11, "stage_started", "ep-201", "code", agent="coder", attempt=1, resumed=False),
+    ev(70, "stage_failed", "ep-201", "code", attempt=1, error="smoke test failed", traceback=None),
+    ev(71, "episode_finished", "ep-201", outcome="needs_human", ran=["code"]),
+    ev(
+        604871, "episode_submitted", job="202", needs_llm=False, reason="action:retry", dependency=[], partition="nodes"
+    ),  # fmt: skip
+    ev(604931, "episode_started", "ep-202", number=2),
+    ev(604931, "action_applied", "ep-202", action="retry", by="yash", outcome={"status": "applied"}),
+    ev(604932, "stage_started", "ep-202", "code", agent="coder", attempt=1, resumed=True),
+    ev(604990, "stage_finished", "ep-202", "code", attempt=1),
+    ev(604991, "episode_finished", "ep-202", outcome="done", ran=["code"]),
+]
+
+
+def test_a_failed_stage_waiting_for_a_person_is_its_own_part_of_the_wall_time() -> None:
+    wall = compute_stats(FAILED).wall
+    assert (wall.total_s, wall.running_s, wall.queue_s, wall.failed_s, wall.idle_s) == (604991, 121, 70, 604800, 0)
+    # the person's queued action ends the wait even when no episode was submitted for it
+    retried = [{"kind": "retry", "created_at": iso(T0 + 604850), "applied_at": iso(T0 + 604931)}]
+    no_kick = [e for e in FAILED if e["kind"] != "episode_submitted" or e["data"]["job"] != "202"]
+    wall = compute_stats(no_kick, retried).wall
+    assert (wall.running_s, wall.queue_s, wall.failed_s, wall.idle_s) == (121, 10, 604779, 81)
+
+
+# The bad-node branch's llm_server_failed: no episode, stage or seconds; node, excluded, giving_up.
+FOREIGN = [
+    ev(0, "episode_submitted", job="301", needs_llm=True, reason="needs_llm", dependency=[], partition="gpu-l40s"),
+    ev(100, "episode_started", "ep-301", number=1),
+    ev(101, "stage_started", "ep-301", "literature", agent="literature", attempt=1, resumed=False),
+    call(190, "ep-301", 10),  # its first call started 80 s into the episode
+    ev(400, "episode_finished", "ep-301", outcome="continue", ran=["literature"]),
+    ev(401, "episode_submitted", job="302", needs_llm=True, reason="continue", dependency=[], partition="gpu-l40s"),
+    ev(500, "episode_started", "ep-302", number=2),
+    ev(501, "stage_started", "ep-302", "literature", agent="literature", attempt=1, resumed=True),
+    ev(620, "llm_server_failed", node="gpu45", error="vLLM exited with code 1", excluded=["gpu45"], giving_up=True),
+    ev(3620, "episode_submitted", job="303", needs_llm=True, reason="rtool run", dependency=[], partition="gpu-l40s"),
+    ev(3700, "episode_started", "ep-303", number=3),
+    ev(3701, "episode_finished", "ep-303", outcome="done", ran=[]),
+]
+
+
+def test_a_vllm_failure_logged_by_other_code(runs_root: Path) -> None:
+    stats = compute_stats(FOREIGN)
+    (failed,) = stats.servers
+    assert (failed.episode, failed.stage, failed.node, failed.seconds, failed.ok) == (
+        "ep-302", "literature", "gpu45", None, False,
+    )  # fmt: skip
+    episodes = {e.job: e for e in stats.episodes}
+    # the episode that logged nothing about its vLLM is bounded by its first LLM call ...
+    assert episodes["301"].startup() == (80, True)
+    # ... and the one whose start failed shows that, with its run time up to the failure
+    broken = episodes["302"]
+    assert (broken.server_failures, broken.server_ready, broken.startup(), broken.run_s) == (
+        1,
+        False,
+        (None, False),
+        120,
+    )
+    wall = stats.wall
+    assert (wall.gpu_startup_s, wall.gpu_startup_bounded) == (80, 1)
+    assert any(note.startswith("1 GPU episode(s) logged no llm_server_ready") for note in stats.notes)
+    # giving up stops the run for a person, until the next episode starts
+    assert (wall.running_s, wall.queue_s, wall.failed_s, wall.idle_s) == (421, 279, 3000, 1)
+
+    log = runs_root / "events.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text("".join(json.dumps(e) + "\n" for e in FOREIGN), encoding="utf-8")
+    code, out = invoke("stats", log)
+    assert code == 0 and "<=1m20s" in out and "failed" in out and "a failed stage or run waited for a person" in out
+
+
+def test_a_run_whose_run_json_this_rtool_cannot_load(runs_root: Path, mock_llm: MockLLM) -> None:
+    run = make_run(runs_root, "toy")
+    drive_as_slurm_would(run, mock_llm)
+    spec = json.loads((run.root / "run.json").read_text(encoding="utf-8"))
+    spec["config"]["llm"]["describe_schema"] = True  # a key from a newer rtool
+    (run.root / "run.json").write_text(json.dumps(spec), encoding="utf-8")
+    with pytest.raises(ValueError):
+        RunHandle(run.root)
+    stats = stats_for_run_dir(run.root)
+    assert stats.run == run.run_id and [s.stage for s in stats.stages] == ["source", "analyze", "write"]
+    assert stats.episodes and all(g.decided for g in stats.gates)  # the processed actions were read too
+    assert stats.notes[-1] == (
+        "run.json did not load (config.llm.describe_schema: Extra inputs are not permitted): "
+        "read events.jsonl and actions/ only"
+    )
+    code, out = invoke("stats", run.root)
+    assert code == 0 and "run.json did not load" in out
 
 
 def test_an_empty_log() -> None:
@@ -271,11 +376,11 @@ def test_gpu_episode_records_when_its_vllm_was_ready(runs_root: Path, fake_vllm:
     assert (ready["episode"], ready["stage"]) == ("ep-7", "source")
     data = ready["data"]
     assert data["seconds"] >= 0 and data["model"] == run.config.llm.model
-    assert (data["host"], data["gpu"], data["partition"], data["devices"], data["job"]) == (
+    assert (data["node"], data["gpu"], data["partition"], data["devices"], data["job"]) == (
         "gpu45", "NVIDIA L40S, 46068 MiB", "gpu-l40s", "0", "7",
     )  # fmt: skip
     stats = run_stats(run)
-    assert stats.servers[0].host == "gpu45" and stats.episodes[0].server_start_s is not None
+    assert stats.servers[0].node == "gpu45" and stats.episodes[0].server_ready
     assert stats.episodes[0].on_gpu and stats.wall.gpu_episodes == 1
 
 
@@ -293,7 +398,7 @@ def test_a_vllm_that_fails_to_start_is_recorded(runs_root: Path, fake_vllm: type
 def test_node_facts_without_slurm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server_module, "gpu_names", lambda: None)
     facts = node_facts({})
-    assert facts["host"] and facts["gpu"] is None and facts["partition"] is None and facts["job"] is None
+    assert facts["node"] and facts["gpu"] is None and facts["partition"] is None and facts["job"] is None
 
 
 # ------------------------------------------------------------------ real runs
