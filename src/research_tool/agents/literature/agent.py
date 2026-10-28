@@ -34,7 +34,7 @@ from ...core.fs import sha256_text
 from ...core.registry import register_agent
 from ...hpc.storage import QuotaError, ensure_room
 from ...knowledge.store import KnowledgeStore
-from ...knowledge.vectors import absorb_small, agglomerative, suggested_clusters
+from ...knowledge.vectors import absorb_small, agglomerative, center, suggested_clusters
 from ...knowledge.verify import normalize, quote_support
 from ...llm.client import LLMOutputError
 from ...llm.prompts import PromptLibrary
@@ -814,7 +814,7 @@ class _LiteratureRun:
         ids = [pid for pid in papers if pid in vectors]
         if not ids:
             return []
-        points = [vectors[i] for i in ids]
+        points = center([vectors[i] for i in ids])  # how the papers differ, not how alike the whole corpus is
         # in a corpus of 30 or more, a group of one or two is an outlier; in a small one, two can be a theme
         clusters = absorb_small(agglomerative(points, suggested_clusters(len(ids))), points, 3 if len(ids) >= 30 else 2)
         groups = [[ids[i] for i in group] for group in clusters]

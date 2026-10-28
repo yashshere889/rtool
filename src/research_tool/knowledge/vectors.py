@@ -101,6 +101,19 @@ def make_embedder(
     return HashingEmbedder()
 
 
+def center(vectors: Sequence[Sequence[float]]) -> list[Vector]:
+    """Subtract the mean vector and re-normalise, so similarity measures how items differ within the set.
+
+    Every paper in a focused corpus shares the topic, so raw similarities bunch together (bge-small 0.79 ± 0.06 on
+    the 2026-10-14 run) and average linkage merges whole themes before it places one odd paper: that run's 100
+    papers came out as 68/20/12. Centred, they split into seven topics that match a hand grouping far better.
+    """
+    if not vectors:
+        return []
+    mean = [sum(column) / len(vectors) for column in zip(*vectors, strict=True)]
+    return [unit([x - m for x, m in zip(vector, mean, strict=True)]) for vector in vectors]
+
+
 def agglomerative(vectors: Sequence[Sequence[float]], n_clusters: int) -> list[list[int]]:
     """Average-linkage clustering on cosine similarity; returns groups of indices (largest first)."""
     n = len(vectors)

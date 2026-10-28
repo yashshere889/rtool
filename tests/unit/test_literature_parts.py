@@ -12,7 +12,7 @@ from research_tool.agents.literature.mapping import (
     subtopic_papers,
     untested_combinations,
 )
-from research_tool.knowledge.vectors import absorb_small
+from research_tool.knowledge.vectors import absorb_small, agglomerative, center, unit
 from research_tool.schemas.literature import (
     Claim,
     CoverageCell,
@@ -211,6 +211,22 @@ def test_small_clusters_join_their_nearest_large_one() -> None:
     groups = [[0, 1, 2], [3, 4, 5], [6]]
     assert absorb_small(groups, vectors) == [[0, 1, 2, 6], [3, 4, 5]]
     assert absorb_small([[0], [1]], vectors) == [[0], [1]]  # nothing large to join: left as it is
+
+
+def test_centring_keeps_the_themes_of_a_focused_corpus_apart() -> None:
+    # every paper shares the topic (first axis); three themes of three papers, and one odd paper
+    vectors = [
+        [3.0, 1.0, 0.1, 0.0, 0.0], [3.0, 1.0, 0.0, 0.1, 0.0], [3.0, 0.9, 0.0, 0.0, 0.0],
+        [3.0, 0.1, 1.0, 0.0, 0.0], [3.0, 0.0, 1.0, 0.1, 0.0], [3.0, 0.0, 0.9, 0.0, 0.0],
+        [3.0, 0.0, 0.1, 1.0, 0.0], [3.0, 0.1, 0.0, 1.0, 0.0], [3.0, 0.0, 0.0, 0.9, 0.0],
+        [3.0, 0.0, 0.0, 0.0, 1.5],
+    ]  # fmt: skip
+    raw = [unit(v) for v in vectors]
+    # raw, two themes are more alike than the odd paper is to anything, so they merge first
+    assert absorb_small(agglomerative(raw, 3), raw, 2) == [[0, 1, 2, 6, 7, 8, 9], [3, 4, 5]]
+    centred = center(vectors)
+    assert absorb_small(agglomerative(centred, 3), centred, 2) == [[0, 1, 2, 9], [3, 4, 5], [6, 7, 8]]
+    assert center([]) == []
 
 
 # ----------------------------------------------------------------- quality
