@@ -110,9 +110,19 @@ def code_warnings(source: str, *, has_resources: bool) -> list[str]:
     return warnings
 
 
-def seed_warning(condition: str, seeds: tuple[int, int], first: dict[str, float], second: dict[str, float]) -> str:
-    """'' unless two smoke runs of one condition with different seeds gave exactly the same metrics."""
-    shared = [m for m in first if m in second]
+def seed_warning(
+    condition: str,
+    seeds: tuple[int, int],
+    first: dict[str, float],
+    second: dict[str, float],
+    names: Sequence[str] | None = None,
+) -> str:
+    """'' unless two smoke runs of one condition with different seeds gave exactly the same metrics.
+
+    ``names``: the plan's metrics. Extra values an experiment reports, such as timings, always differ a
+    little and would hide identical results (2026-10-21: seconds_per_article differed, the metrics did not).
+    """
+    shared = [m for m in first if m in second and (names is None or m in names)]
     if shared and all(constant([first[m], second[m]]) for m in shared):
         return (
             f"the smoke test of `{condition}` gave exactly the same metrics with seeds {seeds[0]} and {seeds[1]}: "

@@ -87,3 +87,11 @@ def test_results_that_ignore_the_seed_and_take_no_time() -> None:
     assert "under 1 s" in warnings[1] and "about 1 h per run" in warnings[1]
     quick = p.model_copy(update={"compute": p.compute.model_copy(update={"hours_per_run": 0.05})})
     assert len(sanity.results_warnings(quick, flat)) == 1  # a 3-minute plan may well finish in a second
+
+
+def test_identical_planned_metrics_are_flagged_even_when_timings_differ() -> None:
+    first = {"miss_rate": 1.0, "false_alarm_rate": 0.03, "seconds_per_article": 0.0041}
+    second = {"miss_rate": 1.0, "false_alarm_rate": 0.03, "seconds_per_article": 0.0040}
+    assert sanity.seed_warning("baseline", (0, 1), first, second) == ""  # a timing hides it...
+    planned = ["miss_rate", "false_alarm_rate"]
+    assert "exactly the same metrics" in sanity.seed_warning("baseline", (0, 1), first, second, planned)

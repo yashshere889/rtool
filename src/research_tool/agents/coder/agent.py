@@ -492,7 +492,7 @@ class CoderSession:
         data, _problem = read_output(out, self.metric_names)
         if not run.ok or data is None:
             return [f"the smoke test of `{condition}` with seed {other} failed (see {self.logs})"]
-        warning = sanity.seed_warning(condition, (seed, other), metrics, data["metrics"])
+        warning = sanity.seed_warning(condition, (seed, other), metrics, data["metrics"], self.metric_names)
         return [warning] if warning else []
 
     def warnings(self) -> list[str]:
