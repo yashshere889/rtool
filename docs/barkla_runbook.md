@@ -109,6 +109,10 @@ The low-priority partitions are preemptible: Slurm then sends TERM, the episode
 stops cleanly within the 180 s grace period, the job is requeued with the same
 id and resumes the run (it reclaims its own lease). `rtool events <run>` shows
 which partition each episode went to and when it was expected to start.
+`rtool stats <run>` (or `--json`) adds up where the run's wall time went: each episode's
+queue wait and run time, how long gates waited for you and then for an episode to apply
+the decision, time per stage and literature phase, vLLM start-up time (node and GPU) and
+how busy each GPU episode kept the model.
 Experiments stay on the common partitions (gpu-l40s, gpu-h100, gpu-v100).
 
 ## The web UI

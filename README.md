@@ -52,6 +52,7 @@ rtool select sleep 1                 # at the hypothesis gate
 rtool reopen sleep --stage hypotheses   # change your mind later (later stages redo only if it changes)
 rtool edit sleep experiment_plan --from plan.json   # replace an output with your edited version
 rtool list                           # every run and what it waits for
+rtool stats sleep                    # where its wall time went: queue waits, gates, stages, vLLM starts
 rtool stop sleep                     # cancel its episode job (resume with rtool run)
 rtool archive sleep                  # when done: results, report and code to ~/data
 ```

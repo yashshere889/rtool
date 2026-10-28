@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import time
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -35,7 +36,7 @@ from ..core.run import RunHandle
 from ..core.services import LLMEndpoint, Services, build_llm
 from ..core.state import StageState, StageStatus
 from ..llm.client import LLMClient
-from ..llm.server import ServerHandle, VLLMServer
+from ..llm.server import ServerHandle, VLLMServer, node_facts
 from .jobspec import GPURequest, JobSpec
 from .slurm import SlurmClient
 
@@ -216,25 +217,41 @@ class LazyLLM:
         self._factory = factory
         self._client: LLMClient | None = None
         self._handle: ServerHandle | None = None
+        self.events: EventLog | None = None  # where the server's start-up is recorded (`rtool stats`)
 
     @property
     def started(self) -> bool:
         return self._client is not None
 
-    def _ensure(self) -> LLMClient:
+    def _ensure(self, stage: str | None = None) -> LLMClient:
         if self._client is None:
             if self._factory is not None:
                 self._client = self._factory()
             elif self.config.llm.backend != "vllm":
                 self._client = build_llm(self.config)  # mock or an external server: nothing to start
             else:
-                self._handle = VLLMServer(self.config.llm, self.log_dir).start()
+                self._handle = self._start_server(stage)
                 endpoint = LLMEndpoint(url=self._handle.url, api_key=self._handle.api_key)
                 self._client = build_llm(self.config, endpoint)
         return self._client
 
+    def _start_server(self, stage: str | None) -> ServerHandle:
+        started = time.monotonic()
+        try:
+            handle = VLLMServer(self.config.llm, self.log_dir).start()
+        except Exception as exc:
+            self._record("llm_server_failed", stage, started, error=str(exc)[:300])
+            raise
+        self._record("llm_server_ready", stage, started)
+        return handle
+
+    def _record(self, kind: str, stage: str | None, started: float, **data: Any) -> None:
+        if self.events is not None:
+            seconds = round(time.monotonic() - started, 1)
+            self.events.emit(kind, stage=stage, seconds=seconds, model=self.config.llm.model, **node_facts(), **data)
+
     def bind(self, **kwargs: Any) -> LLMClient:
-        return self._ensure().bind(**kwargs)
+        return self._ensure(kwargs.get("stage")).bind(**kwargs)
 
     def close(self) -> None:
         if self._handle is not None:
@@ -265,6 +282,8 @@ def run_episode(
             episode_id=episode_id,
             stage_filter=None if gpu else cpu_only,
         )
+        if lazy is not None:
+            lazy.events = engine.events
         return engine.advance(max_seconds=max_seconds)
     finally:
         if lazy is not None:

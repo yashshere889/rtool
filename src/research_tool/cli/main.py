@@ -44,12 +44,14 @@ from ..core.run import RunHandle, resolve_run_path
 from ..core.secrets import load_secrets
 from ..core.services import LLMEndpoint, build_llm, build_services, build_slurm
 from ..core.state import StageStatus
+from ..core.stats import run_stats, stats_from_files
 from ..hpc.episode import SAFETY_MARGIN_S, llm_needed, run_episode, schedule_next, submit_episode
 from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
 from ..llm.server import VLLMServer
 from ..service import check_edit, create_run, kick, load_app_config, queue_action, run_status, stop_run
 from ..service import list_runs as list_all_runs
+from .stats import print_stats
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -776,6 +778,25 @@ def events(
         run = _open_run(run_ref, runs_root)
         for event in EventLog(run.events_path, run.run_id).read(kinds=kind or None, stage=stage, last=last):
             console.print_json(json.dumps(event))
+
+
+@app.command()
+def stats(
+    run_ref: str = typer.Argument(..., help="A run, or a copied events.jsonl."),
+    as_json: bool = typer.Option(False, "--json", help="Print the report as JSON."),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Where the run's wall time went: episodes and queue waits, gates, stages, the LLM and vLLM starts."""
+    with _guard():
+        path = Path(run_ref)
+        if path.suffix == ".jsonl" and path.is_file():
+            report = stats_from_files(path, path.parent / "actions")
+        else:
+            report = run_stats(_open_run(run_ref, runs_root))
+        if as_json:
+            typer.echo(report.model_dump_json(indent=2))
+        else:
+            print_stats(report, console)
 
 
 @app.command()

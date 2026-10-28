@@ -15,7 +15,7 @@ import signal
 import socket
 import subprocess
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +39,34 @@ def free_port(host: str = "127.0.0.1") -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((host, 0))
         return int(sock.getsockname()[1])
+
+
+def gpu_names() -> str | None:
+    """The GPU model(s) this node shows (e.g. "NVIDIA L40S, 46068 MiB"), or None without nvidia-smi."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    names = dict.fromkeys(line.strip() for line in out.splitlines() if line.strip())
+    return "; ".join(names) or None
+
+
+def node_facts(env: Mapping[str, str] | None = None) -> dict[str, str | None]:
+    """Where a server runs: node, GPU and Slurm job (recorded in events for `rtool stats`)."""
+    env = os.environ if env is None else env
+    return {
+        "host": env.get("SLURMD_NODENAME") or socket.gethostname(),
+        "gpu": gpu_names(),
+        "devices": env.get("CUDA_VISIBLE_DEVICES") or env.get("SLURM_JOB_GPUS"),
+        "partition": env.get("SLURM_JOB_PARTITION"),
+        "job": env.get("SLURM_JOB_ID"),
+    }
 
 
 def log_tail(path: Path, lines: int = 40) -> str:
