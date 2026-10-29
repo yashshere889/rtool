@@ -372,6 +372,21 @@ def test_rejecting_the_final_report_sends_it_back_to_the_writer(runs_root: Path)
     assert "review_returned_to_writer" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
 
 
+def test_a_later_round_still_hears_the_earlier_comments(runs_root: Path) -> None:
+    """Seen on Barkla: round 3 would have lost round 2's requests had the comment not repeated them."""
+    run = seed(runs_root)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    for comment in ("Disclose the hand-written code", "Shorten the discussion"):
+        queue(run, ActionKind.REJECT, payload={"feedback": comment})
+        llm = writer_llm()
+        assert Engine(run, services(run, llm)).advance().outcome is Outcome.WAITING_GATE
+    drafts = [r.messages[-1].content for r in llm.calls if "section of a research report" in r.messages[-1].content]
+    assert drafts
+    for prompt in drafts:
+        new, earlier = prompt.split("## Earlier requests")
+        assert "Shorten the discussion" in new and "Disclose the hand-written code" in earlier
+
+
 def test_major_experiment_problems_go_back_upstream(runs_root: Path) -> None:
     run = seed(runs_root)
     issue = {

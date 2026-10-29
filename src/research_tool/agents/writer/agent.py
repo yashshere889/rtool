@@ -214,7 +214,9 @@ class Drafting:
     def draft(self, section: str) -> str:
         values = sorted(self.placeholders_for(section).items())
         example = next((f"{{{{{k}}}}}" for k, _ in values if k.startswith("mean:")), "{{runs_ok}}")
-        feedback = [f.text for f in self.ctx.feedback]
+        feedback = list(dict.fromkeys(f.text for f in self.ctx.feedback))
+        # every round drafts afresh: without the earlier comments a round forgets what the last one was asked
+        earlier = [t for t in dict.fromkeys(f.text for f in self.ctx.earlier_feedback) if t not in feedback]
         prompt = self.render_prompt(
             "section.j2",
             title=TITLES[section],
@@ -223,6 +225,7 @@ class Drafting:
             example=example,
             material=self.material_for(section),
             feedback=feedback,
+            earlier=earlier,
         )
         text, remaining = settle(
             self.prose(prompt),
