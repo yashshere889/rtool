@@ -467,10 +467,10 @@ def demo_llm() -> MockLLM:
             "issues": [
                 {
                     "section": "results",
-                    "problem": "The text does not name the statistical test",
+                    "problem": "The text reports significance without naming the test, so it cannot be checked",
                     "suggestion": "Say that paired t-tests compared each condition with sham",
                     "target": "report",
-                    "severity": "minor",
+                    "severity": "major",
                 }
             ],
         },

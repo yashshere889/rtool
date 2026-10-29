@@ -300,7 +300,7 @@ def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
         "problem": "Name the test",
         "suggestion": "say paired t-test",
         "target": "report",
-        "severity": "minor",
+        "severity": "major",
     }
     llm = writer_llm(issues=[issue])
     result = Engine(run, services(run, llm)).advance()
@@ -328,6 +328,28 @@ def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
     assert "code_audit.j2" in store.envelope("review").meta["prompts"]
     queue(run, ActionKind.APPROVE)
     assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.DONE
+
+
+def test_minor_issues_stay_open_instead_of_being_edited(runs_root: Path) -> None:
+    run = seed(runs_root)
+    minor = {
+        "section": "discussion",
+        "problem": "Does not say what changed in the code",
+        "suggestion": "describe the changes",
+        "target": "report",
+        "severity": "minor",
+    }
+    major = minor | {"section": "results", "problem": "Name the test", "suggestion": "say paired t-test"}
+    llm = writer_llm(issues=[minor, major | {"severity": "major"}])
+    Engine(run, services(run, llm)).advance()
+    store = ArtifactStore(run.artifacts_dir)
+    review = store.get("review")
+    assert review.verdict == "accept" and review.edited_sections == ["results"]  # a minor issue does not block
+    edits = [r.messages[-1].content for r in llm.calls if "You are editing the" in r.messages[-1].content]
+    assert len(edits) == 1 and "Name the test" in edits[0] and "what changed in the code" not in edits[0]
+    markdown = (run.root / review.review_path).read_text()
+    assert "- [minor] discussion: Does not say what changed in the code — describe the changes (open)" in markdown
+    assert "- [major] results: Name the test — say paired t-test (edited)" in markdown
 
 
 def test_rejecting_the_final_report_sends_it_back_to_the_writer(runs_root: Path) -> None:

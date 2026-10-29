@@ -529,24 +529,27 @@ class Reviewing:
             if unresolved_count(s.template) and s.origin != "rtool"
         ]
         textual = [i for i in issues if i.target == "report"]
-        # sections the researcher wrote are not rewritten: their issues stay open for them
+        # only major points are rewritten. Minor ones mostly ask for detail or analysis the material does not
+        # hold, and rewrites made it up (seen on Barkla: an invented commit hash and a claim pinned on a
+        # citation); they stay open for the researcher, as do points on sections the researcher wrote
+        fixable = [i for i in textual if i.severity == "major"]
         to_edit = sorted(
             {
                 i.section
-                for i in textual
+                for i in fixable
                 if i.section in EDITABLE and i.section in sections and sections[i.section].origin != "human"
             }
         )
         rewrites = ctx.llm.parallel(
-            lambda sid: self.edit(sections[sid], [i for i in textual if i.section == sid]), to_edit
+            lambda sid: self.edit(sections[sid], [i for i in fixable if i.section == sid]), to_edit
         )
-        edited, open_issues = [], [i for i in textual if i.section not in to_edit]
+        edited, open_issues = [], [i for i in textual if i.severity != "major" or i.section not in to_edit]
         for sid, new in zip(to_edit, rewrites, strict=True):
             if isinstance(new, str):
                 sections[sid] = sections[sid].model_copy(update={"template": new, "origin": "reviewer"})
                 edited.append(sid)
             else:
-                open_issues += [i for i in textual if i.section == sid]
+                open_issues += [i for i in fixable if i.section == sid]
 
         requests = []
         for issue in issues:
@@ -664,7 +667,7 @@ class Reviewing:
         if review.issues:
             lines += ["", "## Issues raised by most reviews", ""]
             for issue in review.issues:
-                if issue.section in review.edited_sections and issue.target == "report":
+                if issue.target == "report" and issue.section in review.edited_sections and issue not in open_issues:
                     state = "edited"
                 elif any(issue.problem in r for r in review.change_requests):
                     state = f"sent back to {issue.target}"
