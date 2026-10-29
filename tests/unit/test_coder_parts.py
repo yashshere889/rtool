@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import math
 import os
@@ -473,6 +474,9 @@ def test_container_commands_and_variables(tmp_path: Path, monkeypatch: pytest.Mo
     assert command[3:5] == ["--home", "/scratch/home"] and command[-2:] == ["python3", "run.py"]
     variables = env.variables(gpu=False)
     assert variables["CUDA_VISIBLE_DEVICES"] == "" and variables["APPTAINERENV_PYTHONNOUSERSITE"] == "1"
+    gpu = env.variables(gpu=True)
+    assert "CUDA_VISIBLE_DEVICES" not in gpu and gpu["APPTAINERENV_VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"
+    assert gpu["APPTAINERENV_HF_HUB_OFFLINE"] == gpu["APPTAINERENV_TRANSFORMERS_OFFLINE"] == "1"
     compute = plan().compute
     spec = env.array_job(name="rtool-exp-code-1", workdir=tmp_path, batch_file="batches/full-1.json", tasks=6,
                          compute=compute)  # fmt: skip
@@ -497,6 +501,29 @@ def test_local_runs_and_timeouts(tmp_path: Path) -> None:
     assert ok.ok and "hello" in ok.tail()
     slow = env.run(["-c", "import time; time.sleep(30)"], log_path=tmp_path / "slow.log", timeout_s=0.5)
     assert slow.timed_out and not slow.ok and slow.seconds < 10
+
+
+def test_harness_seeding_leaves_cuda_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen on Barkla: seeding asked torch.cuda.is_available() first, and vLLM's forked engine then failed."""
+    harness = resources.files("research_tool.agents.coder").joinpath("harness")
+    (tmp_path / "run.py").write_text(harness.joinpath("run.py").read_text())
+
+    class Cuda:
+        def __getattr__(self, name: str) -> None:
+            raise AssertionError(f"torch.cuda.{name} was used before the experiment ran")
+
+    seeded = []
+    torch = type(sys)("torch")
+    torch.cuda = Cuda()  # type: ignore[attr-defined]
+    torch.manual_seed = seeded.append  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    spec = importlib.util.spec_from_file_location("harness_run", tmp_path / "run.py")
+    assert spec is not None and spec.loader is not None
+    run = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(run)
+
+    run.set_seed(7)
+    assert seeded == [7]
 
 
 def test_harness_contract(tmp_path: Path) -> None:

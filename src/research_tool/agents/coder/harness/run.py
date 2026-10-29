@@ -37,9 +37,10 @@ def set_seed(seed: int) -> None:
     try:
         import torch
 
+        # seeds every GPU too. Never ask torch.cuda anything here: is_available() initialises CUDA in this
+        # process, and vLLM's engine, forked later, then fails with "Cannot re-initialize CUDA in forked
+        # subprocess" (all 16 tasks of a Barkla array, Oct 28)
         torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
     except ImportError:
         pass
 
