@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import os
 import random
 import shutil
 import subprocess
@@ -513,3 +514,43 @@ def test_harness_contract(tmp_path: Path) -> None:
     (tmp_path / "batch.json").write_text(json.dumps(batch))
     launched = subprocess.run([sys.executable, "launch.py", "--batch", "batch.json", "--task", "0"], cwd=tmp_path)
     assert launched.returncode == 3  # the broken experiment again, now through the launcher
+
+
+def test_harness_moves_read_only_hf_caches_into_the_run(tmp_path: Path) -> None:
+    """The Nemotron image's HF_HOME is read-only: vLLM's remote model code needs a writable modules folder."""
+    harness = resources.files("research_tool.agents.coder").joinpath("harness")
+    (tmp_path / "run.py").write_text(harness.joinpath("run.py").read_text())
+    (tmp_path / "config.json").write_text(
+        json.dumps({"conditions": {"a": {}}, "metrics": {"acc": {}}, "resources": {}, "seeds": [0]})
+    )
+    (tmp_path / "experiment.py").write_text(
+        "import json, os\n"
+        "def run(condition, seed, resources, smoke, workdir):\n"
+        "    keys = ('HF_HOME', 'HF_MODULES_CACHE', 'HF_DATASETS_CACHE')\n"
+        "    with open(os.path.join(workdir, 'env.json'), 'w') as f:\n"
+        "        json.dump({k: os.environ.get(k) for k in keys}, f)\n"
+        "    return {'acc': 1.0}\n"
+    )
+    image_cache = tmp_path / "opt" / "huggingface_cache"
+    image_cache.mkdir(parents=True)
+    work = tmp_path / "work"
+
+    def seen(hf_home: Path, **extra: str) -> dict[str, str | None]:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("HF_")} | {"HF_HOME": str(hf_home)} | extra
+        cmd = [sys.executable, "run.py", "--condition", "a", "--seed", "0", "--output", str(tmp_path / "o.json")]
+        subprocess.run([*cmd, "--workdir", str(work)], cwd=tmp_path, env=env, check=True, capture_output=True)
+        return json.loads((work / "env.json").read_text())
+
+    image_cache.chmod(0o555)
+    try:
+        moved = seen(image_cache)
+    finally:
+        image_cache.chmod(0o755)
+    assert moved == {
+        "HF_HOME": str(image_cache),  # models are still read from the image
+        "HF_MODULES_CACHE": str(work / "hf" / "modules"),
+        "HF_DATASETS_CACHE": str(work / "hf" / "datasets"),
+    }
+    assert seen(image_cache) == {"HF_HOME": str(image_cache), "HF_MODULES_CACHE": None, "HF_DATASETS_CACHE": None}
+    chosen = tmp_path / "my_modules"
+    assert seen(image_cache, HF_MODULES_CACHE=str(chosen))["HF_MODULES_CACHE"] == str(chosen)  # writable: kept

@@ -44,6 +44,29 @@ def set_seed(seed: int) -> None:
         pass
 
 
+def can_write(path: Path) -> bool:
+    """Whether path is writable, or could be created (its nearest existing parent is writable)."""
+    for candidate in (path, *path.parents):
+        if candidate.exists():
+            return os.access(candidate, os.W_OK)
+    return False
+
+
+def writable_caches(workdir: Path) -> None:
+    """Move Hugging Face's write caches into this run's scratch space when they are read-only.
+
+    The Nemotron image points HF_HOME at /opt/huggingface_cache, which is read-only: models
+    with their own code (trust_remote_code, e.g. vLLM loading Nemotron) fail creating
+    HF_HOME/modules, and `datasets` fails writing its cache. Models are still read from HF_HOME.
+    """
+    home = Path(
+        os.environ.get("HF_HOME") or Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "huggingface"
+    )
+    for variable, folder in (("HF_MODULES_CACHE", "modules"), ("HF_DATASETS_CACHE", "datasets")):
+        if not can_write(Path(os.environ.get(variable) or home / folder)):
+            os.environ[variable] = str(workdir / "hf" / folder)
+
+
 def as_number(value: object) -> float | None:
     """float(value) if it is a finite number (numpy and torch scalars included), else None."""
     try:
@@ -87,6 +110,7 @@ def main() -> int:
     workdir = Path(args.workdir or HERE.parent / "scratch" / f"{args.condition}__{args.seed}")
     workdir.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("PYTHONHASHSEED", str(args.seed))
+    writable_caches(workdir)  # before the experiment imports transformers, vLLM or datasets
     set_seed(args.seed)
     sys.path.insert(0, str(HERE))
     import experiment
