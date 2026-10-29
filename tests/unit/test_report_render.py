@@ -14,6 +14,7 @@ from research_tool.tools.report.render import (
     bare_numbers,
     bibtex_subset,
     citation_keys,
+    movement,
     plan_numbers,
     problems,
     reference_list,
@@ -49,8 +50,17 @@ def test_value_table_covers_summaries_and_comparisons() -> None:
 def test_the_size_of_each_change_is_a_value() -> None:
     values = value_table(plan(), results())
     # acc: base 0.647, new 0.713 (both proportions): the hypothesis's thresholds are usually stated this way
-    assert values["rel:acc:new"].text == "+10.3%" and values["pts:acc:new"].text == "+6.7 percentage points"
-    assert "baseline mean" in values["rel:acc:new"].meaning
+    assert values["rel:acc:new"].text == "10.3%" and values["pts:acc:new"].text == "6.7 percentage points"
+    assert "relative rise" in values["rel:acc:new"].meaning and "baseline mean" in values["rel:acc:new"].meaning
+    assert "absolute rise" in values["pts:acc:new"].meaning and "not the relative" in values["pts:acc:new"].meaning
+
+
+def test_a_fall_is_written_as_a_fall() -> None:
+    """Seen on Barkla: "a relative reduction of -5.3 percentage points (i.e., -7.5%)", the two sizes swapped."""
+    values = value_table(plan(), results())
+    assert values["rel:loss:new"].text[0].isdigit() and values["pts:loss:new"].text[0].isdigit()  # no sign
+    assert "relative fall" in values["rel:loss:new"].meaning
+    assert [movement(d) for d in (0.2, -0.2, 0.0)] == ["rise", "fall", "change"]
 
 
 def test_the_p_label_is_not_doubled() -> None:

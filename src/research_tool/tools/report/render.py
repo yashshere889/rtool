@@ -46,6 +46,11 @@ def _p_text(p: float | None) -> str:
     return "p < 0.001" if p < 0.001 else f"p = {p:.3f}"
 
 
+def movement(difference: float) -> str:
+    """The word for a change, so a fall is written as a fall and not as "a reduction of -7.5%"."""
+    return "rise" if difference > 0 else "fall" if difference < 0 else "change"
+
+
 def value_table(plan: ExperimentPlan, results: ExperimentResults) -> dict[str, Value]:
     """Every placeholder a report may use, with its rendered text."""
     values: dict[str, Value] = {}
@@ -64,15 +69,18 @@ def value_table(plan: ExperimentPlan, results: ExperimentResults) -> dict[str, V
         if c.p_adjusted is not None:
             values[f"p_adj:{key}"] = Value(_p_text(c.p_adjusted), f"corrected p-value, {what}")
         values[f"d:{key}"] = Value(fmt(c.effect_size), f"effect size (Cohen's d), {what}")
-        base = results.summary(c.baseline, c.metric)
+        # sizes without a sign, after a word for the direction: signed ones read as "-5.3 points lower"
+        moved, base = movement(c.difference), results.summary(c.baseline, c.metric)
         if base is not None and base.mean:
             values[f"rel:{key}"] = Value(
-                f"{c.difference / abs(base.mean):+.1%}", f"relative change, {what}, as a share of the baseline mean"
+                f"{abs(c.difference) / abs(base.mean):.1%}",
+                f"size of the relative {moved}, {what}, as a share of the baseline mean (no sign: say it is a {moved})",
             )
         mean = results.summary(c.condition, c.metric)
         if base is not None and mean is not None and all(0 <= m <= 1 for m in (base.mean, mean.mean)):
             values[f"pts:{key}"] = Value(
-                f"{c.difference * 100:+.1f} percentage points", f"the difference as percentage points, {what}"
+                f"{abs(c.difference) * 100:.1f} percentage points",
+                f"size of the absolute {moved} in percentage points, {what} (not the relative {moved}; no sign)",
             )
     ok = sum(1 for r in results.runs if r.status == "ok")
     values["runs_ok"] = Value(str(ok), "experiment runs that produced results")

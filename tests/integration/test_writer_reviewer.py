@@ -214,7 +214,9 @@ def test_the_verdict_comes_from_the_success_criterion_not_from_significance(runs
     prompts = [r.messages[-1].content for r in llm.calls]
     judge = next(t for t in prompts if t.startswith("Decide what the experiment says"))
     # the criterion and the size of the change, with numbers: significance alone cannot decide it
-    assert "## Success criterion" in judge and "relative change +10.3%" in judge and "i.e. +6.7 percentage" in judge
+    assert "## Success criterion" in judge and "`acc` rose" in judge
+    assert "relative rise (share of the baseline mean) 10.3%" in judge
+    assert "absolute rise 6.7 percentage points" in judge and "i.e." not in judge
     assert prompts.index(judge) == 0  # before any prose, so every section states the same verdict
     for title in ("Results", "Discussion", "Conclusion"):  # each can state the verdict and the size of the change
         prompt = next(t for t in prompts if t.startswith(f'Write the "{title}" section'))

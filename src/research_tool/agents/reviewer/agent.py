@@ -68,6 +68,7 @@ from ...tools.report.render import (
     bib_keys,
     bibtex_subset,
     citation_keys,
+    movement,
     plan_numbers,
     problems,
     reference_list,
@@ -261,7 +262,12 @@ class Reviewing:
             p = self.values[f"p:{key}"].text
             if c.p_adjusted is not None:
                 p += f", {c.correction.capitalize()}-corrected {self.values[f'p_adj:{key}'].text}"
-            size = "".join(f", {self.values[k].text}" for k in (f"rel:{key}", f"pts:{key}") if k in self.values)
+            moved = movement(c.difference)
+            size = "".join(
+                f", {kind} {moved} {self.values[k].text}"
+                for kind, k in (("relative", f"rel:{key}"), ("absolute", f"pts:{key}"))
+                if k in self.values
+            )
             lines.append(
                 f"- {c.analysis.capitalize()}: {c.condition} vs {c.baseline} on {c.metric}: difference "
                 f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}){size}, {p} ({c.test}) "

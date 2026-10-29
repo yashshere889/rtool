@@ -41,6 +41,7 @@ from ...tools.report.render import (
     bib_keys,
     bibtex_subset,
     citation_keys,
+    movement,
     placeholders,
     plan_numbers,
     problems,
@@ -80,7 +81,9 @@ INSTRUCTIONS = {
         "Two to four paragraphs reporting what the experiment found, with the placeholders: means with their "
         "confidence intervals, the difference to the baseline, its p-value (the corrected one where given) and "
         "whether it is significant. Start with the pre-registered primary outcome, the confirmatory test of the "
-        "hypothesis; give the size of its change too (relative change, and percentage points where given), "
+        "hypothesis; give the size of its change too (the relative change, and the absolute change in percentage "
+        "points where given: two different quantities, so never present one as the other), written as a fall or "
+        "a rise ('fell by 7.5%'), never as a negative reduction, "
         "then say whether the hypothesis's success criterion was met, exactly as the material's verdict says. "
         "Then the other metrics, each called exploratory. Report non-significant and negative results as "
         "plainly as positive ones. Do not claim the study had enough statistical power: no power analysis "
@@ -367,14 +370,17 @@ class Drafting:
                 p = f"{{{{p:{key}}}}}" + (
                     f", {c.correction.capitalize()}-corrected {{{{p_adj:{key}}}}}" if c.p_adjusted is not None else ""
                 )
-                size = "".join(
-                    f", {label} {{{{{k}:{key}}}}}"
-                    for k, label in (("rel", "relative change"), ("pts", "i.e."), ("d", "Cohen's d"))
-                    if f"{k}:{key}" in self.values
+                moved = movement(c.difference)
+                labels = (
+                    ("rel", f"relative {moved} (share of the baseline mean)"),
+                    ("pts", f"absolute {moved}"),
+                    ("d", "Cohen's d"),
                 )
+                size = "".join(f", {label} {{{{{k}:{key}}}}}" for k, label in labels if f"{k}:{key}" in self.values)
+                verb = {"rise": "rose", "fall": "fell", "change": "did not change"}[moved]
                 lines.append(
-                    f"  - `{c.condition}` vs `{c.baseline}` ({c.analysis}): difference {{{{diff:{key}}}}} "
-                    f"({{{{diff_ci:{key}}}}}){size}, {p} with the {c.test} — {c.verdict()}."
+                    f"  - `{c.condition}` vs `{c.baseline}` ({c.analysis}): `{metric.name}` {verb}; difference "
+                    f"{{{{diff:{key}}}}} ({{{{diff_ci:{key}}}}}){size}, {p} with the {c.test} — {c.verdict()}."
                 )
         lines.append(f"- What the plan expected: {self.plan.expected_results}")
         if self.verdict is not None:
