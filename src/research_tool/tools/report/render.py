@@ -29,7 +29,8 @@ _NUMBER = re.compile(r"(?<![\w.@/])(?<![A-Za-z]-)(\d+(?:\.\d+)?)")
 _DOUBLE_CI = re.compile(r"95\s?%\s?(?:CI|confidence interval)[:,]?\s*(\[\s*)?(95% CI \[[^\[\]]*\])(?(1)\s*\])", re.I)
 # "p = {{p:...}}" renders "p = p = 0.008": the value already says "p ="
 _DOUBLE_P = re.compile(r"\bp\s*(?:=|<)\s*(?=p (?:=|<) )")
-_DOUBLE_POINTS = re.compile(r"(percentage points)(?:\s+percentage points)+")  # "{{pts:...}} percentage points"
+# values that carry their noun: "{{pts:...}} percentage points" and "{{conditions}} conditions" say it twice
+_DOUBLE_NOUN = re.compile(r"\b(percentage points|conditions|seeds)(?:\s+\1\b)+")
 UNRESOLVED = "[?]"  # what a number nobody could check becomes when it cannot simply be left out
 _UNRESOLVED_ASIDE = re.compile(r"\s*\([^()]*\[\?\][^()]*\)")
 
@@ -85,8 +86,11 @@ def value_table(plan: ExperimentPlan, results: ExperimentResults) -> dict[str, V
     ok = sum(1 for r in results.runs if r.status == "ok")
     values["runs_ok"] = Value(str(ok), "experiment runs that produced results")
     values["runs_total"] = Value(str(len(results.runs)), "experiment runs planned")
-    values["seeds"] = Value(str(len(plan.seeds)), "seeds (independent repetitions) per condition")
-    values["conditions"] = Value(str(len(plan.run_conditions())), "conditions, ablations included")
+    # counts carry their noun, so a bare placeholder still reads "across 2 conditions", not "across 2."
+    n = len(plan.seeds)
+    values["seeds"] = Value(f"{n} seed{'s' * (n != 1)}", "seeds (independent repetitions) per condition, with the word")
+    n = len(plan.run_conditions())
+    values["conditions"] = Value(f"{n} condition{'s' * (n != 1)}", "conditions, ablations included, with the word")
     return values
 
 
@@ -97,7 +101,7 @@ def placeholders(template: str) -> list[str]:
 
 def render(template: str, values: dict[str, Value]) -> str:
     text = PLACEHOLDER.sub(lambda m: values[m.group(1)].text if m.group(1) in values else m.group(0), template)
-    return _DOUBLE_POINTS.sub(r"\1", _DOUBLE_P.sub("", _DOUBLE_CI.sub(r"\2", text)))
+    return _DOUBLE_NOUN.sub(r"\1", _DOUBLE_P.sub("", _DOUBLE_CI.sub(r"\2", text)))
 
 
 def plan_numbers(plan: ExperimentPlan) -> str:

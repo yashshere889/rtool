@@ -220,6 +220,7 @@ def test_the_verdict_comes_from_the_success_criterion_not_from_significance(runs
     assert prompts.index(judge) == 0  # before any prose, so every section states the same verdict
     for title in ("Results", "Discussion", "Conclusion"):  # each can state the verdict and the size of the change
         prompt = next(t for t in prompts if t.startswith(f'Write the "{title}" section'))
+        assert ("{{std:acc:new}}" in prompt) is (title != "Results")  # the tables show them
         assert "Verdict on the hypothesis, from its success criterion: REFUTED" in prompt
         assert "{{rel:acc:new}}" in prompt and "Success criterion (fixed before the experiment ran)" in prompt
     review = next(t for t in prompts if t.startswith("Review this research report"))

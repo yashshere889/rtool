@@ -186,7 +186,11 @@ class Drafting:
         return clean_prose(reply.text)
 
     def placeholders_for(self, section: str) -> dict[str, Value]:
-        return {} if section in ("introduction", "related_work") else self.values
+        if section in ("introduction", "related_work"):
+            return {}
+        if section in ("abstract", "results"):  # the tables show them; listed, they ended up as bare numbers
+            return {k: v for k, v in self.values.items() if not k.startswith("std:")}
+        return self.values
 
     def material_for(self, section: str) -> str:
         if section == "introduction":
@@ -347,9 +351,7 @@ class Drafting:
         baseline = next((c.name for c in self.plan.conditions if c.is_baseline), "")
         primary = self.plan.primary_metric()
         lines = ["Our results (placeholders render to the numbers):"]
-        lines.append(
-            "- Runs: {{runs_ok}} of {{runs_total}} planned runs produced results ({{seeds}} seeds per condition)."
-        )
+        lines.append("- Runs: {{runs_ok}} of {{runs_total}} planned runs produced results ({{seeds}} per condition).")
         lines.append(
             f"- The primary outcome `{primary.name}` was fixed in the approved plan before the experiment ran: its "
             "comparisons are the confirmatory test of the hypothesis. All other results are exploratory and "

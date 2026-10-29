@@ -63,6 +63,15 @@ def test_a_fall_is_written_as_a_fall() -> None:
     assert [movement(d) for d in (0.2, -0.2, 0.0)] == ["rise", "fall", "change"]
 
 
+def test_counts_carry_their_noun() -> None:
+    """Seen on Barkla: "16 runs (8 seeds per condition) across 2." with the noun left out."""
+    values = value_table(plan(), results())
+    assert render("across {{conditions}}.", values) == f"across {len(plan().run_conditions())} conditions."
+    assert render("{{conditions}} conditions and {{seeds}} seeds", values) == render(
+        "{{conditions}} and {{seeds}}", values
+    )  # the noun typed after it is not doubled
+
+
 def test_the_p_label_is_not_doubled() -> None:
     """Seen on Barkla: 'p = p = 0.008' and 'Holm-corrected p = p = 0.008'."""
     values = {"p:a:b": Value("p = 0.008", "p"), "p_adj:a:b": Value("p < 0.001", "p")}
