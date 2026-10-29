@@ -96,6 +96,7 @@ def test_runs_and_results_of_a_finished_run(runs_root: Path) -> None:
     results = c.get(f"{DONE}/results").json()
     assert results["baseline"] == "sham" and results["results"]["complete"]
     assert {m["name"] for m in results["metrics"]} == set(view["metrics"])
+    assert [m["primary"] for m in results["metrics"]] == [True] + [False] * (len(results["metrics"]) - 1)
     comparison = next(x for x in results["results"]["comparisons"] if x["condition"] == "phase_locked")
     assert comparison["baseline"] == "sham" and comparison["significant"]
     assert results["results"]["figures"] and results["results"]["figures"][0].endswith(".svg")

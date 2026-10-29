@@ -1,13 +1,22 @@
-import { FileText } from "lucide-react";
+import { AlertTriangle, FileText } from "lucide-react";
 
 import { ApiError, fileUrl } from "@/api/client";
 import { useResults } from "@/api/hooks";
-import type { RunDetail } from "@/api/types";
+import type { ExperimentResults, RunDetail } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { num, pValue } from "@/lib/code";
 
 import { Section } from "../plan/PlanRead";
+
+type Comparison = ExperimentResults["comparisons"][number];
+
+/** Why a comparison has no p-value (mirrors Comparison.verdict on the server). */
+function untested(c: Comparison): string {
+  if (c.n < 2) return "Too few runs to test.";
+  if (c.constant_difference) return "The difference was identical for every seed: it may be a fixed offset, not a measured effect.";
+  return "The results did not vary across seeds, so there is nothing to test against.";
+}
 
 /** The analysed results: each condition against the baseline, per metric, with the figures. */
 export function ResultsTab({ run }: { run: RunDetail }) {
@@ -39,6 +48,18 @@ export function ResultsTab({ run }: { run: RunDetail }) {
           </a>
         </span>
       </div>
+      {r.warnings.length > 0 && (
+        <div role="note" aria-label="Warnings" className="rounded-lg border border-warn/40 bg-warn-soft/40 px-3 py-2 text-sm">
+          <p className="flex items-center gap-1.5 font-medium text-warn">
+            <AlertTriangle className="size-4 shrink-0" /> Check these results: something real may not have been measured
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {r.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {r.notes.length > 0 && (
         <ul className="list-disc space-y-0.5 rounded-lg bg-info-soft py-2 pr-3 pl-8 text-sm text-info">
           {r.notes.map((n) => (
@@ -53,8 +74,15 @@ export function ResultsTab({ run }: { run: RunDetail }) {
         const figure = figureOf(metric.name);
         return (
           <Section key={metric.name} title={metric.name}>
-            <p className="text-sm text-ink-soft">
-              {metric.definition} · {metric.higher_is_better ? "higher" : "lower"} is better
+            <p className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
+              {metric.primary ? (
+                <Badge tone="info">Primary outcome · confirmatory</Badge>
+              ) : (
+                <Badge>Exploratory</Badge>
+              )}
+              <span>
+                {metric.definition} · {metric.higher_is_better ? "higher" : "lower"} is better
+              </span>
             </p>
             {comparisons.length > 0 && (
               <div className="overflow-x-auto">
@@ -83,7 +111,11 @@ export function ResultsTab({ run }: { run: RunDetail }) {
                         <td className="py-2 pr-3 tabular-nums">{pValue(c.p_adjusted)}</td>
                         <td className="py-2 pr-3 tabular-nums">{num(c.effect_size)}</td>
                         <td className="py-2">
-                          {!c.significant ? (
+                          {c.p_value === null || c.p_value === undefined ? (
+                            <span title={untested(c)}>
+                              <Badge tone="warn">No test possible</Badge>
+                            </span>
+                          ) : !c.significant ? (
                             <Badge>No clear difference</Badge>
                           ) : c.better ? (
                             <Badge tone="ok">Better than baseline</Badge>
@@ -95,7 +127,17 @@ export function ResultsTab({ run }: { run: RunDetail }) {
                     ))}
                   </tbody>
                 </table>
-                <p className="mt-1 text-xs text-ink-soft">{comparisons[0].test}, n = {comparisons[0].n} per condition.</p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  {comparisons[0].test}, n = {comparisons[0].n} per condition
+                  {comparisons[0].correction !== "none" && `; p adjusted with ${comparisons[0].correction === "holm" ? "Holm's" : "the Bonferroni"} method`}.
+                </p>
+                {comparisons
+                  .filter((c) => c.p_value === null || c.p_value === undefined)
+                  .map((c) => (
+                    <p key={c.condition} className="mt-1 text-xs text-warn">
+                      <span className="font-mono">{c.condition}</span>: {untested(c)}
+                    </p>
+                  ))}
               </div>
             )}
             <div className="grid items-start gap-4 lg:grid-cols-2">

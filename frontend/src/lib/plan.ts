@@ -126,3 +126,8 @@ export function planChanges(before: ExperimentPlan, after: ExperimentPlan): Chan
 export function seedList(n: number): number[] {
   return Array.from({ length: Math.max(1, Math.min(50, Math.floor(n) || 1)) }, (_, i) => i);
 }
+
+/** The pre-registered primary outcome: the marked metric, or the first one in plans written before metrics were marked. */
+export function primaryMetric(plan: Pick<ExperimentPlan, "metrics">): ExperimentPlan["metrics"][number] | undefined {
+  return plan.metrics.find((m) => m.primary) ?? plan.metrics[0];
+}

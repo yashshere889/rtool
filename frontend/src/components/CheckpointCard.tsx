@@ -1,4 +1,4 @@
-import { ArrowRight, FileText, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, FileText, Undo2 } from "lucide-react";
 import { useId, useState } from "react";
 import { Link } from "react-router";
 
@@ -26,6 +26,7 @@ const SHOWN_ELSEWHERE = new Set([
   "reopened",
   "current",
   "tested_sha",
+  "warnings",
 ]);
 
 // labels for facts agents put in a checkpoint summary (anything else is shown humanised)
@@ -38,6 +39,34 @@ const LABELS: Record<string, string> = {
 interface Option {
   index: number;
   title: string;
+}
+
+/** A fact worth a row: not "", null or an empty list. */
+function shown(value: unknown): boolean {
+  return value !== "" && value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0);
+}
+
+/** Text items of a fact that is one string or a list of them (older runs wrote warnings as one string). */
+function textList(value: unknown): string[] {
+  if (typeof value === "string") return value ? [value] : [];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v !== "") : [];
+}
+
+function DetailValue({ value }: { value: unknown }) {
+  if (typeof value === "string") return value;
+  const items = textList(value);
+  if (Array.isArray(value) && items.length === value.length) {
+    return items.length === 1 ? (
+      items[0]
+    ) : (
+      <ul className="list-disc space-y-0.5 pl-4">
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    );
+  }
+  return JSON.stringify(value);
 }
 
 interface Request {
@@ -96,7 +125,8 @@ export function CheckpointCard({
   const requests = (summary.requests as Request[] | undefined) ?? [];
   const files = (summary.review_files as string[] | undefined) ?? [];
   const text = String(summary.prompt ?? summary.message ?? "");
-  const details = Object.entries(summary).filter(([key, value]) => !SHOWN_ELSEWHERE.has(key) && value !== "");
+  const details = Object.entries(summary).filter(([key, value]) => !SHOWN_ELSEWHERE.has(key) && shown(value));
+  const warnings = textList(summary.warnings); // signs that nothing real was measured: for the researcher to check
   const reopened = Boolean(summary.reopened);
   const current = (summary.current as { index: number } | undefined)?.index;
   const canKeep = gate.kind === "select" && gate.actions.includes("approve");
@@ -141,12 +171,27 @@ export function CheckpointCard({
       {text && <p className="mt-3 text-sm leading-relaxed">{text}</p>}
       <p className="mt-2 text-sm text-ink-soft">{choiceElsewhere ? `${info.help} Choose below.` : info.help}</p>
 
+      {warnings.length > 0 && (
+        <div role="note" aria-label="Warnings" className="mt-3 rounded-lg border border-warn/40 bg-surface/70 px-3 py-2 text-sm">
+          <p className="flex items-center gap-1.5 font-medium text-warn">
+            <AlertTriangle className="size-4 shrink-0" /> Check before you decide
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {details.length > 0 && (
         <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">
           {details.map(([key, value]) => (
             <div key={key} className="contents">
               <dt className="font-medium text-ink-soft">{LABELS[key] ?? humanize(key)}</dt>
-              <dd className="break-words">{typeof value === "string" ? value : JSON.stringify(value)}</dd>
+              <dd className="break-words">
+                <DetailValue value={value} />
+              </dd>
             </div>
           ))}
         </dl>

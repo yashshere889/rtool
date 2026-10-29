@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { ClusterView, ExperimentPlan } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
-import { RESOURCE_KINDS, RESOURCE_SOURCES, resourceCheck, resourceLink } from "@/lib/plan";
+import { primaryMetric, RESOURCE_KINDS, RESOURCE_SOURCES, resourceCheck, resourceLink } from "@/lib/plan";
 
 export function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
@@ -195,7 +195,13 @@ export function PlanRead({ plan, cluster, title }: { plan: ExperimentPlan; clust
       <Section title="Measurements and statistics">
         <Table
           head={["Metric", "Definition", "Better"]}
-          rows={plan.metrics.map((m) => [<span key="n" className="font-mono text-xs">{m.name}</span>, m.definition, m.higher_is_better ? "higher" : "lower"])}
+          rows={plan.metrics.map((m) => [
+            <span key="n" className="font-mono text-xs">
+              {m.name} {m === primaryMetric(plan) && <Badge tone="info">primary outcome</Badge>}
+            </span>,
+            m.definition,
+            m.higher_is_better ? "higher" : "lower",
+          ])}
         />
         <Table
           head={["Test", "Comparison", "Alpha", "Correction"]}

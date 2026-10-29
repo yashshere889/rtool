@@ -113,4 +113,31 @@ describe("CheckpointCard", () => {
     expect(screen.getByRole("button", { name: /Undo/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Choose" })).not.toBeInTheDocument();
   });
+
+  const gpuGate: OpenGate = {
+    stage: "code",
+    gate: "gpu_runs",
+    kind: "approve",
+    in_stage: true,
+    nonce: "def456",
+    opened_at: "2026-10-29T10:00:00+00:00",
+    actions: ["approve", "reject"],
+    summary: { message: "Smoke tests passed.", runs: 12, warnings: [], smoke: ["sham ok in 0.1s", "phase_locked ok in 0.1s"] },
+  };
+
+  it("leaves out empty facts and shows lists as lists", () => {
+    render(wrap(<CheckpointCard run={run} gate={gpuGate} />));
+    expect(screen.queryByText("[]")).not.toBeInTheDocument();
+    expect(screen.queryByRole("note", { name: "Warnings" })).not.toBeInTheDocument();
+    expect(screen.getByText("sham ok in 0.1s").tagName).toBe("LI");
+  });
+
+  it("puts warnings first, as a list to check", () => {
+    const warned = { ...gpuGate, summary: { ...gpuGate.summary, warnings: ["every seed gave the same value", "the condition was ignored"] } };
+    render(wrap(<CheckpointCard run={run} gate={warned} />));
+    const note = screen.getByRole("note", { name: "Warnings" });
+    expect(note).toHaveTextContent("every seed gave the same value");
+    expect(note.querySelectorAll("li")).toHaveLength(2);
+    expect(screen.queryByText(/\["every seed/)).not.toBeInTheDocument();
+  });
 });

@@ -832,6 +832,55 @@ export interface components {
             /** Versions */
             versions: number[];
         };
+        /**
+         * AuditFinding
+         * @description One question of the code audit after the vote of its samples.
+         */
+        AuditFinding: {
+            /**
+             * Answered
+             * @default 0
+             */
+            answered: number;
+            /**
+             * Aspect
+             * @enum {string}
+             */
+            aspect: "condition" | "distinct" | "held_out" | "metric" | "repairs";
+            /**
+             * Fix
+             * @default
+             */
+            fix: string;
+            /** Label */
+            label: string;
+            /**
+             * Problem
+             * @default
+             */
+            problem: string;
+            /**
+             * Raised By
+             * @default 0
+             */
+            raised_by: number;
+            /**
+             * Severity
+             * @default minor
+             * @enum {string}
+             */
+            severity: "minor" | "major";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "problem" | "unconfirmed" | "unanswered";
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+        };
         /** Check */
         Check: {
             /**
@@ -963,6 +1012,12 @@ export interface components {
          * @description One condition against the baseline on one metric.
          */
         Comparison: {
+            /**
+             * Analysis
+             * @default exploratory
+             * @enum {string}
+             */
+            analysis: "confirmatory" | "exploratory";
             /** Baseline */
             baseline: string;
             /** Better */
@@ -973,6 +1028,17 @@ export interface components {
             ci_low: number;
             /** Condition */
             condition: string;
+            /**
+             * Constant Difference
+             * @default false
+             */
+            constant_difference: boolean;
+            /**
+             * Correction
+             * @default none
+             * @enum {string}
+             */
+            correction: "holm" | "bonferroni" | "none";
             /** Difference */
             difference: number;
             /** Effect Size */
@@ -981,6 +1047,11 @@ export interface components {
             metric: string;
             /** N */
             n: number;
+            /**
+             * No Seed Variation
+             * @default false
+             */
+            no_seed_variation: boolean;
             /** P Adjusted */
             p_adjusted: number | null;
             /** P Value */
@@ -1539,6 +1610,12 @@ export interface components {
              * @description Short identifier, e.g. 'accuracy' or 'recall_gain'
              */
             name: string;
+            /**
+             * Primary
+             * @description True for exactly one metric: the primary outcome that decides the hypothesis (pre-registered)
+             * @default false
+             */
+            primary: boolean;
         };
         /** MetricInfo */
         MetricInfo: {
@@ -1548,6 +1625,11 @@ export interface components {
             higher_is_better: boolean;
             /** Name */
             name: string;
+            /**
+             * Primary
+             * @default false
+             */
+            primary: boolean;
         };
         /** MetricSummary */
         MetricSummary: {
@@ -2045,6 +2127,8 @@ export interface components {
             change_requests: string[];
             /** Checks */
             checks: components["schemas"]["Check"][];
+            /** Code Audit */
+            code_audit: components["schemas"]["AuditFinding"][];
             /**
              * Diff Path
              * @default
@@ -2442,7 +2526,7 @@ export interface components {
             comparison: string;
             /**
              * Correction
-             * @description Multiple-comparison correction, if several tests
+             * @description Multiple-comparison correction: 'holm' (used for several tests) or 'bonferroni'
              * @default none
              */
             correction: string;

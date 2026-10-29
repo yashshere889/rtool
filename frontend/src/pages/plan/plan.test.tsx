@@ -148,7 +148,9 @@ describe("PlanPage", () => {
 
     await screen.findByText("Datasets, models and software");
     expect(screen.getByText("No problems found.")).toBeInTheDocument();
+    expect(screen.getByText("primary outcome")).toBeInTheDocument(); // the first metric when none is marked
     await userEvent.click(screen.getByRole("button", { name: /Edit the plan/ }));
+    expect(await screen.findByRole("radio", { name: "Primary outcome" })).toBeInTheDocument();
 
     const seeds = await screen.findByRole("spinbutton", { name: /seeds\) per condition/ });
     await userEvent.clear(seeds);

@@ -140,6 +140,7 @@ class MetricInfo(BaseModel):
     name: str
     definition: str
     higher_is_better: bool
+    primary: bool = False  # the pre-registered primary outcome: its comparisons are the confirmatory ones
 
 
 class ResultsView(BaseModel):
@@ -444,8 +445,13 @@ def results(project: str, run_id: str, request: Request, version: int | None = N
         version=envelope.version,
         results=ExperimentResults.model_validate(envelope.payload),
         metrics=[
-            MetricInfo(name=m.name, definition=m.definition, higher_is_better=m.higher_is_better)
-            for m in (plan.metrics if plan else [])
+            MetricInfo(
+                name=m.name,
+                definition=m.definition,
+                higher_is_better=m.higher_is_better,
+                primary=m is plan.primary_metric(),
+            )
+            for m in (plan.metrics_primary_first() if plan else [])
         ],
         baseline=next((c.name for c in plan.conditions if c.is_baseline), None) if plan else None,
         conditions=[c.name for c in plan.run_conditions()] if plan else [],

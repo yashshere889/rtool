@@ -34,6 +34,7 @@ const ABLATION: FieldSpec<Item<"ablations">>[] = [
 const METRIC: FieldSpec<Item<"metrics">>[] = [
   { key: "name", label: "Name (becomes a key in the results)", kind: "text" },
   { key: "higher_is_better", label: "Higher is better", kind: "checkbox" },
+  { key: "primary", label: "Primary outcome", kind: "radio" },
   { key: "definition", label: "Definition", kind: "text", wide: true },
 ];
 const TEST: FieldSpec<Item<"statistical_tests">>[] = [
@@ -55,7 +56,7 @@ const RESOURCE: FieldSpec<Item<"resources">>[] = [
 const BLANK = {
   variable: { name: "", description: "", values: [] },
   condition: { name: "", description: "", is_baseline: false },
-  metric: { name: "", definition: "", higher_is_better: true },
+  metric: { name: "", definition: "", higher_is_better: true, primary: false },
   test: { test: "", comparison: "", alpha: 0.05, correction: "none" },
   resource: {
     kind: "dataset",
@@ -153,7 +154,10 @@ export function PlanForm({
       </Section>
 
       <Section title="Measurements and statistics">
-        <Sub title="Metrics">
+        <Sub
+          title="Metrics"
+          hint="The primary outcome is the one metric that decides the hypothesis: its comparisons are confirmatory, the others exploratory."
+        >
           <RecordList items={value.metrics} onChange={(v) => set("metrics", v)} fields={METRIC} blank={BLANK.metric as never} noun="metric" />
         </Sub>
         <Sub title="Statistical tests">

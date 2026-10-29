@@ -302,6 +302,83 @@
     "title": "ArtifactInfo",
     "type": "object"
    },
+   "AuditFinding": {
+    "description": "One question of the code audit after the vote of its samples.",
+    "properties": {
+     "answered": {
+      "default": 0,
+      "title": "Answered",
+      "type": "integer"
+     },
+     "aspect": {
+      "enum": [
+       "condition",
+       "distinct",
+       "held_out",
+       "metric",
+       "repairs"
+      ],
+      "title": "Aspect",
+      "type": "string"
+     },
+     "fix": {
+      "default": "",
+      "title": "Fix",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "problem": {
+      "default": "",
+      "title": "Problem",
+      "type": "string"
+     },
+     "raised_by": {
+      "default": 0,
+      "title": "Raised By",
+      "type": "integer"
+     },
+     "severity": {
+      "default": "minor",
+      "enum": [
+       "minor",
+       "major"
+      ],
+      "title": "Severity",
+      "type": "string"
+     },
+     "state": {
+      "enum": [
+       "ok",
+       "problem",
+       "unconfirmed",
+       "unanswered"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "subject": {
+      "default": "",
+      "title": "Subject",
+      "type": "string"
+     }
+    },
+    "required": [
+     "answered",
+     "aspect",
+     "fix",
+     "label",
+     "problem",
+     "raised_by",
+     "severity",
+     "state",
+     "subject"
+    ],
+    "title": "AuditFinding",
+    "type": "object"
+   },
    "Check": {
     "properties": {
      "detail": {
@@ -710,6 +787,15 @@
    "Comparison": {
     "description": "One condition against the baseline on one metric.",
     "properties": {
+     "analysis": {
+      "default": "exploratory",
+      "enum": [
+       "confirmatory",
+       "exploratory"
+      ],
+      "title": "Analysis",
+      "type": "string"
+     },
      "baseline": {
       "title": "Baseline",
       "type": "string"
@@ -737,6 +823,21 @@
       "title": "Condition",
       "type": "string"
      },
+     "constant_difference": {
+      "default": false,
+      "title": "Constant Difference",
+      "type": "boolean"
+     },
+     "correction": {
+      "default": "none",
+      "enum": [
+       "holm",
+       "bonferroni",
+       "none"
+      ],
+      "title": "Correction",
+      "type": "string"
+     },
      "difference": {
       "title": "Difference",
       "type": "number"
@@ -759,6 +860,11 @@
      "n": {
       "title": "N",
       "type": "integer"
+     },
+     "no_seed_variation": {
+      "default": false,
+      "title": "No Seed Variation",
+      "type": "boolean"
      },
      "p_adjusted": {
       "anyOf": [
@@ -804,15 +910,19 @@
      }
     },
     "required": [
+     "analysis",
      "baseline",
      "better",
      "ci_high",
      "ci_low",
      "condition",
+     "constant_difference",
+     "correction",
      "difference",
      "effect_size",
      "metric",
      "n",
+     "no_seed_variation",
      "p_adjusted",
      "p_value",
      "significant",
@@ -2280,12 +2390,19 @@
       "description": "Short identifier, e.g. 'accuracy' or 'recall_gain'",
       "title": "Name",
       "type": "string"
+     },
+     "primary": {
+      "default": false,
+      "description": "True for exactly one metric: the primary outcome that decides the hypothesis (pre-registered)",
+      "title": "Primary",
+      "type": "boolean"
      }
     },
     "required": [
      "definition",
      "higher_is_better",
-     "name"
+     "name",
+     "primary"
     ],
     "title": "Metric",
     "type": "object"
@@ -2303,12 +2420,18 @@
      "name": {
       "title": "Name",
       "type": "string"
+     },
+     "primary": {
+      "default": false,
+      "title": "Primary",
+      "type": "boolean"
      }
     },
     "required": [
      "definition",
      "higher_is_better",
-     "name"
+     "name",
+     "primary"
     ],
     "title": "MetricInfo",
     "type": "object"
@@ -3745,6 +3868,13 @@
       "title": "Checks",
       "type": "array"
      },
+     "code_audit": {
+      "items": {
+       "$ref": "#/components/schemas/AuditFinding"
+      },
+      "title": "Code Audit",
+      "type": "array"
+     },
      "diff_path": {
       "default": "",
       "title": "Diff Path",
@@ -3792,6 +3922,7 @@
     "required": [
      "change_requests",
      "checks",
+     "code_audit",
      "diff_path",
      "edited_sections",
      "issues",
@@ -4718,7 +4849,7 @@
      },
      "correction": {
       "default": "none",
-      "description": "Multiple-comparison correction, if several tests",
+      "description": "Multiple-comparison correction: 'holm' (used for several tests) or 'bonferroni'",
       "title": "Correction",
       "type": "string"
      },
