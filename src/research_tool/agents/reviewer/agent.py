@@ -103,6 +103,16 @@ def similar(a: str, b: str) -> bool:
     return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.45
 
 
+def pasted(text: str, points: list[ReviewIssue]) -> bool:
+    """The rewrite quotes a review point instead of acting on it (seen on Barkla: the problem, verbatim)."""
+    flat = " ".join(text.lower().split())
+    return any(
+        len(part.split()) >= 6 and " ".join(part.lower().split()).rstrip(".") in flat
+        for p in points
+        for part in (p.problem, p.suggestion)
+    )
+
+
 def audit_label(aspect: str, subject: str) -> str:
     return {
         "condition": f"condition `{subject}`",
@@ -487,7 +497,7 @@ class Reviewing:
             text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith(("#", "```"))).strip()
             unchanged = " ".join(text.split()) == " ".join(section.template.split())
             clean = not unresolved_count(text) and not self.section_problems(section, text, original=section.template)
-            if text and not unchanged and clean:
+            if text and not unchanged and clean and not pasted(text, points):
                 return text
         return None  # no acceptable rewrite: the issue stays open for the human
 

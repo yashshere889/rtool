@@ -59,6 +59,8 @@ def test_the_p_label_is_not_doubled() -> None:
     assert render("(p = {{p:a:b}})", values) == "(p = 0.008)"
     assert render("Holm-corrected p = {{p_adj:a:b}}", values) == "Holm-corrected p < 0.001"
     assert render("a p-value of {{p:a:b}}", values) == "a p-value of p = 0.008"  # nothing doubled: left alone
+    points = {"pts:a:b": Value("+4.1 percentage points", "pts")}
+    assert render("(i.e., {{pts:a:b}} percentage points)", points) == "(i.e., +4.1 percentage points)"
 
 
 def test_render_and_citations() -> None:

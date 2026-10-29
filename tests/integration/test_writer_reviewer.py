@@ -8,8 +8,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from research_tool.agents.coder.results import aggregate
-from research_tool.agents.reviewer.agent import ReviewerConfig, Reviewing, shown_code
+from research_tool.agents.reviewer.agent import ReviewerConfig, Reviewing, pasted, shown_code
 from research_tool.core.actions import ActionKind
 from research_tool.core.artifacts import ArtifactStore, Producer
 from research_tool.core.engine import Engine, Outcome
@@ -21,7 +23,15 @@ from research_tool.llm.mock_backend import MockLLM
 from research_tool.llm.types import ChatRequest
 from research_tool.schemas.code import CodeBundle, CodeFile, ExperimentResults, FixRecord
 from research_tool.schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord, Topic
-from research_tool.schemas.report import AuditAnswer, CodeAuditDraft, ReviewDraft, ReviewIssueDraft, Rubric
+from research_tool.schemas.report import (
+    AuditAnswer,
+    CodeAuditDraft,
+    HypothesisVerdict,
+    ReviewDraft,
+    ReviewIssue,
+    ReviewIssueDraft,
+    Rubric,
+)
 from research_tool.testing.harness import make_run, queue
 from research_tool.testing.samples import sample_plan as plan
 from research_tool.testing.samples import sample_records as records
@@ -212,6 +222,24 @@ def test_the_verdict_comes_from_the_success_criterion_not_from_significance(runs
         assert "{{rel:acc:new}}" in prompt and "Success criterion (fixed before the experiment ran)" in prompt
     review = next(t for t in prompts if t.startswith("Review this research report"))
     assert "Verdict on the hypothesis, from its success criterion: REFUTED" in review
+
+
+def test_a_verdict_needs_real_checks() -> None:
+    """Seen on Barkla: checks == [":{"] after a reasoning pass."""
+    with pytest.raises(ValueError):
+        HypothesisVerdict.model_validate({"checks": [":{"], "outcome": "refuted"})
+    assert HypothesisVerdict.model_validate(VERDICT).outcome == "refuted"
+
+
+def test_a_rewrite_that_pastes_the_review_point_is_not_an_edit() -> None:
+    point = ReviewIssue(
+        section="discussion",
+        problem="The discussion mentions limitations but does not quantify the impact of the model size",
+        suggestion="Quantify it",
+    )
+    seen = "Limitations. The discussion mentions limitations but does not quantify the impact of the model size."
+    assert pasted(seen, [point])
+    assert not pasted("Limitations. The model is small, which may limit what it detects.", [point])
 
 
 def test_code_written_by_the_researcher_is_disclosed(runs_root: Path) -> None:

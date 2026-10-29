@@ -293,7 +293,9 @@ class Drafting:
             facts=render(self.facts(), self.values),
         )
         try:
-            self.verdict = self.ctx.llm.structured(HypothesisVerdict, prompt, profile="judge", system=SYSTEM)
+            # greedy, in one constrained call: the checks come before the outcome, so they are its reasoning
+            # (a reasoning pass first, then formatting, gave checks == [":{"] on Barkla)
+            self.verdict = self.ctx.llm.structured(HypothesisVerdict, prompt, profile="extract", system=SYSTEM)
         except LLMOutputError:
             self.findings.append(
                 Finding(kind="verdict", severity="minor", detail="the success criterion could not be applied")

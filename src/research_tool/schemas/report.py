@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..core.artifacts import artifact_type, register_artifact_type
 
@@ -122,6 +122,14 @@ class HypothesisVerdict(BaseModel):
         "and whether it holds",
     )
     outcome: Literal["inconclusive", "supported", "refuted"]
+
+    @field_validator("checks")
+    @classmethod
+    def _sentences(cls, checks: list[str]) -> list[str]:
+        # seen on Barkla: checks == [":{"] after a reasoning pass; a check must say something
+        if any(len(c.split()) < 4 for c in checks):
+            raise ValueError("each check must be a sentence: the threshold, the measured value, whether it holds")
+        return checks
 
 
 class Contradiction(BaseModel):
