@@ -31,7 +31,7 @@ from ...schemas.code import CodeBundle, ExperimentResults
 from ...schemas.common import ResearchBrief, SelectedItem
 from ...schemas.literature import Corpus, KnowledgeMap
 from ...schemas.plan import ExperimentPlan
-from ...schemas.report import Contradictions, Finding, Report, ReportSection, TitleAbstract
+from ...schemas.report import Contradictions, Finding, HypothesisVerdict, Report, ReportSection, TitleAbstract
 from ...tools.report.editing import edit_report
 from ...tools.report.numbers import fmt, fmt_ci, fmt_p
 from ...tools.report.render import (
@@ -80,18 +80,23 @@ INSTRUCTIONS = {
         "Two to four paragraphs reporting what the experiment found, with the placeholders: means with their "
         "confidence intervals, the difference to the baseline, its p-value (the corrected one where given) and "
         "whether it is significant. Start with the pre-registered primary outcome, the confirmatory test of the "
-        "hypothesis; then the other metrics, each called exploratory. Report non-significant and negative "
-        "results as plainly as positive ones."
+        "hypothesis; give the size of its change too (relative change, and percentage points where given), "
+        "then say whether the hypothesis's success criterion was met, exactly as the material's verdict says. "
+        "Then the other metrics, each called exploratory. Report non-significant and negative results as "
+        "plainly as positive ones. Do not claim the study had enough statistical power: no power analysis "
+        "was done."
     ),
     "discussion": (
-        "Three or four paragraphs: what the primary outcome means for the hypothesis (exploratory results can "
-        "suggest, never confirm), how the results relate to prior work (cite it), then a paragraph that starts "
-        "with 'Limitations.' covering the known limitations listed in the material (only those, and only as "
-        "stated there: do not invent failed runs or wide intervals), and finally future work."
+        "Three or four paragraphs: what the primary outcome means for the hypothesis, stated as the material's "
+        "verdict on the success criterion gives it (exploratory results can suggest, never confirm), how the "
+        "results relate to prior work (cite it), then a paragraph that starts with 'Limitations.' covering the "
+        "known limitations listed in the material (only those, and only as stated there: do not invent failed "
+        "runs or wide intervals), and finally future work."
     ),
     "conclusion": (
-        "One paragraph: the hypothesis, the result on the pre-registered primary outcome (placeholders) and the "
-        "take-away; mention other results only as exploratory."
+        "One paragraph: the hypothesis, the result on the pre-registered primary outcome (placeholders), whether "
+        "the success criterion was met (as the material's verdict says) and the take-away; mention other "
+        "results only as exploratory."
     ),
 }
 
@@ -162,6 +167,8 @@ class Drafting:
         previous: Report | None = ctx.inputs.get("report") if ctx.inputs.has("report") else None
         self.kept = {s.id: s for s in previous.sections if s.origin == "human"} if previous else {}
         self.kept_title = previous.title if previous is not None and previous.title_origin == "human" else None
+        self.verdict: HypothesisVerdict | None = None  # set by judge_hypothesis() before any prose is written
+        self.edited = [f.path for f in self.bundle.files if f.origin == "human"]  # code the researcher wrote
 
     # --------------------------------------------------------------- llm
     def render_prompt(self, name: str, **variables: Any) -> str:
@@ -254,6 +261,8 @@ class Drafting:
 
     def hypothesis_text(self) -> str:
         lines = [f"Hypothesis tested: {self.plan.hypothesis}", f"Null hypothesis: {self.plan.null_hypothesis}"]
+        if self.criterion():
+            lines.append(f"Success criterion (fixed before the experiment ran): {self.criterion()}")
         if self.selected is not None:
             item = self.selected.item
             if item.get("rationale"):
@@ -263,6 +272,34 @@ class Drafting:
                 if key and ev.get("verified", True):
                     lines.append(f'Evidence [@{key}]: "{ev.get("quote", "")[:300]}"')
         return "\n".join(lines)
+
+    def criterion(self) -> str:
+        """What would support or refute the hypothesis: the chosen hypothesis's own words, else the plan's."""
+        chosen = self.selected.item.get("success_criteria", "") if self.selected is not None else ""
+        return str(chosen or self.plan.expected_results).strip()
+
+    def judge_hypothesis(self) -> None:
+        """Apply the success criterion to the computed results once, so every section states the same verdict.
+
+        The tests only say whether a difference is significant; a hypothesis usually also names how large the
+        change must be, and significance was being written up as support.
+        """
+        if not self.criterion() or not self.results.comparisons:
+            return
+        prompt = self.render_prompt(
+            "verdict.j2",
+            hypothesis=self.plan.hypothesis,
+            criterion=self.criterion(),
+            facts=render(self.facts(), self.values),
+        )
+        try:
+            self.verdict = self.ctx.llm.structured(HypothesisVerdict, prompt, profile="judge", system=SYSTEM)
+        except LLMOutputError:
+            self.findings.append(
+                Finding(kind="verdict", severity="minor", detail="the success criterion could not be applied")
+            )
+            return
+        self.ctx.emit("hypothesis_verdict", outcome=self.verdict.outcome, checks=self.verdict.checks)
 
     def overview(self) -> str:
         return "State of the art (from the literature review):\n" + to_pandoc_citations(self.km.overview, self.keys)
@@ -325,11 +362,22 @@ class Drafting:
                 p = f"{{{{p:{key}}}}}" + (
                     f", {c.correction.capitalize()}-corrected {{{{p_adj:{key}}}}}" if c.p_adjusted is not None else ""
                 )
+                size = "".join(
+                    f", {label} {{{{{k}:{key}}}}}"
+                    for k, label in (("rel", "relative change"), ("pts", "i.e."), ("d", "Cohen's d"))
+                    if f"{k}:{key}" in self.values
+                )
                 lines.append(
                     f"  - `{c.condition}` vs `{c.baseline}` ({c.analysis}): difference {{{{diff:{key}}}}} "
-                    f"({{{{diff_ci:{key}}}}}), {p} with the {c.test} — {c.verdict()}."
+                    f"({{{{diff_ci:{key}}}}}){size}, {p} with the {c.test} — {c.verdict()}."
                 )
         lines.append(f"- What the plan expected: {self.plan.expected_results}")
+        if self.verdict is not None:
+            lines.append(
+                f"- Verdict on the hypothesis, from its success criterion: {self.verdict.outcome.upper()}. "
+                + " ".join(f"{check.rstrip('.')}." for check in self.verdict.checks)
+                + " A significant difference alone does not confirm the hypothesis: report this verdict as it is."
+            )
         lines += [f"- Note: {note}" for note in self.results.notes if not note.startswith("Warning: ")]
         return "\n".join(lines)
 
@@ -345,6 +393,12 @@ class Drafting:
             )
         else:
             lines.append(f"- No run failed: all {len(self.results.runs)} planned runs produced results.")
+        if self.edited:
+            lines.append(
+                f"- The researcher wrote or edited the experiment code by hand ({', '.join(self.edited)}) after the "
+                "Coder; where the code and the plan's procedure differ (prompts, token limits and the like), the "
+                "code is what ran."
+            )
         if len(self.plan.seeds) < 5:
             lines.append(
                 f"- Only {len(self.plan.seeds)} seeds per condition: the tests have little statistical power, so "
@@ -451,6 +505,7 @@ class Drafting:
     def reproducibility(self) -> str:
         b, r = self.bundle, self.results
         seeds = ", ".join(map(str, self.plan.seeds))
+        produced = list(dict.fromkeys(run.job_id for run in r.runs if run.status == "ok" and run.job_id))
         lines = [
             f"- Code: `{b.root}` (entry point `{b.entry_point}`, domain pack `{b.pack}`, "
             f"fingerprint `{b.fingerprint[:12]}`).",
@@ -459,11 +514,19 @@ class Drafting:
             + ".",
             f"- Seeds: {seeds}; every run writes its metrics to `runs/<condition>__<seed>.json`.",
             f"- Results: `{r.results_path}` (validated against the plan's results schema); tables: `{r.tables_path}`.",
-            f"- Slurm jobs: {', '.join(r.jobs) or 'none'}; GPU-hours requested: {r.gpu_hours_requested:g}.",
+            f"- Slurm jobs the results came from: {', '.join(produced) or 'none'}"
+            + (f" (all jobs: {', '.join(r.jobs)})" if set(r.jobs) - set(produced) else "")
+            + f"; GPU-hours requested: {r.gpu_hours_requested:g}.",
             f"- Smoke tests before the full runs: {', '.join(s.condition for s in b.smoke if s.ok) or 'none'}.",
         ]
+        if self.edited:
+            lines.append(
+                f"- Written or edited by the researcher: {', '.join(f'`{f}`' for f in self.edited)}; where it "
+                "differs from the procedure in Methods, the code is what ran."
+            )
         if b.fixes:
-            lines.append(f"- Automatic repairs before success: {len(b.fixes)} (listed in `{b.readme_path}`).")
+            when = "before the researcher's edits" if self.edited else "before success"
+            lines.append(f"- Automatic repairs {when}: {len(b.fixes)} (listed in `{b.readme_path}`).")
         return "\n".join(lines)
 
     # ---------------------------------------------------------------- audit
@@ -553,6 +616,7 @@ class Drafting:
 
     def write(self) -> None:
         ctx = self.ctx
+        self.judge_hypothesis()
         prose: dict[str, str] = self.keep_human_sections()
         todo = [s for s in PROSE if s not in prose]
         drafts = ctx.llm.parallel(self.draft, todo)
@@ -626,6 +690,8 @@ class Drafting:
                 figures=[ctx.relative(out / f) for f in figures.values()],
                 findings=self.findings,
                 numbers=used,
+                hypothesis_outcome=self.verdict.outcome if self.verdict is not None else "",
+                hypothesis_checks=self.verdict.checks if self.verdict is not None else [],
             ),
             meta={"review": ctx.relative(report_path), "prompts": self.provenance},
         )

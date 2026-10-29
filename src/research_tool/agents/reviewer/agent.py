@@ -222,7 +222,10 @@ class Reviewing:
     # ------------------------------------------------------------ material
     def plan_text(self) -> str:
         p = self.plan
-        return "\n".join([p.hypothesis, p.null_hypothesis, p.design, p.expected_results, *self.results.notes])
+        return "\n".join(
+            [p.hypothesis, p.null_hypothesis, p.design, p.expected_results, *self.results.notes]
+            + self.report.hypothesis_checks  # the Writer's verdict: its thresholds may be quoted
+        )
 
     def claims_text(self) -> str:
         return "\n".join(f"{c.text} {c.quote}" for c in self.km.claims if c.verified)
@@ -248,10 +251,17 @@ class Reviewing:
             p = self.values[f"p:{key}"].text
             if c.p_adjusted is not None:
                 p += f", {c.correction.capitalize()}-corrected {self.values[f'p_adj:{key}'].text}"
+            size = "".join(f", {self.values[k].text}" for k in (f"rel:{key}", f"pts:{key}") if k in self.values)
             lines.append(
                 f"- {c.analysis.capitalize()}: {c.condition} vs {c.baseline} on {c.metric}: difference "
-                f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}), {p} ({c.test}) "
+                f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}){size}, {p} ({c.test}) "
                 f"— {c.verdict()}"
+            )
+        if self.report.hypothesis_outcome:
+            lines.append(
+                f"- Verdict on the hypothesis, from its success criterion: {self.report.hypothesis_outcome.upper()}. "
+                + " ".join(f"{check.rstrip('.')}." for check in self.report.hypothesis_checks)
+                + " A report that calls the hypothesis supported when this verdict says otherwise is a major issue"
             )
         ok = sum(1 for r in self.results.runs if r.status == "ok")
         lines.append(f"- {ok} of {len(self.results.runs)} planned runs produced results")

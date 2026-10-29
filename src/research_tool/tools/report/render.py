@@ -27,6 +27,8 @@ _LINK_TARGET = re.compile(r"\]\([^)]*\)|https?://\S+")
 _NUMBER = re.compile(r"(?<![\w.@/])(?<![A-Za-z]-)(\d+(?:\.\d+)?)")
 # "95% CI {{ci:...}}" and "95% CI [{{ci:...}}]" render the label twice: the value already carries it
 _DOUBLE_CI = re.compile(r"95\s?%\s?(?:CI|confidence interval)[:,]?\s*(\[\s*)?(95% CI \[[^\[\]]*\])(?(1)\s*\])", re.I)
+# "p = {{p:...}}" renders "p = p = 0.008": the value already says "p ="
+_DOUBLE_P = re.compile(r"\bp\s*(?:=|<)\s*(?=p (?:=|<) )")
 UNRESOLVED = "[?]"  # what a number nobody could check becomes when it cannot simply be left out
 _UNRESOLVED_ASIDE = re.compile(r"\s*\([^()]*\[\?\][^()]*\)")
 
@@ -61,6 +63,16 @@ def value_table(plan: ExperimentPlan, results: ExperimentResults) -> dict[str, V
         if c.p_adjusted is not None:
             values[f"p_adj:{key}"] = Value(_p_text(c.p_adjusted), f"corrected p-value, {what}")
         values[f"d:{key}"] = Value(fmt(c.effect_size), f"effect size (Cohen's d), {what}")
+        base = results.summary(c.baseline, c.metric)
+        if base is not None and base.mean:
+            values[f"rel:{key}"] = Value(
+                f"{c.difference / abs(base.mean):+.1%}", f"relative change, {what}, as a share of the baseline mean"
+            )
+        mean = results.summary(c.condition, c.metric)
+        if base is not None and mean is not None and all(0 <= m <= 1 for m in (base.mean, mean.mean)):
+            values[f"pts:{key}"] = Value(
+                f"{c.difference * 100:+.1f} percentage points", f"the difference as percentage points, {what}"
+            )
     ok = sum(1 for r in results.runs if r.status == "ok")
     values["runs_ok"] = Value(str(ok), "experiment runs that produced results")
     values["runs_total"] = Value(str(len(results.runs)), "experiment runs planned")
@@ -76,7 +88,7 @@ def placeholders(template: str) -> list[str]:
 
 def render(template: str, values: dict[str, Value]) -> str:
     text = PLACEHOLDER.sub(lambda m: values[m.group(1)].text if m.group(1) in values else m.group(0), template)
-    return _DOUBLE_CI.sub(r"\2", text)
+    return _DOUBLE_P.sub("", _DOUBLE_CI.sub(r"\2", text))
 
 
 def plan_numbers(plan: ExperimentPlan) -> str:

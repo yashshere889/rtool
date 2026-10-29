@@ -46,6 +46,21 @@ def test_value_table_covers_summaries_and_comparisons() -> None:
     assert values["p_adj:acc:new"].text == "p = 0.010" and "p_adj:loss:new" in values
 
 
+def test_the_size_of_each_change_is_a_value() -> None:
+    values = value_table(plan(), results())
+    # acc: base 0.647, new 0.713 (both proportions): the hypothesis's thresholds are usually stated this way
+    assert values["rel:acc:new"].text == "+10.3%" and values["pts:acc:new"].text == "+6.7 percentage points"
+    assert "baseline mean" in values["rel:acc:new"].meaning
+
+
+def test_the_p_label_is_not_doubled() -> None:
+    """Seen on Barkla: 'p = p = 0.008' and 'Holm-corrected p = p = 0.008'."""
+    values = {"p:a:b": Value("p = 0.008", "p"), "p_adj:a:b": Value("p < 0.001", "p")}
+    assert render("(p = {{p:a:b}})", values) == "(p = 0.008)"
+    assert render("Holm-corrected p = {{p_adj:a:b}}", values) == "Holm-corrected p < 0.001"
+    assert render("a p-value of {{p:a:b}}", values) == "a p-value of p = 0.008"  # nothing doubled: left alone
+
+
 def test_render_and_citations() -> None:
     text = "New reached {{mean:acc:new}} ({{p:acc:new}}), unlike [@smith2020; @lee2021] and [@smith2020]."
     assert render(text, VALUES) == "New reached 0.718 (p = 0.010), unlike [@smith2020; @lee2021] and [@smith2020]."

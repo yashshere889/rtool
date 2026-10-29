@@ -6,7 +6,7 @@ The experiment itself is ``experiment.run(...)`` in experiment.py. This wrapper
 seeds every random generator, checks that the returned metrics match
 config.json, and writes PATH as JSON::
 
-    {"condition": ..., "seed": ..., "metrics": {...}, "seconds": ..., "smoke": ...}
+    {"condition": ..., "seed": ..., "metrics": {...}, "seconds": ..., "smoke": ..., "job_id": ...}
 
 Contract problems are printed as ``rtool-contract: ...`` and exit with code 3.
 Runs on Python 3.10 (the experiment image).
@@ -109,6 +109,8 @@ def main() -> int:
         "metrics": {str(k): v for k, v in ((k, as_number(v)) for k, v in metrics.items()) if v is not None},
         "seconds": round(time.time() - started, 2),
         "smoke": args.smoke,
+        # the job that really ran it, also when the array was resubmitted by hand
+        "job_id": os.environ.get("SLURM_ARRAY_JOB_ID") or os.environ.get("SLURM_JOB_ID", ""),
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -51,6 +51,9 @@ class Report(BaseModel):
     figures: list[str] = Field(default_factory=list)  # run-relative
     findings: list[Finding] = Field(default_factory=list)
     numbers: int = 0  # placeholders filled from the results
+    # the hypothesis's success criterion applied to the results ("" if there was no criterion to apply)
+    hypothesis_outcome: Literal["", "supported", "refuted", "inconclusive"] = ""
+    hypothesis_checks: list[str] = Field(default_factory=list)  # each condition of the criterion, measured
 
     def section(self, section_id: str) -> ReportSection | None:
         return next((s for s in self.sections if s.id == section_id), None)
@@ -108,6 +111,17 @@ class Review(BaseModel):
 class TitleAbstract(BaseModel):
     title: str = Field(description="Informative title, at most 15 words")
     abstract: str = Field(description="One paragraph; results only as {{placeholders}}")
+
+
+class HypothesisVerdict(BaseModel):
+    """The success criterion, condition by condition, against the computed results (reasons before the verdict)."""
+
+    checks: list[str] = Field(
+        min_length=1,
+        description="One per condition in the success criterion: the threshold, the measured value it applies to, "
+        "and whether it holds",
+    )
+    outcome: Literal["inconclusive", "supported", "refuted"]
 
 
 class Contradiction(BaseModel):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import os
 import random
 import shutil
 import subprocess
@@ -34,6 +35,7 @@ from research_tool.agents.coder.playbook import (
 from research_tool.agents.coder.results import (
     aggregate,
     analysis_notes,
+    collect,
     correction_used,
     render_figures,
     render_tables,
@@ -343,6 +345,18 @@ def test_aggregate_and_render(tmp_path: Path) -> None:
     assert wilcoxon.test == "Wilcoxon signed-rank" and wilcoxon.p_value == pytest.approx(0.25)
 
 
+def test_a_run_file_names_the_job_that_ran_it(tmp_path: Path) -> None:
+    """Seen on Barkla: runs resubmitted by hand were credited to rtool's failed job."""
+    p = plan()
+    for i, (condition, seed) in enumerate((c.name, s) for c in p.run_conditions() for s in p.seeds):
+        record = {"condition": condition, "seed": seed, "metrics": {"acc": 0.5 + i / 100, "loss": 0.5}}
+        if condition == "new":
+            record["job_id"] = "222"
+        (tmp_path / f"{condition}__{seed}.json").write_text(json.dumps(record))
+    runs = collect(p, tmp_path, job_of={f"{c.name}__{s}.json": "111" for c in p.run_conditions() for s in p.seeds})
+    assert {r.condition: r.job_id for r in runs} == {"base": "111", "new": "222"}
+
+
 def test_results_without_seed_variation_are_flagged() -> None:
     fixed = [
         RunRecord(condition=c, seed=s, status="ok", metrics={"acc": v, "loss": 1 - v})
@@ -502,7 +516,9 @@ def test_harness_contract(tmp_path: Path) -> None:
     assert subprocess.run(cmd, cwd=tmp_path, capture_output=True, text=True).returncode == 0
     first = json.loads(out.read_text())
     assert set(first["metrics"]) == {"acc"} and first["seed"] == 3  # seeded: deterministic
-    subprocess.run(cmd, cwd=tmp_path, check=True, capture_output=True)
+    env = {**os.environ, "SLURM_ARRAY_JOB_ID": "4242"}
+    subprocess.run(cmd, cwd=tmp_path, check=True, capture_output=True, env=env)
+    assert json.loads(out.read_text())["job_id"] == "4242"
     assert math.isclose(json.loads(out.read_text())["metrics"]["acc"], first["metrics"]["acc"])
     (tmp_path / "experiment.py").write_text("def run(condition, seed, resources, smoke, workdir):\n    return {}\n")
     broken = subprocess.run(cmd, cwd=tmp_path, capture_output=True, text=True)

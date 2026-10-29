@@ -19,7 +19,7 @@ from research_tool.core.services import Services
 from research_tool.llm.client import LLMClient
 from research_tool.llm.mock_backend import MockLLM
 from research_tool.llm.types import ChatRequest
-from research_tool.schemas.code import CodeBundle, ExperimentResults, FixRecord
+from research_tool.schemas.code import CodeBundle, CodeFile, ExperimentResults, FixRecord
 from research_tool.schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord, Topic
 from research_tool.schemas.report import AuditAnswer, CodeAuditDraft, ReviewDraft, ReviewIssueDraft, Rubric
 from research_tool.testing.harness import make_run, queue
@@ -66,6 +66,7 @@ def seed(
     stages: list[dict] | None = None,
     fixes: list | None = None,
     primary: str = "acc",
+    files: list | None = None,
 ) -> RunHandle:
     run = make_run(
         runs_root,
@@ -116,7 +117,7 @@ def seed(
         complete=all(r.status == "ok" for r in runs),
         results_path="results.json",
     )
-    bundle = CodeBundle(root="code", files=[], pack="generic", readme_path="README.md", fixes=fixes or [])
+    bundle = CodeBundle(root="code", files=files or [], pack="generic", readme_path="README.md", fixes=fixes or [])
     store = ArtifactStore(run.artifacts_dir)
     for name, value in [
         ("corpus", corpus),
@@ -139,8 +140,18 @@ def honest(request: ChatRequest) -> str:
     return text
 
 
+VERDICT = {
+    "checks": ["The criterion asks for a gain of at least 20%; the gain was +10.3%: not met"],
+    "outcome": "refuted",
+}
+
+
 def writer_llm(
-    section: Any = honest, fix: Any = honest, issues: list[dict] | None = None, audit: Any = None
+    section: Any = honest,
+    fix: Any = honest,
+    issues: list[dict] | None = None,
+    audit: Any = None,
+    verdict: dict = VERDICT,
 ) -> MockLLM:
     review = {
         "scores": {"soundness": 4, "evidence": 4, "clarity": 4, "reproducibility": 4, "limitations": 4},
@@ -156,6 +167,7 @@ def writer_llm(
             lambda r: "Write the title and the abstract" in r.messages[-1].content,
             {"title": "New beats base", "abstract": "Across {{runs_ok}} runs the new method won."},
         )
+        .add(lambda r: r.messages[-1].content.startswith("Decide what the experiment says"), verdict)
         .add(lambda r: "Check the report sections below" in r.messages[-1].content, {"items": []})
         .add(lambda r: "Review this research report" in r.messages[-1].content, review)
         .add(is_audit, audit or auditor())
@@ -179,6 +191,41 @@ def test_writer_repairs_typed_numbers_and_unknown_citations(runs_root: Path) -> 
     text = (run.root / report.markdown_path).read_text()
     assert "nobody2024" not in text and "reached 0.713 (p = 0.010)" in text  # the number came from the results
     assert report.citations == ["smith2020"] and "r = 0.41" not in text  # nothing invented
+
+
+def test_the_verdict_comes_from_the_success_criterion_not_from_significance(runs_root: Path) -> None:
+    """Seen on Barkla: a significant 7.5% cut was written up as supporting a hypothesis that asked for 30%."""
+    run = seed(runs_root)
+    llm = writer_llm()
+    Engine(run, services(run, llm)).advance()
+    store = ArtifactStore(run.artifacts_dir)
+    report = store.get("report")
+    assert report.hypothesis_outcome == "refuted" and report.hypothesis_checks == VERDICT["checks"]
+    prompts = [r.messages[-1].content for r in llm.calls]
+    judge = next(t for t in prompts if t.startswith("Decide what the experiment says"))
+    # the criterion and the size of the change, with numbers: significance alone cannot decide it
+    assert "## Success criterion" in judge and "relative change +10.3%" in judge and "i.e. +6.7 percentage" in judge
+    assert prompts.index(judge) == 0  # before any prose, so every section states the same verdict
+    for title in ("Results", "Discussion", "Conclusion"):  # each can state the verdict and the size of the change
+        prompt = next(t for t in prompts if t.startswith(f'Write the "{title}" section'))
+        assert "Verdict on the hypothesis, from its success criterion: REFUTED" in prompt
+        assert "{{rel:acc:new}}" in prompt and "Success criterion (fixed before the experiment ran)" in prompt
+    review = next(t for t in prompts if t.startswith("Review this research report"))
+    assert "Verdict on the hypothesis, from its success criterion: REFUTED" in review
+
+
+def test_code_written_by_the_researcher_is_disclosed(runs_root: Path) -> None:
+    hand = CodeFile(path="experiment.py", sha256="x", lines=9, origin="human")
+    fixes = [FixRecord(round=1, phase="smoke", signature="traceback", action="rewrote experiment.py (LLM)")]
+    run = seed(runs_root, stages=[{"id": "report", "agent": "writer"}], files=[hand], fixes=fixes)
+    llm = writer_llm()
+    Engine(run, services(run, llm)).advance()
+    report = ArtifactStore(run.artifacts_dir).get("report")
+    repro = report.section("reproducibility").template
+    assert "Written or edited by the researcher: `experiment.py`" in repro
+    assert "Automatic repairs before the researcher's edits: 1" in repro
+    discussion = next(r.messages[-1].content for r in llm.calls if '"Discussion"' in r.messages[-1].content)
+    assert "The researcher wrote or edited the experiment code by hand (experiment.py)" in discussion
 
 
 def test_writer_strips_what_repairs_cannot_fix(runs_root: Path) -> None:
