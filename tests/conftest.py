@@ -26,6 +26,7 @@ def _isolated_user_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     empty = tmp_path / "empty-config.yaml"
     empty.write_text("{}\n", encoding="utf-8")
     monkeypatch.setenv("RTOOL_CONFIG", str(empty))
+    monkeypatch.setenv("RTOOL_SECRETS", str(tmp_path / "no-secrets.env"))  # nor real API keys
 
 
 # ---------------------------------------------------------------- test agents

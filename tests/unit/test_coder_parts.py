@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import random
 import shutil
 import subprocess
 import sys
@@ -32,9 +33,12 @@ from research_tool.agents.coder.playbook import (
 )
 from research_tool.agents.coder.results import (
     aggregate,
+    analysis_notes,
+    correction_used,
     render_figures,
     render_tables,
     results_payload,
+    translated_tests,
     validate,
     variation_notes,
 )
@@ -64,7 +68,7 @@ def test_tests_on_a_known_example() -> None:
     assert stats.wilcoxon_signed_rank(a, b).p_value == pytest.approx(0.25)  # smallest possible with 3 pairs
     assert stats.mann_whitney(a, b).p_value == pytest.approx(0.1)  # complete separation, 3 vs 3
     same = stats.paired_t([1.0, 1.0], [1.0, 1.0])
-    assert same.p_value == 1.0 and same.difference == 0  # no noise, no difference
+    assert same.p_value == 1.0 and same.difference == 0 and same.no_variation  # identical: no difference claimed
     assert stats.holm([0.01, 0.04, 0.03, None]) == pytest.approx([0.03, 0.06, 0.06, None])
 
 
@@ -84,6 +88,80 @@ def test_no_variation_across_seeds_is_never_significant() -> None:
     assert not stats.flat([0.3]) and not stats.flat([0.3, 0.3001])
     one_fixed = stats.welch_t([0.91, 0.93, 0.92], [0.90] * 3)  # a deterministic baseline is still testable
     assert one_fixed.p_value is not None and not one_fixed.no_variation
+
+
+def test_no_variation_across_seeds_gives_no_p_value() -> None:
+    """Seen on Barkla: 0.6 three times has a computed sd of 7e-17, which gave p = 1e-32 and d = -5.9e15."""
+    flat, base = [1.0 - (6 - 2) * 0.1] * 3, [1.0] * 3
+    assert stats.stdev(flat) == 0 and stats.mean_ci(flat) == (pytest.approx(0.6), pytest.approx(0.6))
+    for result in (stats.paired_t(flat, base), stats.welch_t(flat, base)):
+        assert result.p_value is None and result.effect_size is None and result.statistic is None
+        assert result.difference == pytest.approx(-0.4)
+    tiny = stats.paired_t([1e-9, 2e-9, 3e-9], [0.0, 0.0, 0.0])  # small values still have real spread
+    assert tiny.p_value is not None and tiny.effect_size is not None
+
+
+def test_the_plans_tests_are_translated_and_said_so() -> None:
+    barkla = plan(test="ANOVA")
+    barkla.statistical_tests += [
+        barkla.statistical_tests[0].model_copy(update={"test": "Tukey’s HSD"}),
+        barkla.statistical_tests[0].model_copy(update={"test": "Kruskal-Wallis"}),
+    ]
+    summaries, comparisons = aggregate(barkla, records())
+    assert {c.test for c in comparisons} == {"paired t-test"}  # the first test decides: ANOVA -> t-tests
+    assert all(c.p_adjusted is not None for c in comparisons)  # two comparisons: corrected although "none"
+    assert correction_used(barkla, comparisons) == "holm"
+    assert translated_tests(barkla) == ["ANOVA", "Tukey’s HSD", "Kruskal-Wallis"]
+    notes = analysis_notes(barkla, comparisons)
+    assert notes[0] == "each condition is compared with the baseline using the paired t-test"
+    assert "the plan named ANOVA, Tukey’s HSD, Kruskal-Wallis; rtool runs pairwise t-tests" in notes[1]
+    assert notes[2] == (
+        "p-values are corrected with Holm's method within the confirmatory and within the exploratory comparisons "
+        "(2 corrected in all)"
+    )
+    rank = aggregate(plan(test="Kruskal-Wallis H test"), records())[1]
+    assert {c.test for c in rank} == {"Mann-Whitney U"}
+    single = plan()
+    single.metrics = single.metrics[:1]
+    one = aggregate(single, records())[1]
+    assert len(one) == 1 and one[0].p_adjusted is None and correction_used(single, one) == ""
+
+
+def test_flat_results_are_not_called_significant() -> None:
+    flat = [
+        RunRecord(condition=c, seed=s, status="ok", metrics={"acc": v, "loss": 1 - v})
+        for c, v in (("base", 1.0), ("new", 0.6))
+        for s in (0, 1, 2)
+    ]
+    _, comparisons = aggregate(plan(), flat)
+    assert all(c.p_value is None and not c.significant and c.better is None for c in comparisons)
+    assert comparisons[0].verdict().startswith("no test possible: the results did not vary across seeds")
+    assert analysis_notes(plan(), comparisons)[-1].startswith("no test was possible for acc, loss")
+
+
+def shared_noise(level: float, seeds: range) -> list[float]:
+    """LLM "simulation" code: a hardcoded level per condition plus noise seeded by the seed alone."""
+    return [level + random.Random(seed).uniform(-0.01, 0.01) for seed in seeds]
+
+
+def test_a_constant_paired_difference_is_never_significant() -> None:
+    base, new = shared_noise(0.65, range(3)), shared_noise(0.72, range(3))  # the differences are exactly equal
+    jittered = shared_noise(0.18, range(6)), shared_noise(0.10, range(6))  # equal up to floating-point rounding
+    for result in (
+        stats.paired_t(new, base),  # sd of the differences 0: p = 0 before
+        stats.paired_t(*jittered),  # sd 9e-18: p = 3e-81 before
+        stats.wilcoxon_signed_rank(*jittered),  # six equal differences: p = 0.031 before
+    ):
+        assert result.p_value is None and result.constant_difference and not result.no_variation
+        assert result.statistic is None and result.effect_size is None and result.ci_low == result.ci_high
+    assert stats.paired_t(new, base).difference == pytest.approx(0.07)
+    same = stats.paired_t(base, list(base))  # both vary but never differ: no difference claimed either way
+    assert same.p_value == 1.0 and same.constant_difference
+    independent = [0.72 + random.Random(f"new-{seed}").uniform(-0.01, 0.01) for seed in range(3)]
+    measured = stats.paired_t(independent, base)  # noise drawn per condition: a real test, and still significant
+    assert measured.p_value is not None and measured.p_value < stats.ALPHA and not measured.constant_difference
+    assert stats.flat([1e-17, -1e-17], scale=0.7) and not stats.flat([1e-17, -1e-17])  # rounding at the inputs' size
+    assert not stats.flat([0.07, 0.08], scale=0.7)
 
 
 # --------------------------------------------------------------- playbook
@@ -210,11 +288,15 @@ def test_smoke_warnings() -> None:
 
     assert smoke_warnings([smoke("base", 0, 0.5), smoke("new", 0, 0.6), smoke("base", 1, 0.52)], "base") == []
     seedless = smoke_warnings([smoke("base", 0, 0.5), smoke("new", 0, 0.6), smoke("base", 1, 0.5)], "base")
-    assert len(seedless) == 1 and "`base` gave identical smoke metrics with seeds 0 and 1" in seedless[0]
+    assert len(seedless) == 1 and "`base` gave exactly the same metrics with seeds 0 and 1" in seedless[0]
     blind = smoke_warnings([smoke("base", 0, 0.5), smoke("new", 0, 0.5), smoke("base", 1, 0.52)], "base")
     assert len(blind) == 1 and "all 2 conditions gave identical smoke metrics" in blind[0]
     assert smoke_warnings([smoke("base", 0, 0.5), smoke("base", 1, 0.52)], "base") == []  # baseline only
     assert smoke_warnings([], "base") == []
+    timed = [smoke("base", 0, 0.5), smoke("new", 0, 0.6), smoke("base", 1, 0.5)]
+    for i, r in enumerate(timed):
+        r.metrics["seconds"] = 1.0 + i  # timings always differ a little: only the planned metrics are compared
+    assert smoke_warnings(timed, "base") == [] and len(smoke_warnings(timed, "base", ["acc", "loss"])) == 1
 
 
 def test_file_listing(tmp_path: Path) -> None:
@@ -330,6 +412,25 @@ def test_a_single_comparison_is_not_corrected() -> None:
     (only,) = aggregate(p, records())[1]
     assert only.correction == "none" and only.p_adjusted is None and only.significant
     assert only.analysis == "confirmatory"
+
+
+def test_results_with_a_fixed_offset_are_flagged() -> None:
+    offset = [
+        RunRecord(condition=c, seed=s, status="ok", metrics={"acc": acc, "loss": 1 - acc})
+        for c, level in (("base", 0.65), ("new", 0.72))
+        for s, acc in enumerate(shared_noise(level, range(3)))
+    ]
+    for p in (plan(correction="holm"), plan(test="Wilcoxon signed-rank test")):
+        summaries, comparisons = aggregate(p, offset)
+        assert comparisons and all(c.constant_difference and c.p_value is None for c in comparisons)
+        assert not any(c.significant or c.better or c.no_seed_variation for c in comparisons)
+    assert variation_notes(p, offset, comparisons) == [
+        "not testable, so not significant: `new` vs `base` on acc (difference 0.07), `new` vs `base` on loss "
+        "(difference -0.07) (the difference is identical for every seed: it may be a fixed offset rather than a "
+        "measured effect)"
+    ]
+    assert "| n/a (same difference for every seed) |" in render_tables(p, offset, summaries, comparisons, {})
+    assert not any(c.constant_difference for c in aggregate(plan(), records())[1])  # differences that vary
 
 
 def test_partial_results_still_aggregate() -> None:

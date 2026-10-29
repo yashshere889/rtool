@@ -21,7 +21,7 @@ from research_tool.llm.mock_backend import MockLLM
 from research_tool.llm.types import ChatRequest
 from research_tool.schemas.code import CodeBundle, ExperimentResults, FixRecord
 from research_tool.schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord, Topic
-from research_tool.schemas.report import AuditAnswer, CodeAuditDraft, ReviewDraft, ReviewIssue, Rubric
+from research_tool.schemas.report import AuditAnswer, CodeAuditDraft, ReviewDraft, ReviewIssueDraft, Rubric
 from research_tool.testing.harness import make_run, queue
 from research_tool.testing.samples import sample_plan as plan
 from research_tool.testing.samples import sample_records as records
@@ -187,8 +187,23 @@ def test_writer_strips_what_repairs_cannot_fix(runs_root: Path) -> None:
     result = Engine(run, services(run, writer_llm(section=stubborn, fix=stubborn))).advance()
     assert result.outcome is Outcome.DONE
     report = ArtifactStore(run.artifacts_dir).get("report")
-    assert {f.kind for f in report.findings} == {"number"} and all(f.severity == "minor" for f in report.findings)
-    assert "0.99" not in (run.root / report.markdown_path).read_text()
+    numbers = [f for f in report.findings if f.kind == "number"]
+    assert numbers and all(f.severity == "minor" for f in numbers)
+    # what is left in mid-sentence stays visible, and is a major finding until someone fixes it
+    unresolved = [f for f in report.findings if f.kind == "placeholder"]
+    assert unresolved and all(f.severity == "major" and "show as [?]" in f.detail for f in unresolved)
+    text = (run.root / report.markdown_path).read_text()
+    assert "0.99" not in text and "It reached [?]." in text
+
+
+def test_an_unchecked_number_in_brackets_is_left_out(runs_root: Path) -> None:
+    run = seed(runs_root, stages=[{"id": "report", "agent": "writer"}])
+    aside = lambda r: honest(r) + " The effect was clear (p < 0.001)."  # noqa: E731
+    Engine(run, services(run, writer_llm(section=aside, fix=aside))).advance()
+    report = ArtifactStore(run.artifacts_dir).get("report")
+    assert all(f.severity == "minor" for f in report.findings)
+    text = (run.root / report.markdown_path).read_text()
+    assert "The effect was clear." in text and "[?]" not in text and "0.001" not in text
 
 
 def test_writer_asks_for_missing_conditions(runs_root: Path) -> None:
@@ -205,7 +220,13 @@ def test_writer_asks_for_missing_conditions(runs_root: Path) -> None:
 
 def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
     run = seed(runs_root)
-    issue = {"section": "results", "problem": "Name the test", "suggestion": "say paired t-test", "target": "report"}
+    issue = {
+        "section": "results",
+        "problem": "Name the test",
+        "suggestion": "say paired t-test",
+        "target": "report",
+        "severity": "minor",
+    }
     llm = writer_llm(issues=[issue])
     result = Engine(run, services(run, llm)).advance()
     assert result.outcome is Outcome.WAITING_GATE and result.open_gates[0]["gate"] == "final_report"
@@ -232,6 +253,26 @@ def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
     assert "code_audit.j2" in store.envelope("review").meta["prompts"]
     queue(run, ActionKind.APPROVE)
     assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.DONE
+
+
+def test_rejecting_the_final_report_sends_it_back_to_the_writer(runs_root: Path) -> None:
+    run = seed(runs_root)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    queue(run, ActionKind.REJECT, payload={"feedback": "Shorten the discussion"})
+    llm = writer_llm()
+    result = Engine(run, services(run, llm)).advance()
+    assert result.outcome is Outcome.WAITING_GATE and result.open_gates[0]["gate"] == "final_report"
+    from research_tool.core.engine import load_status
+
+    _, stages, _ = load_status(run)
+    assert stages["report"].attempt == 2 and stages["review"].attempt == 3  # placeholder round, then a real review
+    drafts = [r for r in llm.calls if "section of a research report" in r.messages[-1].content]
+    assert drafts and all("Shorten the discussion" in r.messages[-1].content for r in drafts)  # the Writer heard it
+    reviews = [r for r in llm.calls if "Review this research report" in r.messages[-1].content]
+    assert len(reviews) == 3  # one full review (3 samples), none wasted on the rejected version
+    review = ArtifactStore(run.artifacts_dir).get("review")
+    assert review.verdict == "accept" and not review.summary.startswith("Sent back")
+    assert "review_returned_to_writer" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
 
 
 def test_major_experiment_problems_go_back_upstream(runs_root: Path) -> None:
@@ -353,7 +394,9 @@ def test_failed_checks_need_a_human(runs_root: Path) -> None:
 def test_issues_need_a_majority() -> None:
     def draft(*problems: str, score: int = 4) -> ReviewDraft:
         scores = Rubric(soundness=score, evidence=4, clarity=4, reproducibility=4, limitations=4)
-        issues = [ReviewIssue(section="results", problem=p, suggestion="fix it") for p in problems]
+        issues = [
+            ReviewIssueDraft(section="results", problem=p, suggestion="fix it", severity="minor") for p in problems
+        ]
         return ReviewDraft(scores=scores, summary=f"score {score}", issues=issues)
 
     reviewing = Reviewing.__new__(Reviewing)  # consensus() only needs the config
@@ -417,3 +460,70 @@ def test_long_code_keeps_every_signature_and_run() -> None:
         "\n".join(f"{i:>4}  {t}" for i, t in enumerate(EXPERIMENT.splitlines(), 1)),
         0,
     )
+
+
+def section_value(report: Any, section_id: str, template: str) -> dict:
+    value = report.model_dump(mode="json")
+    next(s for s in value["sections"] if s["id"] == section_id)["template"] = template
+    return value
+
+
+def test_hand_edits_are_checked_reviewed_again_and_kept_by_the_writer(runs_root: Path) -> None:
+    from research_tool.core.actions import ActionInbox
+    from research_tool.core.engine import load_status
+
+    run = seed(runs_root)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    store = ArtifactStore(run.artifacts_dir)
+    report = store.get("report")
+    mine = "In our hands {{mean:acc:new}} beat the baseline, as expected [@smith2020].\n\nLimitations. Only 12 nights."
+    edit = {"artifact": "report", "base_version": 1, "value": section_value(report, "discussion", mine)}
+    queue(run, ActionKind.EDIT, payload={**edit, "value": section_value(report, "methods", "My methods")})
+    queue(run, ActionKind.EDIT, payload={**edit, "value": section_value(report, "discussion", "See [@nobody].")})
+    queue(run, ActionKind.EDIT, payload=edit)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    outcomes = [p["outcome"] for p in ActionInbox(run.actions_dir).processed()]
+    assert "written by rtool" in outcomes[0]["error"] and "unknown citation key @nobody" in outcomes[1]["error"]
+    assert outcomes[2]["status"] == "applied" and outcomes[2]["stale"] == ["review"]
+
+    edited = store.get("report")
+    discussion = edited.section("discussion")
+    assert discussion is not None and discussion.origin == "human" and discussion.template == mine
+    assert any(f.kind == "number" and "12" in f.detail for f in edited.findings)
+    markdown = (run.root / edited.markdown_path).read_text()
+    assert "In our hands" in markdown and "{{" not in markdown  # rendered again, numbers filled in
+    _, stages, _ = load_status(run)
+    assert stages["review"].attempt == 2  # the edited report was reviewed again
+    assert not next(c for c in store.get("review").checks if c.name == "numbers trace to the results").ok
+
+    final = store.get("final_report")  # the researcher's last word, at the open checkpoint
+    value = section_value(final, "conclusion", "We conclude that {{mean:acc:new}} is better.")
+    queue(run, ActionKind.EDIT, payload={"artifact": "final_report", "base_version": 2, "value": value})
+    Engine(run, services(run, writer_llm())).advance()
+    _, stages, _ = load_status(run)
+    assert stages["review"].gate.summary["artifacts"]["final_report"] == 3  # type: ignore[union-attr]
+
+    queue(run, ActionKind.REJECT, payload={"feedback": "Tighten the introduction"})  # back to the Writer
+    llm = writer_llm()
+    assert Engine(run, services(run, llm)).advance().outcome is Outcome.WAITING_GATE
+    again = store.get("report")
+    assert again.section("discussion").template == mine and again.section("discussion").origin == "human"  # type: ignore[union-attr]
+    drafted = [r.messages[-1].content for r in llm.calls if "section of a research report" in r.messages[-1].content]
+    assert drafted and not any('"Discussion"' in text for text in drafted)  # the researcher's section was not redrafted
+    assert "report_human_sections_kept" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+
+
+def test_the_reviewer_rewrites_sections_with_unchecked_values(runs_root: Path) -> None:
+    run = seed(runs_root)
+    stubborn = lambda r: honest(r) + " It reached 0.99."  # noqa: E731
+    Engine(run, services(run, writer_llm(section=stubborn, fix=stubborn))).advance()
+    store = ArtifactStore(run.artifacts_dir)
+    assert "[?]" in (run.root / store.get("report").markdown_path).read_text()
+    review = store.get("review")
+    unresolved = [i for i in review.issues if "shown as [?]" in i.problem]
+    assert unresolved and all(i.severity == "major" for i in unresolved)
+    assert set(review.edited_sections) >= {i.section for i in unresolved}  # rewritten: "... Edited."
+    final = (run.root / store.get("final_report").markdown_path).read_text()
+    assert "[?]" not in final
+    check = next(c for c in review.checks if c.name == "no unresolved values ([?])")
+    assert check.ok  # judged on the final report, after the edits

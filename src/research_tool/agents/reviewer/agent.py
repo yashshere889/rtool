@@ -36,8 +36,10 @@ from pydantic import BaseModel, Field
 
 from ...core.agent import Agent
 from ...core.context import AgentContext
+from ...core.editing import EditContext, EditResult, artifact_editor
 from ...core.fs import atomic_write_text
 from ...core.registry import register_agent
+from ...core.state import FeedbackKind
 from ...llm.client import LLMOutputError
 from ...llm.prompts import PromptLibrary
 from ...schemas.code import CodeBundle, ExperimentResults
@@ -59,14 +61,18 @@ from ...schemas.report import (
     Rubric,
     Severity,
 )
+from ...tools.report.editing import edit_report
 from ...tools.report.render import (
+    UNRESOLVED,
     assemble,
     bib_keys,
     bibtex_subset,
     citation_keys,
+    plan_numbers,
     problems,
     reference_list,
     render,
+    unresolved_count,
     value_table,
 )
 from ..common import SYSTEM
@@ -82,6 +88,15 @@ class ReviewerConfig(BaseModel):
     min_score: float = Field(default=3.0, ge=1, le=5)  # every median rubric score must reach this to accept
     repair_rounds: int = Field(default=1, ge=0, le=3)
     max_code_chars: int = Field(default=32000, ge=2000)  # experiment.py shown to the code audit (~8k tokens)
+
+
+UNRESOLVED_CHECK = f"no unresolved values ({UNRESOLVED})"
+
+
+def unresolved_check(sections: list[ReportSection]) -> Check:
+    """Numbers the Writer could not check show as [?]: never a finished report."""
+    found = [s.id for s in sections if unresolved_count(s.template)]
+    return Check(name=UNRESOLVED_CHECK, ok=not found, detail=f"in: {', '.join(found)}" if found else "")
 
 
 def similar(a: str, b: str) -> bool:
@@ -176,6 +191,12 @@ class ReviewerAgent(Agent):
         Reviewing(ctx, self.config).review()
 
 
+@artifact_editor("final_report")
+def edit(value: dict[str, Any], ctx: EditContext) -> EditResult:
+    """The researcher's last word on the final report (it is not reviewed again)."""
+    return edit_report(value, ctx)
+
+
 class Reviewing:
     def __init__(self, ctx: AgentContext, cfg: ReviewerConfig) -> None:
         self.ctx, self.cfg = ctx, cfg
@@ -207,7 +228,7 @@ class Reviewing:
         return "\n".join(f"{c.text} {c.quote}" for c in self.km.claims if c.verified)
 
     def allowed_numbers(self, section: ReportSection, original: str = "") -> str:
-        material = [self.plan_text(), original]
+        material = [self.plan_text(), plan_numbers(self.plan), original]
         if section.id not in RESULT_SECTIONS:
             material.append(self.claims_text())
         return "\n".join(material)
@@ -223,18 +244,14 @@ class Reviewing:
             "all others are exploratory and must not be presented as the main finding or as confirming the hypothesis"
         ]
         for c in sorted(self.results.comparisons, key=lambda c: c.analysis != "confirmatory"):
-            verdict = (
-                "not significant"
-                if not c.significant
-                else ("significantly better" if c.better else "significantly worse")
-            )
             key = f"{c.metric}:{c.condition}"
             p = self.values[f"p:{key}"].text
             if c.p_adjusted is not None:
                 p += f", {c.correction.capitalize()}-corrected {self.values[f'p_adj:{key}'].text}"
             lines.append(
                 f"- {c.analysis.capitalize()}: {c.condition} vs {c.baseline} on {c.metric}: difference "
-                f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}), {p} ({c.test}) — {verdict}"
+                f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}), {p} ({c.test}) "
+                f"— {c.verdict()}"
             )
         ok = sum(1 for r in self.results.runs if r.status == "ok")
         lines.append(f"- {ok} of {len(self.results.runs)} planned runs produced results")
@@ -277,6 +294,13 @@ class Reviewing:
                 detail=f"{ok} of {len(self.results.runs)} runs produced results",
             )
         )
+        found.append(
+            Check(
+                name="results come from a real experiment",
+                ok=not self.results.warnings,
+                detail="; ".join(self.results.warnings[:2]),
+            )
+        )
         tables = report.section("results_tables")
         missing = [c.name for c in self.plan.run_conditions() if tables is None or f"`{c.name}`" not in tables.template]
         found.append(
@@ -300,6 +324,7 @@ class Reviewing:
         found.append(Check(name="reproducible", ok=not absent, detail=f"missing: {absent}" if absent else ""))
         majors = [f.detail for f in report.findings if f.severity == "major"]
         found.append(Check(name="no major findings left by the writer", ok=not majors, detail="; ".join(majors[:3])))
+        found.append(unresolved_check(report.sections))
         return found
 
     # ---------------------------------------------------------- code audit
@@ -432,7 +457,7 @@ class Reviewing:
             if len(raised_by) >= need:
                 majors = sum(1 for m in members if m.severity == "major")
                 severity = "major" if majors * 2 > len(members) else "minor"
-                issues.append(representative.model_copy(update={"severity": severity}))
+                issues.append(ReviewIssue.model_validate(representative.model_dump() | {"severity": severity}))
         middle = min(drafts, key=lambda d: sum(abs(getattr(d.scores, n) - scores[n]) for n in scores))
         return scores, issues, middle.summary
 
@@ -451,13 +476,18 @@ class Reviewing:
             text = self.ctx.llm.chat(prompt, profile="write", system=SYSTEM).text.strip()
             text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith(("#", "```"))).strip()
             unchanged = " ".join(text.split()) == " ".join(section.template.split())
-            if text and not unchanged and not self.section_problems(section, text, original=section.template):
+            clean = not unresolved_count(text) and not self.section_problems(section, text, original=section.template)
+            if text and not unchanged and clean:
                 return text
         return None  # no acceptable rewrite: the issue stays open for the human
 
     # ---------------------------------------------------------------- main
     def review(self) -> None:
         ctx = self.ctx
+        rejections = [f.text for f in ctx.feedback if f.kind is FeedbackKind.HUMAN_REJECTION]
+        if rejections:
+            self.return_to_writer(rejections)
+            return
         checks = self.checks()
         audit, audit_check, audits = self.audit()
         checks.append(audit_check)
@@ -468,8 +498,25 @@ class Reviewing:
         scores, issues, summary = self.consensus(drafts)
 
         sections = {s.id: s for s in self.report.sections}
+        issues += [  # the Writer's unchecked numbers are always worth a rewrite
+            ReviewIssue(
+                section=s.id,
+                problem=f"contains values that could not be checked, shown as {UNRESOLVED}",
+                suggestion="rewrite those sentences with the placeholders given, or leave the number out",
+                severity="major",
+            )
+            for s in self.report.sections
+            if unresolved_count(s.template) and s.origin != "rtool"
+        ]
         textual = [i for i in issues if i.target == "report"]
-        to_edit = sorted({i.section for i in textual if i.section in EDITABLE and i.section in sections})
+        # sections the researcher wrote are not rewritten: their issues stay open for them
+        to_edit = sorted(
+            {
+                i.section
+                for i in textual
+                if i.section in EDITABLE and i.section in sections and sections[i.section].origin != "human"
+            }
+        )
         rewrites = ctx.llm.parallel(
             lambda sid: self.edit(sections[sid], [i for i in textual if i.section == sid]), to_edit
         )
@@ -500,6 +547,7 @@ class Reviewing:
             requests.append("code_bundle: code audit — " + ", ".join(f.label for f in sent))
 
         final_sections = [sections[s.id] for s in self.report.sections]
+        checks = [unresolved_check(final_sections) if c.name == UNRESOLVED_CHECK else c for c in checks]
         out = ctx.workspace.mkdir("final")
         self.copy_figures(out)
         cited = citation_keys("\n".join(s.template for s in final_sections))
@@ -551,6 +599,22 @@ class Reviewing:
             }
         )
         ctx.outputs.put("final_report", final, meta={"review": ctx.relative(final_path)})
+
+    def return_to_writer(self, rejections: list[str]) -> None:
+        """The researcher rejected the final report: another round of writing first, then a fresh review.
+
+        No review is done now (it would be thrown away). The stage still has to
+        produce its outputs, so it stages a short placeholder review and the
+        unchanged report; the change request makes the engine re-run the Writer
+        with the feedback and then this stage.
+        """
+        ctx = self.ctx
+        reason = "researcher: " + " / ".join(rejections)
+        ctx.request_change(artifact="report", reason=reason, required_changes=rejections)
+        summary = "Sent back to the Writer at the researcher's request: " + "; ".join(rejections)
+        ctx.outputs.put("review", Review(verdict="needs_human", summary=summary, change_requests=[summary]))
+        ctx.outputs.put("final_report", self.report)
+        ctx.emit("review_returned_to_writer", feedback=rejections)
 
     def copy_figures(self, out: Any) -> None:
         target = out / "figures"

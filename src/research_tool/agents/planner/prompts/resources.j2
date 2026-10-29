@@ -7,6 +7,13 @@ Procedure:
 {{ loop.index }}. {{ step }}
 {% endfor %}
 Datasets mentioned in the collected literature: {{ known_datasets | join(", ") or "none" }}
+{% if feedback %}
+
+Feedback from the researcher (follow it where it concerns datasets, models or code):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
 {% if issues %}
 
 Problems with the previous list that you must fix:

@@ -33,6 +33,15 @@ class Metric(BaseModel):
     )
 
 
+class MetricChoice(Metric):
+    """What the model must say about a metric: the direction has no default, so it is never left out."""
+
+    higher_is_better: bool = Field(
+        description="true if larger values are better (accuracy, reward, success rate); false if smaller values "
+        "are better (errors, losses, collisions, latency, cost, violations)"
+    )
+
+
 class StatisticalTest(BaseModel):
     test: str = Field(description="e.g. 'paired t-test', 'Wilcoxon signed-rank', 'bootstrap 95% CI'")
     comparison: str = Field(description="Which conditions or groups are compared, on which metric")
@@ -51,7 +60,7 @@ class PlanCore(BaseModel):
     controls: list[str] = Field(default_factory=list)
     conditions: list[Condition] = Field(min_length=2, description="Include at least one baseline")
     ablations: list[Condition] = Field(default_factory=list)
-    metrics: list[Metric] = Field(min_length=1)
+    metrics: list[MetricChoice] = Field(min_length=1)
     statistical_tests: list[StatisticalTest] = Field(min_length=1)
     n_seeds: int = Field(ge=1, le=10, description="Independent repetitions per condition")
     procedure: list[str] = Field(min_length=3, description="Ordered steps a programmer can follow")

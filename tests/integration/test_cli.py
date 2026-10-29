@@ -37,6 +37,10 @@ def test_toy_pipeline_through_the_cli(tmp_path: Path) -> None:
     assert '"mentions_variance": true' in invoke("show", run_dir, "toy_report")[1]
     assert "toy_numbers" in invoke("show", run_dir)[1]
     assert '"stage_finished"' in invoke("events", run_dir, "--kind", "stage_finished")[1]
+    code, out = invoke("reopen", run_dir, "--stage", "source", "--now", "--simulate-jobs")
+    assert code == 0 and "numbers_review" in out, out
+    code, out = invoke("approve", run_dir, "--stage", "source", "--now", "--simulate-jobs")
+    assert code == 0 and "done: all stages are done" in out, out  # approved as it was: nothing runs again
 
 
 def test_select_and_errors_through_the_cli(tmp_path: Path) -> None:
@@ -94,3 +98,24 @@ def test_a_project_name_means_its_latest_run(tmp_path: Path) -> None:
     os.utime(root / "demo" / "first" / "run.json", (old, old))
     code, out = invoke("status", "demo", "--runs-root", root)
     assert code == 0 and "demo/second" in out
+
+
+def test_editing_the_plan_through_the_cli(tmp_path: Path) -> None:
+    from research_tool.core.actions import ActionInbox
+    from research_tool.core.artifacts import ArtifactStore
+    from research_tool.testing.demo_run import build_demo_run
+
+    run = build_demo_run(tmp_path / "runs", "experiment_plan")
+    plan = ArtifactStore(run.artifacts_dir).get("experiment_plan").model_dump(mode="json")
+    source = tmp_path / "plan.json"
+    source.write_text(json.dumps(plan))
+    code, out = invoke("edit", run.root, "experiment_plan", "--from", source)
+    assert code != 0 and "nothing to change" in out
+    source.write_text(json.dumps(plan | {"metrics": []}))
+    code, out = invoke("edit", run.root, "experiment_plan", "--from", source)
+    assert code != 0 and "at least one metric" in out
+    source.write_text(json.dumps(plan | {"expected_results": "a bigger gain"}))
+    code, out = invoke("edit", run.root, "experiment_plan", "--from", source, "--note", "sharper")
+    assert code == 0 and "changes: expected_results" in out, out
+    [(_, action)] = ActionInbox(run.actions_dir).pending()
+    assert action.kind.value == "edit" and action.stage == "plan" and action.payload["base_version"] == 1

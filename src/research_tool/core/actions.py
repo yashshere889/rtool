@@ -1,4 +1,4 @@
-"""Action inbox: how the CLI (or a future UI) talks to the engine.
+"""Action inbox: how the CLI and the web UI talk to the engine.
 
 The CLI never edits engine state directly. It drops an action file into
 ``actions/``; the next episode applies it while holding the run lease and moves
@@ -27,6 +27,9 @@ class ActionKind(StrEnum):
     SELECT = "select"  # choose an option at a selection gate
     RETRY = "retry"  # re-run a failed stage (fresh, or resume from checkpoint)
     NOTE = "note"  # attach guidance to a stage's next attempt
+    REOPEN = "reopen"  # open a finished stage's checkpoint again (choose differently, or reject to re-run it)
+    EDIT = "edit"  # replace an output with a hand-edited version (payload: artifact, base_version, value)
+    WRITE_FILE = "write_file"  # rewrite a file the stage lets researchers edit (payload: path, content, base_sha)
 
 
 def _user() -> str:
@@ -78,3 +81,32 @@ class ActionInbox:
         if not self.processed_dir.is_dir():
             return []
         return [read_json(p) for p in sorted(self.processed_dir.glob("*.json"))]
+
+    def lookup(self, action_id: str) -> tuple[str, dict[str, Any] | None]:
+        """Where action ``action_id`` is: ("queued" | "processed" | "invalid" | "unknown", its record)."""
+        pattern = f"*-{action_id[:12]}.json"
+        places = (("queued", self.root), ("processed", self.processed_dir), ("invalid", self.invalid_dir))
+        for state, directory in places:
+            for path in sorted(directory.glob(pattern)) if directory.is_dir() else []:
+                try:
+                    record = read_json(path)
+                except (json.JSONDecodeError, OSError):
+                    record = {}
+                if record.get("id") == action_id or state == "invalid":
+                    return state, record
+        return "unknown", None
+
+    def withdraw(self, action_id: str) -> bool:
+        """Remove a queued action before an episode applies it. False if it is no longer queued."""
+        for path in self.root.glob(f"*-{action_id[:12]}.json") if self.root.is_dir() else []:
+            try:
+                if read_json(path).get("id") != action_id:
+                    continue
+            except (json.JSONDecodeError, OSError):
+                continue
+            try:
+                path.unlink()  # an episode may have taken it this very moment: then it is not queued any more
+            except FileNotFoundError:
+                return False
+            return True
+        return False

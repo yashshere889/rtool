@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -38,12 +39,16 @@ from ...llm.prompts import PromptLibrary
 from ...packs import DEFAULT_PACK, Pack, load_pack
 from ...schemas.code import CodeBundle, CodeFile, ExperimentResults, FixRecord, RunRecord, SmokeResult
 from ...schemas.common import ResearchBrief
-from ...schemas.plan import ExperimentPlan, ResourceManifest
+from ...schemas.plan import ExperimentPlan, FetchedResource, ResourceManifest
+from ...tools.resources.fetch import tree_size
+from . import sanity
 from .env import ExperimentEnv
 from .playbook import Diagnosis, declared_requirements, diagnose, halve_batch_size, merge_requirements
 from .results import (
     aggregate,
+    analysis_notes,
     collect,
+    correction_used,
     output_name,
     planned_runs,
     read_output,
@@ -57,10 +62,13 @@ from .stats import flat
 
 SYSTEM = (
     "You are a careful research software engineer. Write correct, simple, runnable Python that follows "
-    "the stated contract exactly. Never invent data paths or results."
+    "the stated contract exactly. Never invent data paths or results: every metric must be measured by "
+    "really carrying out the experiment."
 )
 GATE = "gpu_runs"
 HARNESS = ("run.py", "launch.py")
+EDITABLE = "code/experiment.py"  # workspace-relative: the one file researchers may edit
+GENERATED = "generated/experiment.py"  # the latest version the tool wrote (outside the code: for the diff)
 _BLOCK = re.compile(r"```(?:python|py)?[ \t]*\r?\n(.*?)```", re.S)
 RUN_ARGS = ("condition", "seed", "resources", "smoke", "workdir")
 BROAD = ("Exception", "BaseException")
@@ -261,31 +269,57 @@ def file_listing(path: Path, limit: int) -> str:
     return ", ".join(found)
 
 
-def same_metrics(a: dict[str, float], b: dict[str, float]) -> bool:
-    return a.keys() == b.keys() and all(flat([a[k], b[k]]) for k in a)
+# what the experiment code depends on: a change elsewhere (wording, expected results, risks, statistics, which
+# rtool computes itself) keeps the existing experiment.py instead of having it written again
+CODE_FIELDS = {
+    "hypothesis": True,
+    "design": True,
+    "independent_variables": True,
+    "dependent_variables": True,
+    "controls": True,
+    "conditions": True,
+    "ablations": True,
+    "metrics": True,
+    "seeds": True,
+    "procedure": True,
+    "resources": {"__all__": {"kind", "name", "source", "identifier", "subset", "split"}},
+    "compute": {"gpus_per_run", "gpu_memory_gb", "gpu_type"},
+}
 
 
-def smoke_warnings(results: list[SmokeResult], baseline: str) -> list[str]:
+def plan_hash(plan: ExperimentPlan) -> str:
+    return sha256_text(canonical_json(plan.model_dump(mode="json", include=CODE_FIELDS)))
+
+
+def same_metrics(a: dict[str, float], b: dict[str, float], names: Sequence[str] | None = None) -> bool:
+    """The planned metrics (all of them if ``names`` is None) are equal up to rounding in both runs.
+
+    Extra values an experiment reports, such as timings, always differ a little and would hide identical results.
+    """
+    shared = [k for k in a if k in b and (names is None or k in names)]
+    return bool(shared) and all(flat([a[k], b[k]]) for k in shared)
+
+
+def smoke_warnings(results: list[SmokeResult], baseline: str, names: Sequence[str] | None = None) -> list[str]:
     """Signs in passing smoke runs that run() ignores the seed or the condition.
 
     Shown at the gpu_runs gate, never fatal: some experiments are deterministic
     by design, and a tiny smoke problem can give equal numbers by chance.
+    ``names``: the plan's metrics, the only values compared.
     """
     if not results:
         return []
     warnings = []
     base = [r for r in results if r.condition == baseline]
-    if len(base) >= 2 and same_metrics(base[0].metrics, base[1].metrics):
-        warnings.append(
-            f"`{baseline}` gave identical smoke metrics with seeds {base[0].seed} and {base[1].seed}: run() may "
-            "ignore the seed or return fixed values (fine only if the experiment is deterministic by design)"
-        )
+    if len(base) >= 2:
+        seeds = (base[0].seed or 0, base[1].seed or 0)
+        warnings.append(sanity.seed_warning(baseline, seeds, base[0].metrics, base[1].metrics, names))
     first = [r for r in results if r.seed == results[0].seed]  # one run per condition, same seed
-    if len(first) >= 2 and all(same_metrics(r.metrics, first[0].metrics) for r in first[1:]):
+    if len(first) >= 2 and all(same_metrics(r.metrics, first[0].metrics, names) for r in first[1:]):
         warnings.append(
             f"all {len(first)} conditions gave identical smoke metrics: run() may not implement the conditions"
         )
-    return warnings
+    return [w for w in warnings if w]
 
 
 @register_agent("coder")
@@ -294,6 +328,7 @@ class CoderAgent(Agent):
     consumes = ("research_brief", "experiment_plan", "resource_manifest")
     produces = ("code_bundle", "experiment_results")
     config_model = CoderConfig
+    editable_files = (EDITABLE,)  # rtool rewrites every other file on each attempt
 
     def run(self, ctx: AgentContext) -> None:
         CoderSession(ctx, self.config).drive()
@@ -328,7 +363,7 @@ class CoderSession:
         )
         self.metric_names = [m.name for m in self.plan.metrics]
         self.conditions = [c.name for c in self.plan.run_conditions()]
-        self.plan_hash = sha256_text(canonical_json(self.plan.model_dump(mode="json")))
+        self.plan_hash = plan_hash(self.plan)
 
     # ------------------------------------------------------------------ driver
     def drive(self) -> None:
@@ -339,11 +374,15 @@ class CoderSession:
             "submit": self.submit,
             "collect": self.collect,
         }
-        while (phase := self.state.setdefault("phase", "write")) != "finish":
+        if "phase" not in self.state:
+            self.goto("write")
+        while (phase := self.state["phase"]) != "finish":
             steps[phase]()
         self.finish()
 
     def goto(self, phase: str) -> None:
+        if self.state.get("phase") != phase:
+            self.ctx.emit("phase_changed", phase=phase)  # the web UI follows the stage through these
         self.state["phase"] = phase
         # waiting for the GPU-runs decision, submitting, collecting and analysing need no model: they
         # can resume on a CPU node instead of queueing for a GPU (and hand over if a fix needs the LLM)
@@ -384,6 +423,25 @@ class CoderSession:
     def resource_paths(self) -> dict[str, str]:
         return {r.name: r.path for r in self.manifest.resources if r.path and r.status in ("ready", "manual")}
 
+    @staticmethod
+    def provided(resource: FetchedResource) -> bool:
+        """Downloaded, or (manual) somebody put files in its folder; an empty manual folder is not data."""
+        if not resource.path or resource.status not in ("ready", "manual"):
+            return False
+        return resource.status == "ready" or (Path(resource.path).is_dir() and tree_size(Path(resource.path))[1] > 0)
+
+    def available(self) -> dict[str, str]:
+        """What the code may read: name -> local path."""
+        return {r.name: r.path for r in self.manifest.resources if self.provided(r) and r.path}
+
+    def missing(self) -> list[FetchedResource]:
+        """Manual resources nobody provided: the code has to build them (or the researcher add them)."""
+        return [r for r in self.manifest.resources if r.status == "manual" and not self.provided(r)]
+
+    def missing_text(self) -> list[dict[str, str]]:
+        purposes = {r.name: r.purpose for r in self.plan.resources}
+        return [{"name": r.name, "kind": r.kind, "purpose": purposes.get(r.name, "")} for r in self.missing()]
+
     def prepare(self) -> None:
         """Harness, config.json and the code README's facts: rtool's files, rewritten every attempt."""
         harness = resources.files(__package__).joinpath("harness")
@@ -416,6 +474,7 @@ class CoderSession:
 
     def save_source(self, source: str, origin: str) -> None:
         atomic_write_text(self.code / "experiment.py", source)
+        atomic_write_text(self.ctx.workspace.path(GENERATED), source)  # what a hand edit is compared with
         atomic_write_json(
             self.code / ".rtool.json", {"plan": self.plan_hash, "sha": sha256_text(source), "origin": origin}
         )
@@ -439,7 +498,7 @@ class CoderSession:
         resources_text = [
             {**r.model_dump(), "files": file_listing(Path(r.path), self.cfg.resource_files) if r.path else ""}
             for r in self.manifest.resources
-            if r.path and r.status in ("ready", "manual")
+            if r.path and self.provided(r)
         ]
         if same_plan and not feedback:
             edited = sha256_text(self.source()) != marker.get("sha")
@@ -454,7 +513,8 @@ class CoderSession:
                     plan=self.plan,
                     conditions=self.conditions,
                     metrics=self.metric_names,
-                    resources=self.resources,
+                    resources=self.available(),
+                    missing=self.missing_text(),
                     packages=self.packages(),
                     source=self.source(),
                 )
@@ -465,6 +525,7 @@ class CoderSession:
                     conditions=self.plan.run_conditions(),
                     resources=resources_text,
                     deferred=[r for r in self.manifest.resources if r.status == "deferred"],
+                    missing=self.missing_text(),
                     packages=self.packages(),
                     gpu=self.gpu_text(),
                     pack=self.pack,
@@ -506,6 +567,7 @@ class CoderSession:
                 continue
             failure = self.run_smoke()
             if failure is None:
+                self.state["tested_sha"] = sha256_text(self.source())  # what the GPU-runs approval refers to
                 self.goto("approve")
                 return
             condition, diagnosis, log = failure
@@ -546,6 +608,8 @@ class CoderSession:
                 results.append(
                     SmokeResult(condition=condition, seed=s, ok=True, seconds=run.seconds, metrics=data["metrics"])
                 )
+                if s == seed:  # the UI lists one smoke test per condition; the second seed only checks the seed
+                    self.ctx.emit("smoke_result", **results[-1].model_dump())
                 continue
             log = run.tail(200)
             found = diagnose(log, exit_code=run.exit_code, timed_out=run.timed_out)
@@ -558,14 +622,22 @@ class CoderSession:
             elif run.ok:
                 found = Diagnosis("contract", problem)
             results.append(SmokeResult(condition=condition, seed=s, ok=False, seconds=run.seconds, error=found.summary))
+            self.ctx.emit("smoke_result", **results[-1].model_dump())
             failure = (condition, found, "\n".join(log.splitlines()[-80:]))
             break
         self.state["smoke"] = [r.model_dump() for r in results]
-        warnings = [] if failure else smoke_warnings(results, baseline)
+        warnings = [] if failure else smoke_warnings(results, baseline, self.metric_names)
         self.state["smoke_warnings"] = warnings
         if warnings:
             self.ctx.emit("smoke_warning", warnings=warnings)
         return failure
+
+    def warnings(self) -> list[str]:
+        """Signs that the code may not measure anything real (see sanity.py), for people to check."""
+        found = [sanity.missing_resources_warning([r.name for r in self.missing()])]
+        found += sanity.code_warnings(self.source(), has_resources=bool(self.available()))
+        found += self.state.get("smoke_warnings", [])
+        return [w for w in found if w]
 
     # --------------------------------------------------------------- repair
     def record(self, *, phase: str, signature: str, action: str, detail: str = "") -> None:
@@ -579,7 +651,7 @@ class CoderSession:
                 detail=detail[:300],
             ).model_dump()
         )
-        self.ctx.emit("code_fix", phase=phase, signature=signature, action=action)
+        self.ctx.emit("code_fix", phase=phase, signature=signature, action=action, detail=detail[:300])
 
     def repair(self, diagnosis: Diagnosis, *, log: str, condition: str, phase: str) -> None:
         """One repair round: the playbook if it knows the failure, else the LLM. Bounded."""
@@ -608,7 +680,8 @@ class CoderSession:
                 source=self.source(),
                 metrics=self.metric_names,
                 conditions=self.conditions,
-                resources=self.resources,
+                resources=self.available(),
+                missing=self.missing_text(),
                 packages=self.packages(),
                 smoke=self.pack.smoke,
                 history=history,
@@ -677,35 +750,62 @@ class CoderSession:
 
     # -------------------------------------------------------------- approve
     def approve(self) -> None:
+        tested = self.state.get("tested_sha")
+        if tested and sha256_text(self.source()) != tested:
+            # experiment.py was edited (by hand, at this gate) after its smoke test passed: test the edit
+            # before anyone can approve GPU time for it; any earlier decision referred to the old code
+            self.retest("the researcher's edits")
+            return
         runs = planned_runs(self.plan)
         hours = self.gpu_hours(len(runs), self.plan.compute.time_limit)
         smoke = [SmokeResult.model_validate(r) for r in self.state.get("smoke", [])]
-        warnings = list(self.state.get("smoke_warnings", []))
         c = self.plan.compute
+        warnings = self.warnings()
+        check = (
+            " Check experiment.py before approving: "
+            + " ".join(f"({n}) {w}" + ("" if w.endswith(("?", ".")) else ".") for n, w in enumerate(warnings, 1))
+            if warnings
+            else ""
+        )
         summary = {
             "message": (
-                f"Smoke tests passed on CPU for {len({r.condition for r in smoke})} condition(s)"
-                + (f", with {len(warnings)} warning(s) to check first" if warnings else "")
-                + f". Approve to run {len(runs)} jobs on {c.partition} ({self.gpu_text()}, up to {c.time_limit} "
-                f"each; at most {hours:g} GPU-hours). Reject with feedback to have the code revised first."
+                f"Smoke tests passed on CPU for {len({r.condition for r in smoke})} condition(s). Approve to run "
+                f"{len(runs)} jobs on {c.partition} ({self.gpu_text()}, up to {c.time_limit} each; at most "
+                f"{hours:g} GPU-hours). Reject with feedback to have the code revised first." + check
             ),
+            "warnings": warnings,
             "smoke": ", ".join(
                 f"{r.condition}{'' if r.seed == smoke[0].seed else f' seed {r.seed}'} ok in {r.seconds:g}s"
                 for r in smoke
             ),
+            "runs": len(runs),
+            "partition": c.partition,
+            "gpu_hours": hours,
+            "time_limit": c.time_limit,
+            "tested_sha": tested,  # the experiment.py these smoke tests ran (a later edit is tested again first)
             "review_files": [str(self.code / "experiment.py"), str(self.code / "config.json")],
         }
-        if warnings:
-            summary["warnings"] = "; ".join(warnings)
         decision = self.ctx.gate(GATE, summary)
         if decision.approved:
             self.state.setdefault("pending", [list(r) for r in runs])  # a rerun keeps its own list
             self.goto("submit")
             return
+        if decision.data.get("retest"):  # "test it again", not "rewrite it": no model involved
+            self.retest("the code, as asked")
+            return
         self.state.get("_gates", {}).pop(GATE, None)  # ask again after the revision
         self.state["gate_feedback"] = [decision.feedback or "The researcher rejected the GPU runs; improve the code."]
         self.state["fix_rounds"] = 0
         self.goto("write")
+
+    def retest(self, what: str) -> None:
+        """Static checks and smoke tests again, then a fresh GPU-runs gate."""
+        self.state.get("_gates", {}).pop(GATE, None)
+        self.state["fix_rounds"] = 0
+        if sha256_text(self.source()) != self.marker().get("sha"):
+            self.record(phase="smoke", signature="human_edit", action=f"re-testing {what}")
+        self.check()
+        self.goto("smoke")
 
     def gpu_hours(self, runs: int, time_limit: str) -> float:
         return round(runs * self.plan.compute.gpus_per_run * parse_time_limit(time_limit) / 3600, 2)
@@ -862,9 +962,10 @@ class CoderSession:
             if len(ok) < len(records)
             else []
         )
-        if comparisons:
-            notes.append(f"comparisons use the {comparisons[0].test} against the baseline")
+        notes += analysis_notes(self.plan, comparisons)
         notes += variation_notes(self.plan, records, comparisons)
+        warnings = self.warnings() + sanity.results_warnings(self.plan, records)
+        notes += [f"Warning: {w}" for w in warnings]
         payload = results_payload(records, notes)
         problems = validate(payload, self.plan.results_schema)
         if problems:
@@ -877,7 +978,12 @@ class CoderSession:
         atomic_write_text(
             tables,
             render_tables(
-                self.plan, records, summaries, comparisons, {m: f"figures/{p.name}" for m, p in figures.items()}
+                self.plan,
+                records,
+                summaries,
+                comparisons,
+                {m: f"figures/{p.name}" for m, p in figures.items()},
+                warnings=warnings,
             ),
         )
         bundle = self.bundle()
@@ -897,6 +1003,8 @@ class CoderSession:
                 gpu_hours_requested=round(sum(j.get("gpu_hours", 0) for j in jobs), 2),
                 code_fingerprint=bundle.fingerprint,
                 notes=notes,
+                warnings=warnings,
+                correction=correction_used(self.plan, comparisons),
             ),
             meta={"review": ctx.relative(tables)},
         )

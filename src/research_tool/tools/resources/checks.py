@@ -1,11 +1,14 @@
 """Does a planned resource exist, what licence does it have, how big is it?
 
 The Hugging Face Hub API (``/api/datasets/<id>`` and ``/api/models/<id>``)
-answers all three without downloading anything. URLs get a HEAD request.
+answers all three without downloading anything. URLs get a HEAD request, pip
+packages a look-up on PyPI. A "manual" resource is never verified: nothing
+public was named, so someone has to provide it (or the experiment code build it).
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -13,6 +16,9 @@ from ...schemas.plan import ResourceChoice
 from ..http import HttpError, PoliteHttp
 
 HF_API = "https://huggingface.co/api"
+PYPI_API = "https://pypi.org/pypi"
+MANUAL_NOTE = "not public: nothing will be downloaded; someone must provide it, or the experiment code must build it"
+_PIP_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")  # "pettingzoo[mpe]>=1.24" -> "pettingzoo"
 
 
 @dataclass(frozen=True)
@@ -63,6 +69,19 @@ class HubChecker:
             if resource.source == "url":
                 self.http.get_text(resource.identifier, cache=False)
                 return ResourceCheck(True, note="reachable")
+            if resource.source == "manual":
+                return ResourceCheck(False, note=MANUAL_NOTE)
+            if resource.source == "pip":
+                name = _PIP_NAME.match(resource.identifier.strip())
+                if name is None:
+                    return ResourceCheck(False, note=f"not a pip package name: {resource.identifier!r}")
+                info = self.http.get_json(f"{PYPI_API}/{name.group(0)}/json").get("info") or {}
+                licence = info.get("license") or ""
+                return ResourceCheck(
+                    True,
+                    licence if isinstance(licence, str) and len(licence) <= 40 else "",
+                    note="on PyPI; installed with the experiment code",
+                )
             return ResourceCheck(True, note=f"{resource.source} resources are installed with the experiment code")
         except HttpError as exc:
             return ResourceCheck(False, note=str(exc)[:200])

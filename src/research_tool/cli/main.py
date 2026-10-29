@@ -7,6 +7,7 @@ run lease. Pass ``--now`` to run that episode immediately.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
@@ -23,7 +24,7 @@ from rich.table import Table
 
 from .. import __version__
 from ..core.actions import Action, ActionInbox, ActionKind
-from ..core.artifacts import ArtifactStore, Producer
+from ..core.artifacts import ArtifactStore
 from ..core.config import (
     AppConfig,
     apply_overrides,
@@ -40,14 +41,17 @@ from ..core.fs import atomic_write_json
 from ..core.pipeline import builtin_pipelines, find_pipeline, resolve_pipeline
 from ..core.registry import registry
 from ..core.run import RunHandle, resolve_run_path
+from ..core.secrets import load_secrets
 from ..core.services import LLMEndpoint, build_llm, build_services, build_slurm
 from ..core.state import StageStatus
+from ..core.stats import stats_for_run_dir, stats_from_files
 from ..hpc.episode import SAFETY_MARGIN_S, llm_needed, run_episode, schedule_next, submit_episode
 from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
 from ..llm.server import VLLMServer
-from ..packs import load_pack
-from ..schemas.common import ResearchBrief
+from ..service import check_edit, create_run, kick, load_app_config, queue_action, run_status, stop_run
+from ..service import list_runs as list_all_runs
+from .stats import print_stats
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -87,10 +91,7 @@ def _guard() -> Iterator[None]:
 
 
 def _app_config(config: list[Path], sets: list[str], runs_root: Path | None) -> AppConfig:
-    overrides: dict[str, Any] = parse_set_overrides(sets)
-    if runs_root is not None:
-        overrides.setdefault("paths", {})["runs_root"] = str(runs_root)
-    return load_config(*default_config_files(), *config, overrides=overrides)
+    return load_app_config(config, sets, runs_root=runs_root)
 
 
 def _open_run(
@@ -188,19 +189,16 @@ def _print_result(run: RunHandle, result: AdvanceResult) -> None:
 
 def _kick(run: RunHandle, reason: str, *, needs_llm: bool = False) -> None:
     """On a real cluster, make sure an episode job will pick up queued work."""
-    job_id = submit_episode(run, build_slurm(run), needs_llm=needs_llm, reason=reason)
-    if job_id:
-        kind = "GPU" if needs_llm else "CPU"
-        console.print(f"submitted {kind} episode job [bold]{job_id}[/bold]; follow it with: rtool status {_ref(run)}")
-    else:
-        console.print("an episode job is already queued or running; it will pick this up")
+    result = kick(run, reason, needs_llm=needs_llm)
+    console.print(result.detail + (f"; follow it with: rtool status {_ref(run)}" if result.submitted else ""))
 
 
 def _queue(run: RunHandle, action: Action, *, now: bool, simulate_jobs: bool) -> None:
-    ActionInbox(run.actions_dir).submit(action)
+    real = run.config.slurm.backend == "real"
+    result = queue_action(run, action, wake=real)
     console.print(f"queued [bold]{action.kind.value}[/bold]")
-    if run.config.slurm.backend == "real":
-        _kick(run, f"action:{action.kind.value}")
+    if result is not None:
+        console.print(result.detail)
     elif now:
         _print_result(run, _advance(run, simulate_jobs=simulate_jobs))
     else:
@@ -238,19 +236,16 @@ def new(
     """Create a run from a pipeline and a research brief."""
     with _guard():
         cfg = _app_config(config, set_, runs_root)
-        spec = find_pipeline(pipeline)
-        resolve_pipeline(spec)  # fail now, not in the first episode
-        load_pack(pack)  # a typo in --pack should not surface days later in the coder
-        run = RunHandle.create(cfg.paths.resolved_runs_root(), project, spec, cfg, run_id=run_id, pack=pack)
-        brief = ResearchBrief(
-            topic=topic,
+        run = create_run(
+            cfg,
+            project,
+            topic,
+            pipeline=pipeline,
             questions=question,
             constraints=constraint,
             seed_queries=seed_query,
-            domain_pack=pack,
-        )
-        ArtifactStore(run.artifacts_dir).put(
-            "research_brief", brief, producer=Producer(stage="user", agent="rtool new")
+            pack=pack,
+            run_id=run_id,
         )
         console.print(f"created run [bold]{run.run_id}[/bold] at {run.root}")
         console.print(f"next: rtool run {_ref(run)}")
@@ -275,6 +270,7 @@ def run_command(
         if run.config.slurm.backend == "real" and not inline:
             _kick(run, "rtool run", needs_llm=llm_needed(run))
             return
+        load_secrets()  # the episode runs here, so the agents need the API keys here
         _print_result(run, _advance(run, max_minutes=max_minutes, simulate_jobs=simulate_jobs, serve_llm=serve_llm))
 
 
@@ -289,6 +285,11 @@ def episode(
         run = _open_run(run_dir, None, config, set_)
         slurm = build_slurm(run)
         self_job = os.environ.get("SLURM_JOB_ID")
+        try:
+            load_secrets()  # jobs never inherit API keys (sbatch gets a scrubbed environment)
+        except RToolError as exc:
+            EventLog(run.events_path, run.run_id).emit("episode_not_started", job=self_job, error=str(exc))
+            raise
 
         def time_limit_warning(_signum: int, _frame: object) -> None:
             # Slurm warns before the time limit: queue the continuation to start after this job.
@@ -318,6 +319,9 @@ def episode(
         )
         _print_result(run, result)
         next_job = schedule_next(run, slurm, result, self_job_id=self_job)
+        if next_job is None and ActionInbox(run.actions_dir).pending():
+            # decisions that arrived after this episode last looked would otherwise wait for the next kick
+            next_job = submit_episode(run, slurm, needs_llm=False, reason="pending_actions", self_job_id=self_job)
         if next_job:
             console.print(f"next episode: job {next_job}")
 
@@ -335,15 +339,12 @@ def status(
         table = Table(title=f"{run.spec.project}/{run.run_id} · pipeline '{run.spec.pipeline.name}'")
         for column in ("stage", "agent", "status", "try", "outputs", "note"):
             table.add_column(column)
-        open_gates = []
+        open_gates = [gate.model_dump() for gate in run_status(run).open_gates]
         for sid in pipeline.order:
             st = stages[sid]
             note = ""
             if st.status is StageStatus.AWAITING_GATE and st.gate:
                 note = f"gate {st.gate.gate_id}"
-                open_gates.append(
-                    {"stage": sid, "gate": st.gate.gate_id, "in_stage": st.gate.in_stage, "summary": st.gate.summary}
-                )
             elif st.status is StageStatus.SUSPENDED:
                 note = "jobs " + ", ".join(st.waiting_on)
             elif st.status is StageStatus.FAILED:
@@ -471,6 +472,268 @@ def note(
 
 
 @app.command()
+def edit(
+    run_ref: str = typer.Argument(...),
+    artifact: str = typer.Argument(..., help="The output to replace, e.g. experiment_plan."),
+    source: Path = typer.Option(
+        ..., "--from", help="JSON or YAML file with the whole edited value (start from `rtool show <run> <artifact>`)."
+    ),
+    note: str = typer.Option("", "--note", "-n", help="Why you changed it (kept with the new version)."),
+    now: bool = typer.Option(False, "--now"),
+    simulate_jobs: bool = typer.Option(False, "--simulate-jobs"),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Replace an output (e.g. the experiment plan) with your edited version.
+
+    The owning agent recomputes what follows from your changes and lists remaining problems;
+    later stages that used the old version run again.
+    """
+    with _guard():
+        run = _open_run(run_ref, runs_root)
+        value = yaml.safe_load(source.read_text(encoding="utf-8"))
+        base = ArtifactStore(run.artifacts_dir).head(artifact)
+        checked = check_edit(run, artifact, base, value)  # refuse a bad edit now, not in the next episode
+        if not checked.changed:
+            raise RToolError(f"{source} is the same as {artifact} v{base}; nothing to change")
+        console.print(f"changes: {', '.join(checked.changed)}")
+        payload = {"artifact": artifact, "base_version": base, "value": value, "note": note}
+        action = Action(kind=ActionKind.EDIT, stage=checked.stage, payload=payload)
+        _queue(run, action, now=now, simulate_jobs=simulate_jobs)
+
+
+@app.command()
+def reopen(
+    run_ref: str = typer.Argument(...),
+    stage: str = typer.Option(..., "--stage", help="A finished stage with a checkpoint, e.g. hypotheses."),
+    now: bool = typer.Option(False, "--now"),
+    simulate_jobs: bool = typer.Option(False, "--simulate-jobs"),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Open a finished stage's checkpoint again (choose another hypothesis, add papers, ...).
+
+    Later stages keep their results unless the decision changes this stage's outputs.
+    """
+    with _guard():
+        run = _open_run(run_ref, runs_root)
+        _queue(run, Action(kind=ActionKind.REOPEN, stage=stage), now=now, simulate_jobs=simulate_jobs)
+
+
+@app.command("list")
+def list_command(
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """List every run, newest first, with the stage it is at."""
+    with _guard():
+        root = runs_root or load_config(*default_config_files()).paths.resolved_runs_root()
+        table = Table(title=f"runs in {root}")
+        for column in ("project/run", "topic", "pipeline", "status", "waiting for you"):
+            table.add_column(column)
+        for summary in list_all_runs(root):
+            if summary.error:
+                table.add_row(f"{summary.project}/{summary.run_id}", "", "", "[red]unreadable[/red]", summary.error)
+                continue
+            current = next((s for s in summary.stages if s.status is not StageStatus.DONE), None)
+            status = "done" if current is None else f"{current.id}: {current.status.value}"
+            gates = ", ".join(f"{g.gate} ({g.stage})" for g in summary.open_gates)
+            table.add_row(
+                f"{summary.project}/{summary.run_id}", escape(summary.topic[:60]), summary.pipeline, status, gates
+            )
+        console.print(table)
+
+
+@app.command()
+def stop(
+    run_ref: str = typer.Argument(...),
+    experiments: bool = typer.Option(
+        False, "--experiments", help="Also cancel running experiment jobs (the Coder reports what finished)."
+    ),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Cancel the run's episode job; resume later with `rtool run`."""
+    with _guard():
+        run = _open_run(run_ref, runs_root)
+        result = stop_run(run, cancel_experiments=experiments)
+        jobs = ", ".join(result.cancelled) or "none were queued or running"
+        console.print(f"cancelled jobs: {jobs}. Resume with: rtool run {_ref(run)}")
+
+
+@app.command()
+def ui(
+    mode: str | None = typer.Option(
+        None,
+        "--mode",
+        help="job (the default on the cluster): a small CPU Slurm job; scripts/rtool-ui on your Mac opens it. "
+        "local (the default elsewhere): this machine, with simulated papers, model and cluster (demos, development). "
+        "login: on a cluster login node, only for as long as your ssh session lasts.",
+    ),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+    port: int = typer.Option(8765, "--port", help="local / login mode: the port on 127.0.0.1."),
+    token_file: Path | None = typer.Option(
+        None, "--token-file", help="local / login mode: also write the access token to this file (mode 0600)."
+    ),
+    demo: bool = typer.Option(False, "--demo", help="local mode: create the demo runs first if there are no runs."),
+    open_browser: bool = typer.Option(False, "--open", help="local mode: open the UI in the browser."),
+    bind: str = typer.Option(
+        "socket",
+        "--bind",
+        help="job mode: socket (a Unix socket only you can open) or cluster (a TCP port on the cluster network, "
+        "token-protected; for sites without ssh to compute nodes).",
+    ),
+    hours: float = typer.Option(8.0, "--hours", min=0.25, help="job mode: how long the UI job may run."),
+    stop_job: bool = typer.Option(False, "--stop", help="job mode: end the UI job."),
+    status_only: bool = typer.Option(False, "--status", help="job mode: show the UI job without starting one."),
+    as_json: bool = typer.Option(False, "--json", help="job mode: print the job as JSON (used by scripts/rtool-ui)."),
+    wait: float = typer.Option(300, "--wait", min=0, help="job mode: seconds to wait for the job to start."),
+    state_dir: Path | None = typer.Option(
+        None, "--state-dir", help="job mode: the folder for the job's socket, token and log (default: beside the runs)."
+    ),
+    serve_here: bool = typer.Option(False, "--serve", hidden=True, help="Inside the UI job: serve."),
+    config: list[Path] = typer.Option([], "--config", "-c"),
+) -> None:
+    """Start the web UI (needs the `web` extra). Reach it through an ssh tunnel; it never listens publicly."""
+    with _guard():
+        cfg = load_app_config(config, runs_root=runs_root)
+        mode = mode or ("job" if cfg.slurm.backend == "real" else "local")
+        if mode not in ("local", "login", "job"):
+            raise RToolError("--mode must be job, local or login")
+        if bind not in ("socket", "cluster"):
+            raise RToolError("--bind must be socket or cluster")
+        if mode == "job" and cfg.slurm.backend != "real":
+            raise RToolError("job mode needs a cluster (slurm.backend: real); use --mode local here")
+        root = cfg.paths.resolved_runs_root()
+        if mode == "job" and not serve_here:
+            _ui_job(
+                cfg,
+                runs_root=root,
+                config_files=config,
+                bind=bind,  # type: ignore[arg-type]
+                hours=hours,
+                stop_job=stop_job,
+                status_only=status_only,
+                as_json=as_json,
+                wait=wait,
+                state_dir=state_dir,
+            )
+            return
+        try:
+            from ..web.server import new_token, serve, serve_socket, write_private
+            from ..web.settings import UISettings
+        except ImportError as exc:
+            raise RToolError(f"the web UI needs the web extra: pip install -e '.[web]' ({exc})") from None
+        load_secrets()
+        if mode == "local" and demo and not list_all_runs(root):
+            from ..testing.demo_run import build_demo_runs
+
+            console.print("building the demo runs (about ten seconds)...")
+            build_demo_runs(root)
+        token = new_token()
+        settings = UISettings(runs_root=root, token=token, mode=mode, config_files=list(config))  # type: ignore[arg-type]
+        if mode != "job":
+            if token_file is not None:
+                write_private(token_file.expanduser(), token + "\n")
+            serve(settings, host="127.0.0.1", port=port, open_browser=open_browser)
+            return
+
+        from ..service.ui_job import TOKEN_FILE, announce, listen, private_dir, ui_dir, withdraw
+
+        job_id = os.environ.get("SLURM_JOB_ID")
+        if not job_id:
+            raise RToolError("--serve is for the UI job itself; start the UI with `rtool ui`")
+        directory = private_dir(ui_dir(cfg, state_dir))
+        write_private(directory / TOKEN_FILE, token + "\n")
+        sock, where = listen(directory, bind)  # type: ignore[arg-type]
+        sock.listen(128)
+        announce(directory, job_id, bind, where)  # type: ignore[arg-type]
+        # The token stays out of this log.
+        print(f"Research Tool UI (job {job_id}, runs in {root}) on {where['socket'] or where['port']}", flush=True)
+        try:
+            serve_socket(settings, sock)
+        finally:
+            withdraw(directory, job_id)
+            sock.close()
+
+
+def _ui_job(
+    cfg: AppConfig,
+    *,
+    runs_root: Path,
+    config_files: list[Path],
+    bind: Any,
+    hours: float,
+    stop_job: bool,
+    status_only: bool,
+    as_json: bool,
+    wait: float,
+    state_dir: Path | None,
+) -> None:
+    """``rtool ui`` on a login node: start (or reuse) the UI job and say how to open it."""
+    import getpass
+    from datetime import datetime, timedelta
+
+    from ..hpc.slurm_client import SubprocessSlurm
+    from ..service.ui_job import find_ui_job, start_ui_job, stop_ui_job, ui_dir, wait_until_serving
+
+    directory = ui_dir(cfg, state_dir)
+    slurm = SubprocessSlurm(cfg.slurm, state_dir=directory / ".rtool")
+    if stop_job:
+        stopped = stop_ui_job(directory, slurm) if directory.exists() else None
+        if as_json:
+            typer.echo(json.dumps({"stopped": stopped}))
+        else:
+            console.print(f"cancelled UI job {stopped}" if stopped else "no UI job was queued or running")
+        return
+    if status_only:
+        job = find_ui_job(directory, slurm) if directory.exists() else None
+    else:
+        job, new = start_ui_job(
+            cfg,
+            slurm,
+            directory,
+            hours=hours,
+            bind=bind,
+            runs_root=runs_root,
+            config_files=config_files,
+            user=getpass.getuser(),
+        )
+        if not as_json:
+            console.print(f"{'submitted' if new else 'found'} UI job {job.job_id}")
+        if not job.serving:
+            said: list[str] = []
+
+            def waiting(current: Any) -> None:
+                why = f": {current.reason}" if current.reason else ""
+                line = f"waiting for it to start ({current.state.lower()}{why})"
+                if not as_json and line not in said:
+                    err_console.print(line)
+                    said.append(line)
+
+            job = wait_until_serving(directory, slurm, timeout=wait, on_wait=waiting) or find_ui_job(directory, slurm)
+    if as_json:
+        typer.echo(json.dumps(job.model_dump() if job else None))
+        return
+    if job is None:
+        console.print("no UI job is queued or running; start one with: rtool ui")
+        return
+    if not job.serving:
+        console.print(
+            f"UI job {job.job_id} is still {job.state.lower()}{' (' + job.reason + ')' if job.reason else ''}. "
+            "Run `rtool ui` again later to see where it serves, or `rtool ui --stop`."
+        )
+        return
+    until = ""
+    with contextlib.suppress(ValueError, TypeError):
+        ends = datetime.fromisoformat(job.started_at or "") + timedelta(hours=job.hours)
+        until = f" until about {ends.astimezone():%a %H:%M}"  # the cluster's local time
+    target = job.socket if job.bind == "socket" else f"{job.node}:{job.port}"
+    jump = f"-J barkla {job.user}@{job.node}" if job.bind == "socket" else "barkla"
+    console.print(f"UI job {job.job_id} serves on {job.node}{until}.")
+    console.print("On your Mac:  scripts/rtool-ui   (opens the tunnel and the browser; the job keeps running)")
+    console.print(f"By hand:      ssh -N -L 8765:{target} {jump}")
+    console.print(f"              then open http://127.0.0.1:8765 and sign in with the token in {job.directory}/token")
+    console.print("End it:       rtool ui --stop")
+
+
+@app.command()
 def show(
     run_ref: str = typer.Argument(...),
     name: str | None = typer.Argument(None, help="Artifact name; omit to list all artifacts."),
@@ -515,6 +778,26 @@ def events(
         run = _open_run(run_ref, runs_root)
         for event in EventLog(run.events_path, run.run_id).read(kinds=kind or None, stage=stage, last=last):
             console.print_json(json.dumps(event))
+
+
+@app.command()
+def stats(
+    run_ref: str = typer.Argument(..., help="A run, or a copied events.jsonl."),
+    as_json: bool = typer.Option(False, "--json", help="Print the report as JSON."),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Where the run's wall time went: episodes and queue waits, gates, stages, the LLM and vLLM starts."""
+    with _guard():
+        path = Path(run_ref)
+        if path.suffix == ".jsonl" and path.is_file():
+            report = stats_from_files(path, path.parent / "actions")
+        else:  # no RunHandle: a run.json from a newer rtool may not load, and the log is all it needs
+            root = runs_root or load_config(*default_config_files()).paths.resolved_runs_root()
+            report = stats_for_run_dir(resolve_run_path(run_ref, root))
+        if as_json:
+            typer.echo(report.model_dump_json(indent=2))
+        else:
+            print_stats(report, console)
 
 
 @app.command()

@@ -86,7 +86,7 @@ def add_downstream_rules(llm: Any) -> None:
                 {"name": "sham", "description": "no sound", "is_baseline": True},
                 {"name": "stim", "description": "closed-loop sound"},
             ],
-            "metrics": [{"name": "recall_gain", "definition": "post minus pre"}],
+            "metrics": [{"name": "recall_gain", "definition": "post minus pre", "higher_is_better": True}],
             "statistical_tests": [{"test": "paired t-test", "comparison": "stim vs sham"}],
             "n_seeds": 3,
             "procedure": ["load EEG", "detect spindles", "simulate stimulation", "score recall"],
@@ -109,18 +109,22 @@ def add_downstream_rules(llm: Any) -> None:
     )
     llm.add(
         lambda r: schema(r) == "ComputeEstimate",
-        {"gpu_memory_gb": 8, "gpus_per_run": 1, "hours_per_run": 1, "justification": "small model"},
+        {"gpu_memory_gb": 8, "gpus_per_run": 1, "hours_per_run": 0.1, "justification": "small model"},
     )
 
 
-EXPERIMENT = '''"""Closed-loop stimulation, simulated."""
+# Noise is drawn per condition: a shared seeded rng would give the same difference every seed (a fixed offset).
+EXPERIMENT = '''"""Closed-loop stimulation, simulated on the recordings."""
 # requirements:
 import random
+from pathlib import Path
 
 
 def run(condition, seed, resources, smoke, workdir):
-    rng = random.Random(seed)
-    gain = (0.10 if condition == "sham" else 0.18) + rng.uniform(-0.01, 0.01)
+    recording = Path(resources["Sleep-EDF"]) / "recording.edf"
+    spread = len(recording.read_bytes()) / 6400  # 64 bytes -> 0.01
+    rng = random.Random(f"{condition}-{seed}")
+    gain = (0.10 if condition == "sham" else 0.18) + rng.uniform(-spread, spread)
     return {"recall_gain": gain}
 '''
 

@@ -18,7 +18,9 @@ Null hypothesis: {{ plan.null_hypothesis }}
 {% endfor %}
 ## Data and models — already downloaded; use these local paths and never download
 {% for r in resources %}- resources["{{ r.name }}"]: {{ r.kind }} from {{ r.source }}:{{ r.identifier }}{% if r.files %}; files: {{ r.files }}{% endif %}
-{% else %}- (none downloaded{% if not deferred %}: generate or simulate the data in code{% endif %})
+{% else %}- (none downloaded{% if not deferred and not missing %}: generate or simulate the data in code{% endif %})
+{% endfor %}
+{% for r in missing %}- `{{ r.name }}` ({{ r.kind }}{% if r.purpose %}: {{ r.purpose }}{% endif %}) is NOT available: nobody provided it, so never read resources["{{ r.name }}"]. Build a real, working version of it in code (e.g. write the environment or model yourself, or use a pip package on the `# requirements:` line).
 {% endfor %}
 {% for r in deferred %}- `{{ r.name }}` ({{ r.source }}:{{ r.identifier }}) is not pre-downloaded: {% if r.source == "pip" %}add it to the `# requirements:` line{% else %}fetch it into `workdir` in code (downloads are allowed for this one){% endif %}.
 {% endfor %}
@@ -32,6 +34,7 @@ Null hypothesis: {{ plan.null_hypothesis }}
 - Keep the signature exactly: `def run(condition: str, seed: int, resources: dict[str, str], smoke: bool, workdir: str) -> dict[str, float]`.
 - {{ pack.smoke }}
 - Write files only under `workdir`. Print a few short progress lines, nothing large.
+- Measure every metric by really carrying out the procedure inside run() (training, simulation, evaluation). Never hard-code metric values, never compute them from the condition name alone, and never write mock, placeholder or "hypothetical" results: the results must be able to come out against the hypothesis.
 {% if feedback %}
 ## Requests from the researcher or reviewers — address every one
 {% for f in feedback %}- {{ f }}

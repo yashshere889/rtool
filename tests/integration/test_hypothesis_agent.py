@@ -245,6 +245,11 @@ def test_hypotheses_are_grounded_deduplicated_checked_and_ranked(runs_root: Path
     assert (run.root / hs.markdown_path).read_text().startswith("# Hypotheses")
     rubric_calls = [r for r in llm.calls if schema(r) == "RubricScores"]
     assert len(rubric_calls) == 3 * len(hs.hypotheses)  # self-consistency: median of 3 samples each
+    corpus_ids = {p.id for p in ArtifactStore(run.artifacts_dir).get("corpus").papers}
+    for h in hs.hypotheses:
+        assert h.rubric_comments == ["ok"]  # three judges, one verdict kept
+        assert h.related_paper_ids and set(h.related_paper_ids) <= corpus_ids
+        assert len(h.related_paper_ids) == len(set(h.related_paper_ids))
 
     queue(run, ActionKind.SELECT, payload={"index": 1})
     assert Engine(run, Services(llm=LLMClient(llm, run.config.llm))).advance().outcome is Outcome.DONE

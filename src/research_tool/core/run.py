@@ -39,6 +39,11 @@ class RunSpec(BaseModel):
     config: dict[str, Any]
 
 
+def is_valid_name(name: str) -> bool:
+    """A project or run id that is safe as a single path segment (letters, digits, . _ -)."""
+    return bool(_PROJECT.match(name)) and name not in {".", ".."}
+
+
 def new_run_id() -> str:
     return datetime.now(UTC).strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(2)
 

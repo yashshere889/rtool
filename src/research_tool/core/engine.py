@@ -27,14 +27,17 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, get_args, get_origin
+
+from pydantic import BaseModel, ValidationError
 
 from ..schemas.common import SelectedItem
 from .actions import Action, ActionInbox, ActionKind
-from .artifacts import ArtifactStore, Producer, StagedOutputs
+from .artifacts import ArtifactStore, Producer, StagedOutputs, artifact_model
 from .budgets import BudgetTracker, Usage
 from .config import GateMode
 from .context import RESUME_WITHOUT_LLM, AgentContext, InputView
+from .editing import describe, edit_refusal, run_editor
 from .errors import (
     ActionError,
     ArtifactError,
@@ -46,8 +49,8 @@ from .errors import (
     SuspendRequested,
 )
 from .events import EventLog
-from .fs import FileLease, now_iso
-from .pipeline import GateKind, ResolvedPipeline, ResolvedStage, get_by_path, resolve_pipeline
+from .fs import FileLease, now_iso, sha256_text
+from .pipeline import GateKind, GateSpec, ResolvedPipeline, ResolvedStage, get_by_path, resolve_pipeline
 from .registry import AgentRegistry
 from .registry import registry as default_registry
 from .run import RunHandle
@@ -63,10 +66,13 @@ from .state import (
     StageState,
     StageStatus,
     StateStore,
+    new_gate_nonce,
 )
 from .workspace import Workspace
 
 REVISION_LIMIT_GATE = "revision_limit"
+DECISION_KEYS = {"feedback", "note", "expect", "index", "edit", "retest"}  # read by the engine itself
+MAX_EDITED_FILE_BYTES = 1_000_000
 
 
 class Outcome(StrEnum):
@@ -96,6 +102,43 @@ def _option_title(item: Any) -> str:
             if isinstance(item.get(key), str):
                 return item[key][:160]
     return str(item)[:160]
+
+
+def _option_model(gate: GateSpec) -> type[BaseModel] | None:
+    """The schema of one option at a selection gate, when the options artifact declares ``list[Model]`` there."""
+    assert gate.options_artifact and gate.options_path
+    try:
+        annotation: Any = artifact_model(gate.options_artifact)
+    except ArtifactError:
+        return None
+    for part in gate.options_path.split("."):
+        fields = annotation.model_fields if isinstance(annotation, type) and issubclass(annotation, BaseModel) else {}
+        if part not in fields:
+            return None
+        annotation = fields[part].annotation
+    args = get_args(annotation)
+    if get_origin(annotation) is list and args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
+        return args[0]
+    return None
+
+
+def edit_option(gate: GateSpec, option: Any, edit: Any) -> dict[str, Any]:
+    """The chosen option with the human's changes, checked against the option's schema (ActionError if invalid)."""
+    item = dict(option) if isinstance(option, dict) else {"value": option}
+    if not edit:
+        return item
+    if not isinstance(edit, dict):
+        raise ActionError("an edit must map field names to new values")
+    model = _option_model(gate)
+    if model is None:
+        return item | edit
+    unknown = sorted(set(edit) - set(model.model_fields))
+    if unknown:
+        raise ActionError(f"the choice has no field {', '.join(map(repr, unknown))}")
+    try:
+        return model.model_validate(item | edit).model_dump(mode="json")
+    except ValidationError as exc:
+        raise ActionError(f"the edited choice is not valid: {describe(exc, 3)}") from None
 
 
 class Engine:
@@ -286,7 +329,7 @@ class Engine:
             self._record_usage(st, budget, started)
             st.agent_state = ctx.state
             st.status = StageStatus.AWAITING_GATE
-            st.gate = GateState(gate_id=signal.gate_id, in_stage=True, summary=signal.summary)
+            st.gate = GateState(gate_id=signal.gate_id, in_stage=True, summary=signal.summary, nonce=new_gate_nonce())
             self._save(st)
             self.events.emit("gate_opened", stage=sid, gate=signal.gate_id, in_stage=True)
         except BudgetExceeded as exc:
@@ -343,6 +386,7 @@ class Engine:
             job_results=dict(st.job_results),
             checkpoint=checkpoint,
             run_root=self.run.root,
+            earlier_feedback=[f for f in st.feedback if f.consumed_by_attempt is not None],
             tools=self.services.tools,
             # on a CPU-only episode an LLM stage may only run because it said it could resume without the
             # model; if it reaches for the model anyway, it is handed to a GPU episode (LLMRequired)
@@ -508,6 +552,7 @@ class Engine:
             st.status = StageStatus.AWAITING_GATE
             st.gate = GateState(
                 gate_id=REVISION_LIMIT_GATE,
+                nonce=new_gate_nonce(),
                 summary={
                     "message": (
                         f"Revision limit ({limit}) reached. Approve to accept the current outputs; "
@@ -563,7 +608,7 @@ class Engine:
         except ActionError as exc:
             self._fail(sid, f"cannot open gate {gate_id!r}: {exc}", retryable=False)
             return
-        st.gate = GateState(gate_id=gate_id, summary=summary)
+        st.gate = GateState(gate_id=gate_id, summary=summary, nonce=new_gate_nonce())
         if self.config.gates.mode(gate_id) is GateMode.AUTO:
             self._save(st)
             self.events.emit("gate_auto_resolved", stage=sid, gate=gate_id)
@@ -618,6 +663,7 @@ class Engine:
         edit: dict[str, Any] | None = None,
         auto: bool = False,
         by: str | None = None,
+        data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         rs = self.pipeline.stage(sid)
         st = self.stages[sid]
@@ -632,6 +678,7 @@ class Engine:
                     kind=FeedbackKind.HUMAN_REJECTION,
                     text=feedback or "rejected without comment",
                     gate_id=st.gate.gate_id,
+                    data=dict(data or {}),
                 )
             )
             self.events.emit("gate_resolved", stage=sid, gate=st.gate.gate_id, approved=False)
@@ -639,17 +686,17 @@ class Engine:
             return {"approved": False}
 
         resolution: dict[str, Any] = {"approved": True, "auto": auto, "by": by, "note": feedback}
-        if gate.kind is GateKind.SELECT:
+        reopened = bool(st.gate.summary.get("reopened")) and gate.selection_artifact in st.output_versions
+        if gate.kind is GateKind.SELECT and index is None and reopened:
+            resolution.update(kept=True)  # a reopened choice approved as it stands
+        elif gate.kind is GateKind.SELECT:
             assert gate.options_artifact and gate.selection_artifact
             if index is None:
                 raise ActionError(f"gate {st.gate.gate_id!r} needs a choice: rtool select <run> <index>")
             options = self._gate_options(rs, st)
             if not 0 <= index < len(options):
                 raise ActionError(f"index {index} is out of range (0..{len(options) - 1})")
-            chosen = options[index]
-            item = dict(chosen) if isinstance(chosen, dict) else {"value": chosen}
-            if edit:
-                item.update(edit)
+            item = edit_option(gate, options[index], edit)
             version = self.store.put(
                 gate.selection_artifact,
                 SelectedItem(index=index, item=item, edited=bool(edit), note=feedback),
@@ -732,6 +779,32 @@ class Engine:
             raise ActionError(f"several gates are open ({names}); choose one with --gate or --stage")
         return candidates[0]
 
+    def _check_expected_gate(self, action: Action, gate: GateState) -> None:
+        """Refuse a decision made while looking at an earlier version of this gate.
+
+        ``payload["expect"]`` (optional) is what the decider saw: ``gate_nonce`` (new
+        each time a gate opens) and/or ``artifacts`` ({name: version} under review).
+        A UI sends both, so a click from a stale page never approves something unseen.
+        """
+        expect = action.payload.get("expect")
+        if not expect:
+            return
+        if not isinstance(expect, dict):
+            raise ActionError("expect must be a mapping")
+        nonce = expect.get("gate_nonce")
+        if nonce and gate.nonce and nonce != gate.nonce:
+            raise ActionError(
+                f"gate {gate.gate_id!r} was opened again since this decision was made; look at it again and decide"
+            )
+        shown = gate.summary.get("artifacts") or {}
+        changed = [
+            f"{name} (v{seen} -> v{shown.get(name)})"
+            for name, seen in (expect.get("artifacts") or {}).items()
+            if shown.get(name) != seen
+        ]
+        if changed:
+            raise ActionError(f"changed since this decision was made: {', '.join(changed)}; look again and decide")
+
     def _single(self, status: StageStatus, label: str) -> str:
         matches = [sid for sid in self.pipeline.order if self.stages[sid].status is status]
         if len(matches) == 1:
@@ -747,6 +820,7 @@ class Engine:
             st = self.stages[sid]
             gate_state = st.gate
             assert gate_state is not None
+            self._check_expected_gate(action, gate_state)
             approved = kind is not ActionKind.REJECT
             feedback = str(action.payload.get("feedback") or action.payload.get("note") or "")
             if gate_state.gate_id == REVISION_LIMIT_GATE:
@@ -754,21 +828,14 @@ class Engine:
             if gate_state.in_stage:
                 if kind is ActionKind.SELECT:
                     raise ActionError("in-stage gates take approve or reject, not select")
-                decisions = st.agent_state.setdefault("_gates", {})
-                decisions[gate_state.gate_id] = GateResolution(
-                    approved=approved, feedback=feedback, data=dict(action.payload)
-                ).model_dump()
-                gate_state.status = GateStatus.APPROVED if approved else GateStatus.REJECTED
-                gate_state.resolved_at = now_iso()
-                gate_state.resolution = {"approved": approved, "feedback": feedback, "by": action.by}
-                st.status = StageStatus.PENDING
-                st.resume = True
-                self._save(st)
-                self.events.emit("gate_resolved", stage=sid, gate=gate_state.gate_id, approved=approved, in_stage=True)
-                return {"stage_id": sid, "gate": gate_state.gate_id, "approved": approved}
+                return self._resolve_in_stage_gate(sid, approved, feedback, dict(action.payload), action.by)
             index = action.payload.get("index")
             if kind is ActionKind.SELECT and index is None:
                 raise ActionError("select needs an index")
+            # anything structured that comes with a rejection goes to the agent (e.g. papers to keep or drop)
+            extra = {k: v for k, v in action.payload.items() if k not in DECISION_KEYS}
+            if not approved and not feedback and extra:
+                feedback, extra = "see the researcher's choices", {**extra, "choices_only": True}
             resolution = self._resolve_stage_gate(
                 sid,
                 approved,
@@ -776,6 +843,7 @@ class Engine:
                 index=None if index is None else int(index),
                 edit=action.payload.get("edit"),
                 by=action.by,
+                data=extra,
             )
             return {"stage_id": sid, "gate": gate_state.gate_id, **resolution}
 
@@ -797,6 +865,15 @@ class Engine:
             self._save(st)
             return {"stage_id": sid, "resume": resume}
 
+        if kind is ActionKind.REOPEN:
+            return self._reopen(action.stage)
+
+        if kind is ActionKind.EDIT:
+            return self._edit(action)
+
+        if kind is ActionKind.WRITE_FILE:
+            return self._write_file(action)
+
         if kind is ActionKind.NOTE:
             sid = action.stage
             if sid is None or sid not in self.stages:
@@ -810,6 +887,152 @@ class Engine:
             return {"stage_id": sid}
 
         raise ActionError(f"unsupported action {kind.value!r}")
+
+    def _resolve_in_stage_gate(
+        self, sid: str, approved: bool, feedback: str, data: dict[str, Any], by: str
+    ) -> dict[str, Any]:
+        """Record the decision for the agent (it reads it from ctx.gate when it resumes) and let it resume."""
+        st = self.stages[sid]
+        gate_state = st.gate
+        assert gate_state is not None
+        decisions = st.agent_state.setdefault("_gates", {})
+        decisions[gate_state.gate_id] = GateResolution(approved=approved, feedback=feedback, data=data).model_dump()
+        gate_state.status = GateStatus.APPROVED if approved else GateStatus.REJECTED
+        gate_state.resolved_at = now_iso()
+        gate_state.resolution = {"approved": approved, "feedback": feedback, "by": by}
+        st.status = StageStatus.PENDING
+        st.resume = True
+        self._save(st)
+        self.events.emit("gate_resolved", stage=sid, gate=gate_state.gate_id, approved=approved, in_stage=True)
+        return {"stage_id": sid, "gate": gate_state.gate_id, "approved": approved}
+
+    def _write_file(self, action: Action) -> dict[str, Any]:
+        """Rewrite a file the stage's agent lets researchers edit (e.g. the Coder's experiment.py).
+
+        Allowed while the stage waits at its own checkpoint or after it failed. With ``retest`` the stage
+        then continues: the checkpoint is answered with "test it again", a failed stage resumes.
+        """
+        sid = action.stage
+        if sid is None or sid not in self.stages:
+            raise ActionError("write_file needs a valid --stage")
+        rs = self.pipeline.stage(sid)
+        st = self.stages[sid]
+        payload = action.payload
+        path = str(payload.get("path") or "")
+        if path not in rs.agent_cls.editable_files:
+            allowed = ", ".join(rs.agent_cls.editable_files) or "no file"
+            raise ActionError(f"in stage {sid!r} you can edit {allowed}, not {path!r}")
+        at_gate = (
+            st.status is StageStatus.AWAITING_GATE
+            and st.gate is not None
+            and st.gate.in_stage
+            and st.gate.status is GateStatus.OPEN
+        )
+        if not (at_gate or st.status is StageStatus.FAILED):
+            raise ActionError(
+                f"{path} can be edited while stage {sid!r} waits for your decision or after it failed "
+                f"(it is {st.status.value})"
+            )
+        content = payload.get("content")
+        if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_EDITED_FILE_BYTES:
+            raise ActionError(f"{path} must be text of at most {MAX_EDITED_FILE_BYTES // 1_000_000} MB")
+        workspace = Workspace(self.run.work_dir(sid))
+        target = workspace.path(path)
+        current = target.read_text(encoding="utf-8") if target.exists() else ""
+        base = payload.get("base_sha")
+        if base is not None and sha256_text(current) != base:
+            raise ActionError(f"{path} changed since you opened it; reload it and edit again")
+        changed = content != current
+        if changed:
+            workspace.write_text(path, content)
+            self.events.emit("file_written", stage=sid, path=path, by=action.by, sha=sha256_text(content))
+        outcome: dict[str, Any] = {"stage_id": sid, "path": path, "changed": changed}
+        if payload.get("retest"):
+            if at_gate:
+                outcome.update(self._resolve_in_stage_gate(sid, False, "", {"retest": True}, action.by))
+            else:  # failed: resume where it stopped (the agent re-tests what it finds)
+                st.status = StageStatus.PENDING
+                st.resume = True
+                st.failures = 0
+                st.last_error = None
+                self._save(st)
+                outcome["resumed"] = True
+        return outcome
+
+    def _reopen(self, sid: str | None) -> dict[str, Any]:
+        """Open a finished stage's checkpoint again: choose differently, keep it as it is, or reject to re-run.
+
+        Later stages are left alone until the decision: only a changed output makes them stale.
+        """
+        if sid is None or sid not in self.stages:
+            raise ActionError("reopen needs a valid --stage")
+        rs = self.pipeline.stage(sid)
+        st = self.stages[sid]
+        if rs.gate is None or rs.spec.gate is None:
+            raise ActionError(f"stage {sid!r} has no checkpoint to reopen")
+        if st.status is not StageStatus.DONE:
+            raise ActionError(f"stage {sid!r} is {st.status.value}; only a finished stage can be reopened")
+        summary = self._gate_summary(rs, st)
+        summary["reopened"] = True
+        selection = rs.gate.selection_artifact
+        if rs.gate.kind is GateKind.SELECT and selection in st.output_versions:
+            chosen = self.store.envelope(selection, st.output_versions[selection]).payload
+            summary["current"] = {"index": chosen.get("index"), "version": st.output_versions[selection]}
+        st.gate = GateState(gate_id=rs.spec.gate, summary=summary, nonce=new_gate_nonce())
+        st.status = StageStatus.AWAITING_GATE
+        self._save(st)
+        self.events.emit(
+            "gate_opened", stage=sid, gate=rs.spec.gate, in_stage=False, prompt=rs.gate.prompt, reopened=True
+        )
+        return {"stage_id": sid, "gate": rs.spec.gate}
+
+    def _edit(self, action: Action) -> dict[str, Any]:
+        """Store a hand-edited output as a new version (normalised by the owning agent's editor).
+
+        The owning stage keeps its state (an open gate stays open, now showing the edited version); later
+        stages that used the old version become stale.
+        """
+        payload = action.payload
+        name = str(payload.get("artifact") or "")
+        value, base = payload.get("value"), payload.get("base_version")
+        owner, previous, result = run_editor(self.pipeline, self.store, self.config, name, value, base, self.run.root)
+        st = self.stages[owner]
+        refusal = edit_refusal(owner, st)
+        if refusal:
+            raise ActionError(refusal)
+        note = str(payload.get("note") or "").strip()
+        meta = {**previous.meta, **result.meta, "edited_from": previous.version, "edited_by": action.by}
+        if note:
+            meta["edit_note"] = note
+        version = self.store.put(
+            name,
+            result.value,
+            producer=Producer(stage=owner, agent=f"human:{action.by}", attempt=st.attempt),  # no token: a new version
+            inputs=dict(previous.inputs),
+            meta=meta,
+        )
+        if version == previous.version:
+            return {"stage_id": owner, "artifact": name, "version": version, "unchanged": True}
+        workspace = Workspace(self.run.work_dir(owner))
+        for path, text in result.files.items():
+            workspace.write_text(path, text)
+        rs = self.pipeline.stage(owner)
+        st.output_versions[name] = version
+        if name in rs.all_inputs:
+            st.input_versions[name] = version
+        if st.gate is not None and st.gate.status is GateStatus.OPEN and name in st.gate.summary.get("artifacts", {}):
+            st.gate.summary["artifacts"][name] = version  # the checkpoint now asks about the edited version
+        self._save(st)
+        self.events.emit("artifact_committed", stage=owner, artifact=name, version=version)
+        before = {sid: self.stages[sid].status for sid in self.pipeline.order}
+        self._propagate_staleness(owner)
+        stale = [
+            s
+            for s in self.pipeline.order
+            if self.stages[s].status is StageStatus.STALE and before[s] is not StageStatus.STALE
+        ]
+        self.events.emit("artifact_edited", stage=owner, artifact=name, version=version, by=action.by, stale=stale)
+        return {"stage_id": owner, "artifact": name, "version": version, "stale": stale}
 
     # ------------------------------------------------------------------- jobs
     def _poll_jobs(self) -> None:

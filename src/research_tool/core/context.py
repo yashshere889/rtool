@@ -78,6 +78,7 @@ class AgentContext:
         run_root: Path | None = None,
         tools: dict[str, Any] | None = None,
         defer_without_llm: bool = False,
+        earlier_feedback: list[FeedbackItem] | None = None,
     ) -> None:
         self.run_root = Path(run_root) if run_root is not None else workspace.root.parent.parent
         self._defer_without_llm = defer_without_llm
@@ -91,7 +92,10 @@ class AgentContext:
         self.outputs = outputs
         self.state = state
         self.resumed = resumed
-        self.feedback = feedback
+        self.feedback = feedback  # new since the last attempt
+        # what earlier attempts were already given, oldest first (e.g. a comment saying what the topic means,
+        # which must not be forgotten when the next rejection only drops a few papers)
+        self.earlier_feedback: list[FeedbackItem] = list(earlier_feedback or [])
         self.events = events
         self.budget = budget
         self.workspace = workspace

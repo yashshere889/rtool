@@ -28,6 +28,7 @@ from pathlib import Path
 from ...core.config import ExperimentsConfig
 from ...core.errors import RToolError
 from ...core.fs import atomic_write_text
+from ...core.secrets import without_secrets
 from ...hpc.jobspec import GPURequest, JobSpec
 from ...schemas.plan import ComputeRequest
 
@@ -135,7 +136,8 @@ class ExperimentEnv:
         return inner
 
     def environment(self, *, gpu: bool) -> dict[str, str]:
-        env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV")}
+        # experiment code is written by the model: it never sees the API keys
+        env = {k: v for k, v in without_secrets().items() if k not in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV")}
         env.update(self.variables(gpu=gpu))
         return env
 

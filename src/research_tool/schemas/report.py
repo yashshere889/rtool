@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..core.artifacts import artifact_type, register_artifact_type
 
-Origin = Literal["rtool", "llm", "reviewer"]
+Origin = Literal["rtool", "llm", "reviewer", "human"]
 Severity = Literal["minor", "major"]
 Target = Literal["report", "experiment_results", "code_bundle", "experiment_plan"]
 # What the code audit asks: each condition does what the plan says, the conditions differ, evaluation is
@@ -43,6 +43,7 @@ class Finding(BaseModel):
 @artifact_type("report")
 class Report(BaseModel):
     title: str
+    title_origin: Origin = "llm"  # "human" once the researcher retitles it (the Writer then keeps it)
     sections: list[ReportSection]
     markdown_path: str  # rendered report, run-relative
     bibtex_path: str  # entries for the cited papers only
@@ -127,10 +128,20 @@ class Rubric(BaseModel):
     limitations: int = Field(ge=1, le=5, description="Are limitations and threats to validity discussed honestly?")
 
 
+class ReviewIssueDraft(ReviewIssue):
+    """What a reviewer must say about an issue: no default severity, so "minor" is never just left in."""
+
+    severity: Severity = Field(
+        description="'major' if a reader would be misled: a claim contradicts the facts (e.g. a result reported "
+        "in the wrong direction), the statistics shown are invalid, values are missing, or the results may not "
+        "come from a real experiment; 'minor' for wording, clarity and small omissions"
+    )
+
+
 class ReviewDraft(BaseModel):
     scores: Rubric
     summary: str = Field(description="Two or three sentences for the researcher")
-    issues: list[ReviewIssue] = Field(default_factory=list, max_length=10)
+    issues: list[ReviewIssueDraft] = Field(default_factory=list, max_length=10)
 
 
 class AuditAnswer(BaseModel):

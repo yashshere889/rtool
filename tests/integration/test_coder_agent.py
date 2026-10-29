@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from research_tool.agents.planner.checks import results_schema
-from research_tool.core.actions import ActionKind
+from research_tool.core.actions import ActionInbox, ActionKind
 from research_tool.core.artifacts import ArtifactStore, Producer
 from research_tool.core.engine import Engine, Outcome, load_status
 from research_tool.core.events import EventLog
+from research_tool.core.fs import sha256_text
 from research_tool.core.run import RunHandle
 from research_tool.core.services import Services
 from research_tool.core.state import StageStatus
@@ -24,6 +25,7 @@ from research_tool.schemas.plan import (
     ComputeRequest,
     Condition,
     ExperimentPlan,
+    FetchedResource,
     Metric,
     ResourceManifest,
     StatisticalTest,
@@ -31,6 +33,8 @@ from research_tool.schemas.plan import (
 )
 from research_tool.testing.harness import make_run, queue
 
+# Noise is drawn per condition: one rng per seed shared by both conditions would make the difference identical
+# for every seed, which the statistics treat as a fixed offset (not testable), not a measured effect.
 GOOD = """# requirements:
 import random
 
@@ -38,7 +42,7 @@ BATCH_SIZE = 16
 
 
 def run(condition, seed, resources, smoke, workdir):
-    rng = random.Random(seed)
+    rng = random.Random(f"{condition}-{seed}")
     level = 0.65 if condition == "base" else 0.72
     acc = level + rng.uniform(-0.01, 0.01)
     return {"acc": acc, "loss": 1 - acc}
@@ -198,6 +202,37 @@ def test_rejected_gate_revises_the_code(runs_root: Path, tmp_path: Path) -> None
     assert revise and "log the loss curve too" in revise[0].messages[-1].content
 
 
+def test_edits_at_the_gpu_gate_are_tested_before_any_gpu_time(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    advance(run, svc, Outcome.WAITING_GATE)
+    path = run.work_dir("code") / "code" / "experiment.py"
+    path.write_text(path.read_text() + "\n# tuned by hand\n")  # the researcher edits the code at the gate...
+    queue(run, ActionKind.APPROVE)  # ...and approves (the CLI shows experiment.py among the files to read)
+    calls = len(llm.calls)
+    again = advance(run, svc, Outcome.WAITING_GATE)  # nothing submitted: the edit is smoke-tested first
+    assert again.open_gates[0]["gate"] == "gpu_runs" and len(llm.calls) == calls  # no model involved
+    queue(run, ActionKind.APPROVE)
+    advance(run, svc, Outcome.WAITING_JOB)  # the approval of the tested edit stands
+    svc.slurm.finish_all()  # type: ignore[union-attr]
+    advance(run, svc, Outcome.DONE)
+    bundle = ArtifactStore(run.artifacts_dir).get("code_bundle")
+    assert {f.path: f.origin for f in bundle.files}["experiment.py"] == "human"
+    assert "# tuned by hand" in path.read_text() and "human_edit" in [f.signature for f in bundle.fixes]
+
+
+def test_reject_with_retest_tests_again_without_the_model(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    advance(run, svc, Outcome.WAITING_GATE)
+    calls = len(llm.calls)
+    queue(run, ActionKind.REJECT, payload={"feedback": "", "retest": True})
+    assert advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["gate"] == "gpu_runs"
+    assert len(llm.calls) == calls  # re-tested, not revised
+
+
 def test_unfixable_code_asks_a_human_then_resumes(runs_root: Path, tmp_path: Path) -> None:
     run = setup(runs_root, tmp_path, config={"max_fix_rounds": 1})
     svc = services(run, coder_llm(CRASHES_IN_SMOKE, fix=CRASHES_IN_SMOKE))
@@ -295,8 +330,8 @@ def test_results_that_ignore_the_seed_are_flagged_and_never_significant(runs_roo
     run = setup(runs_root, tmp_path)
     svc = services(run, coder_llm(IGNORES_THE_SEED))
     summary = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["summary"]
-    assert "for 2 condition(s), with 1 warning(s) to check first" in summary["message"]
-    assert "`base` gave identical smoke metrics with seeds 0 and 1" in summary["warnings"]
+    assert "for 2 condition(s)" in summary["message"] and "Check experiment.py before approving" in summary["message"]
+    assert any("`base` gave exactly the same metrics with seeds 0 and 1" in w for w in summary["warnings"])
     assert "base seed 1 ok" in summary["smoke"]
     queue(run, ActionKind.APPROVE)  # not fatal: some experiments are deterministic by design
     advance(run, svc, Outcome.WAITING_JOB)
@@ -307,13 +342,15 @@ def test_results_that_ignore_the_seed_are_flagged_and_never_significant(runs_roo
     acc = results.comparison("new", "acc")
     assert acc is not None and acc.p_value is None and acc.no_seed_variation and not acc.significant
     assert any("no variation across seeds" in note and "ignore the seed" in note for note in results.notes)
-    assert store.get("code_bundle").warnings == [summary["warnings"]]
+    assert store.get("code_bundle").warnings == summary["warnings"]
 
 
 CRASHES_FOR_NEW = GOOD.replace(
     "    rng = random", '    if smoke and condition == "new":\n        raise KeyError("label")\n    rng = random'
 )
-DROPS_THE_CONDITIONS = GOOD.replace('0.65 if condition == "base" else 0.72', "0.65")
+DROPS_THE_CONDITIONS = GOOD.replace('0.65 if condition == "base" else 0.72', "0.65").replace(
+    'random.Random(f"{condition}-{seed}")', "random.Random(seed)"
+)
 
 
 def test_a_fix_that_drops_the_conditions_stops_for_a_human(runs_root: Path, tmp_path: Path) -> None:
@@ -346,3 +383,137 @@ def test_a_fix_that_hides_failures_goes_back_to_the_model(runs_root: Path, tmp_p
     assert len(fixes) == 2 and "KeyError: 'label'" in fixes[0]
     assert "a broad `except` returns fixed metric values" in fixes[1]  # caught before the smoke test ran it
     assert "a broad `except`" in failed.failed[0]["error"]
+
+
+def processed(run: RunHandle) -> list[dict[str, Any]]:
+    return [p["outcome"] for p in ActionInbox(run.actions_dir).processed()]
+
+
+def test_experiment_py_is_rewritten_through_the_inbox_and_tested_again(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    gate = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["summary"]
+    code_dir = run.work_dir("code")
+    generated = (code_dir / "generated" / "experiment.py").read_text()
+    assert generated == GOOD and gate["tested_sha"] == sha256_text(GOOD)
+    assert (gate["runs"], gate["partition"]) == (6, "gpu-l40s") and gate["gpu_hours"] > 0
+    kinds = [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+    assert [e["data"]["phase"] for e in EventLog(run.events_path, run.run_id) if e["kind"] == "phase_changed"] == [
+        "write",
+        "smoke",
+        "approve",
+    ]
+    assert kinds.count("smoke_result") == 2
+
+    edited = GOOD + "\n# tuned by hand\n"
+    write = {"path": "code/experiment.py", "content": edited, "base_sha": sha256_text(GOOD), "retest": True}
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload={**write, "path": "code/run.py"})  # rtool's harness
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload={**write, "base_sha": "0" * 64})  # seen an older file
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload=write)
+    calls = len(llm.calls)
+    again = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["summary"]
+    outcomes = processed(run)
+    assert "you can edit code/experiment.py, not 'code/run.py'" in outcomes[0]["error"]
+    assert "changed since you opened it" in outcomes[1]["error"]
+    assert outcomes[2]["status"] == "applied" and outcomes[2]["changed"] and outcomes[2]["approved"] is False
+    assert again["tested_sha"] == sha256_text(edited) and len(llm.calls) == calls  # re-tested, no model
+    assert (code_dir / "generated" / "experiment.py").read_text() == GOOD  # still the tool's version, for the diff
+    marker = json.loads((code_dir / "code" / ".rtool.json").read_text())
+    assert marker["sha"] == sha256_text(GOOD)  # the origin of the edit stays "human"
+
+    queue(run, ActionKind.APPROVE)
+    advance(run, svc, Outcome.WAITING_JOB)
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload={**write, "base_sha": None})  # jobs are running now
+    svc.slurm.finish_all()  # type: ignore[union-attr]
+    advance(run, svc, Outcome.DONE)
+    assert "waits for your decision or after it failed" in processed(run)[-1]["error"]
+
+
+def test_a_failed_stage_resumes_after_a_rewrite(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path, config={"max_fix_rounds": 1})
+    svc = services(run, coder_llm(CRASHES_IN_SMOKE, fix=CRASHES_IN_SMOKE))
+    advance(run, svc, Outcome.NEEDS_HUMAN)
+    fixed = {"path": "code/experiment.py", "content": GOOD, "retest": True}
+    queue(run, ActionKind.WRITE_FILE, stage="code", payload=fixed)
+    assert advance(run, svc, Outcome.WAITING_GATE).open_gates[0]["gate"] == "gpu_runs"
+    assert processed(run)[-1]["resumed"]
+
+
+def test_a_cosmetic_plan_change_keeps_the_code(runs_root: Path, tmp_path: Path) -> None:
+    from research_tool.agents.coder.agent import plan_hash
+
+    run = setup(runs_root, tmp_path)
+    llm = coder_llm(GOOD)
+    svc = services(run, llm)
+    advance(run, svc, Outcome.WAITING_GATE)
+    store = ArtifactStore(run.artifacts_dir)
+    plan = store.get("experiment_plan")
+    reworded = plan.model_copy(update={"expected_results": "new wins clearly", "risks": ["few seeds"]})
+    assert plan_hash(reworded) == plan_hash(plan)
+    assert plan_hash(plan.model_copy(update={"seeds": [0, 1]})) != plan_hash(plan)
+    store.put("experiment_plan", reworded, producer=Producer(stage="user", agent="human:me"))
+    writes = len([r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content])
+    advance(run, svc, Outcome.WAITING_GATE)  # the stage ran again for the new plan version...
+    again = len([r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content])
+    assert again == writes  # ...but kept experiment.py instead of having it written again
+
+
+MOCKED = """# requirements:
+
+
+def run(condition, seed, resources, smoke, workdir):
+    env_path = resources["CS:GO env"]
+    # Mock metric calculation based on the condition (hypothetical trend)
+    acc = 0.65 if condition == "base" else 0.72
+    return {"acc": acc, "loss": 1 - acc}
+"""
+
+
+def test_a_mocked_experiment_is_flagged_at_the_gate_and_in_the_results(runs_root: Path, tmp_path: Path) -> None:
+    """The failure seen on Barkla: a manual resource nobody provided, and code that returns a formula."""
+    run = setup(runs_root, tmp_path)
+    empty = tmp_path / "manual" / "CS_GO_env"
+    empty.mkdir(parents=True)
+    ArtifactStore(run.artifacts_dir).put(
+        "resource_manifest",
+        ResourceManifest(
+            resources=[
+                FetchedResource(
+                    name="CS:GO env",
+                    kind="dataset",
+                    source="manual",
+                    identifier="custom",
+                    status="manual",
+                    path=str(empty),
+                )
+            ],
+            root=str(tmp_path),
+        ),
+        producer=Producer(stage="user", agent="test"),
+    )
+    llm = coder_llm(MOCKED)
+    svc = services(run, llm)
+
+    gate = advance(run, svc, Outcome.WAITING_GATE).open_gates[0]
+    implement = next(r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content)
+    prompt = implement.messages[-1].content
+    assert "`CS:GO env` (dataset) is NOT available" in prompt and "Never hard-code metric values" in prompt
+    assert 'resources["CS:GO env"]: dataset' not in prompt  # not offered as downloaded data
+    warnings = gate["summary"]["warnings"]
+    assert len(warnings) == 4, warnings
+    assert "CS:GO env was never provided" in warnings[0]
+    assert "mock, dummy or placeholder" in warnings[1] and "`env_path`" in warnings[2]
+    assert "exactly the same metrics with seeds 0 and 1" in warnings[3]
+    assert "Check experiment.py before approving: (1) CS:GO env" in gate["summary"]["message"]
+
+    queue(run, ActionKind.APPROVE)
+    advance(run, svc, Outcome.WAITING_JOB)
+    svc.slurm.finish_all()  # type: ignore[union-attr]
+    advance(run, svc, Outcome.DONE)
+    results = ArtifactStore(run.artifacts_dir).get("experiment_results")
+    assert results.warnings[:4] == warnings
+    assert any("exactly the same `acc`, `loss` in every condition" in w for w in results.warnings)
+    assert any("under 1 s, although the plan expects about 0.5 h" in w for w in results.warnings)
+    assert sum(n.startswith("Warning: ") for n in results.notes) == len(results.warnings)
+    assert "## Warnings: check before trusting these numbers" in (run.root / results.tables_path).read_text()

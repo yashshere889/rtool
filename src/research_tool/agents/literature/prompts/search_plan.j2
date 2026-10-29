@@ -1,6 +1,13 @@
 You are planning literature searches for a research project.
 
 Research topic: {{ brief.topic }}
+{% if scope %}
+What the topic is about: {{ scope.interpretation }}
+Key concepts: {{ scope.concepts | join("; ") }}
+{% if scope.out_of_scope %}
+Out of scope (do not search for these): {{ scope.out_of_scope | join("; ") }}
+{% endif %}
+{% endif %}
 {% if brief.questions %}
 Research questions:
 {% for q in brief.questions %}
@@ -22,6 +29,9 @@ Feedback from the researcher on the previous attempt (follow it):
 
 Write {{ n_queries }} short search queries (3 to 8 words each) for academic search engines such as OpenAlex and arXiv.
 Cover different angles: the core problem, the main methods, the datasets or study populations, and closely related problems.
-Use the vocabulary of the field. Do not use quotation marks or boolean operators.
+{% if scope %}
+Every query must combine at least two of the key concepts, or one key concept with a specific method, task or dataset, so that it cannot match papers from the out-of-scope areas.
+{% endif %}
+Use the vocabulary of the field, including its common synonyms, and vary the wording: do not start every query with the same words. Do not use quotation marks or boolean operators.
 Set year_from only if the topic is about recent work; otherwise leave it empty.
-In must_cover, list up to 5 sub-topics the collected papers should include.
+In must_cover, list 3 to 5 sub-topics the collected papers should include (short phrases).

@@ -7,11 +7,12 @@ import re
 import unicodedata
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 _DOI_PREFIX = re.compile(r"^(https?://(dx\.)?doi\.org/|doi:)", re.I)
 _ARXIV_PREFIX = re.compile(r"^(arxiv:|https?://arxiv\.org/(abs|pdf)/)", re.I)
 _ARXIV_VERSION = re.compile(r"v\d+$")
+_ARXIV_DOI = re.compile(r"^10\.48550/arxiv\.(.+)$", re.I)  # DataCite DOIs arXiv gives every preprint
 _WORD = re.compile(r"[a-z0-9]+")
 _NON_ALNUM = re.compile(r"[^0-9A-Za-z]+")
 _STOPWORDS = {"a", "an", "the", "of", "on", "in", "for", "and", "to", "with", "via", "towards", "toward", "is", "are"}
@@ -36,6 +37,13 @@ class PaperHit(BaseModel):
     citation_count: int | None = None
     reference_ids: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _arxiv_from_doi(self) -> PaperHit:
+        # OpenAlex and Semantic Scholar often know an arXiv preprint only by its DOI: without the id,
+        # the download never tries arxiv.org (seen on 2026-10-12: an arXiv paper marked "no open copy").
+        self.arxiv_id = self.arxiv_id or arxiv_from_doi(self.doi)
+        return self
+
 
 class ScholarlySource(Protocol):
     name: str
@@ -56,6 +64,12 @@ def normalize_arxiv(arxiv_id: str | None) -> str | None:
     value = _ARXIV_PREFIX.sub("", arxiv_id.strip()).removesuffix(".pdf")
     value = _ARXIV_VERSION.sub("", value)
     return value or None
+
+
+def arxiv_from_doi(doi: str | None) -> str | None:
+    """``10.48550/arxiv.2510.18515`` -> ``2510.18515``; None for any other DOI."""
+    match = _ARXIV_DOI.match(normalize_doi(doi) or "")
+    return normalize_arxiv(match.group(1)) if match else None
 
 
 def title_key(title: str) -> str:

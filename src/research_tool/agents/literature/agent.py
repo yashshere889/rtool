@@ -1,5 +1,9 @@
 """Literature agent: plan → search → screen → snowball → download → parse → extract → embed → map.
 
+The plan starts by writing down how the topic is read (its key concepts and what
+is out of scope); queries and screening then work from that reading, and every
+paper is scored from a checklist of those concepts rather than a free 0-10.
+
 Every phase is idempotent against the knowledge base (a SQLite file in the
 stage workspace that survives across attempts), and progress is checkpointed,
 so a killed episode or a re-run after the human rejects the literature gate
@@ -10,10 +14,13 @@ open-access copies are downloaded; anything else is listed in
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
+from collections import Counter
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -23,10 +30,13 @@ from pydantic import BaseModel, Field
 from ...core.agent import Agent
 from ...core.context import AgentContext
 from ...core.errors import StageFailed
+from ...core.fs import sha256_text
 from ...core.registry import register_agent
 from ...hpc.storage import QuotaError, ensure_room
 from ...knowledge.store import KnowledgeStore
-from ...knowledge.vectors import agglomerative, suggested_clusters
+from ...knowledge.vectors import absorb_small, agglomerative, center, suggested_clusters
+from ...knowledge.verify import normalize, quote_support
+from ...llm.client import LLMOutputError
 from ...llm.prompts import PromptLibrary
 from ...schemas.common import ResearchBrief
 from ...schemas.literature import (
@@ -34,25 +44,29 @@ from ...schemas.literature import (
     KnowledgeMap,
     OpenProblems,
     Overview,
+    PaperDigest,
     PaperExtraction,
     PaperRecord,
     RelevanceJudgment,
     SearchPlan,
     Topic,
     TopicLabel,
+    TopicScope,
 )
 from ...tools.documents.convert import ConversionError, document_to_text
-from ...tools.documents.sections import budgeted_text, chunk_sections, main_text, split_sections
+from ...tools.documents.sections import Section, budgeted_text, chunk_sections, main_text, split_sections
 from ...tools.http import HttpError
-from ...tools.scholarly.base import PaperHit, bib_key
+from ...tools.report.render import bare_numbers
+from ...tools.scholarly.base import PaperHit, arxiv_from_doi, bib_key
 from ...tools.scholarly.merge import PaperIndex
-from . import mapping
+from . import mapping, quality
 from .toolkit import LiteratureToolkit, build_toolkit
 
 SYSTEM = "You are a careful research assistant. Follow the instructions exactly and never invent facts or citations."
-PHASES = ("plan", "search", "screen", "snowball", "download", "parse", "extract", "embed", "map")
+PHASES = ("plan", "search", "screen", "snowball", "download", "parse", "extract", "digest", "embed", "map")
 INCLUDED = ("included", "downloaded", "unavailable", "parsed", "extracted", "failed")
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+CAP_NOTE = "below the corpus size cap"
 
 
 class LiteratureConfig(BaseModel):
@@ -71,10 +85,101 @@ class LiteratureConfig(BaseModel):
     download: bool = True
     max_download_mb: int = Field(default=60, ge=1)
     extract_chars: int = Field(default=40_000, ge=2_000)  # ~10k tokens of paper text per extraction call
+    digest: bool = True  # a short plain-language digest per paper (one small extra call each)
+    digest_chars: int = Field(default=12_000, ge=1_000)
     min_text_chars: int = Field(default=1_500, ge=0)  # less than this after parsing = scanned PDF or bad download
+    # A copy must have this many times the abstract's length of body text: landing pages carry the abstract
+    # and metadata, so they pass a plain length check (an Oxford repository page did, 2026-10-12, at 2.4x).
+    # The real papers of that run had at least 6.7x.
+    min_text_ratio: float = Field(default=4.0, ge=0)
     quote_threshold: float = Field(default=0.85, gt=0, le=1)
     overview_papers: int = Field(default=40, ge=1)
     local_kb_copy: bool = True  # work on a node-local copy of the knowledge base when available
+
+
+POINTS = {"yes": 1.0, "partly": 0.5, "no": 0.0}
+OUT_OF_SCOPE_MAX = 3.0  # a paper on an out-of-scope area scores at most this, whatever the checklist says
+# "the paper does not state/address/report ..." is only fair from the whole paper, not from the part shown
+ABSENCE = re.compile(
+    r"\b(does not|doesn't|did not|do not|fail(?:s|ed)? to|never) (state|address|report|mention|discuss|specify|clarify|"
+    r"explain|describe|detail|provide|explore|consider|include|evaluate|compare)|\bnot (stated|reported|mentioned|"
+    r"discussed|specified|described|addressed)|\bno (mention|discussion|details?) of|\bunclear (whether|how|if)",
+    re.I,
+)
+
+
+def concept_score(result: RelevanceJudgment, scope: TopicScope | None) -> tuple[float, list[tuple[str, str]]]:
+    """The paper's relevance from the concept checklist: (score 0-10, [(concept, yes|partly|no)]).
+
+    Without a scope, or if the model gave no checklist, its own score is used. Concepts are matched by
+    name, else by position (the model sometimes shortens a concept's wording); one it skipped counts as "no".
+    """
+    if scope is None or not result.concepts:
+        return float(result.score), []
+    keys = [mapping.entity_key(c.concept) for c in result.concepts]
+    by_name = {
+        i: keys.index(mapping.entity_key(c)) for i, c in enumerate(scope.concepts) if mapping.entity_key(c) in keys
+    }
+    used = set(by_name.values())
+    matches = []
+    for i, concept in enumerate(scope.concepts):
+        j = by_name.get(i, i if i < len(result.concepts) and i not in used else None)
+        matches.append((concept, result.concepts[j].match if j is not None else "no"))
+    score = 10 * sum(POINTS[m] for _, m in matches) / len(matches)
+    if result.out_of_scope:
+        score = min(score, OUT_OF_SCOPE_MAX)
+    return round(score, 1), matches
+
+
+def judged_reason(result: RelevanceJudgment, matches: list[tuple[str, str]]) -> str:
+    if not matches:
+        return result.reason
+    parts = []
+    for label, kind in (("about", "yes"), ("partly about", "partly"), ("not about", "no")):
+        names = [c for c, m in matches if m == kind]
+        if names:
+            parts.append(f"{label}: {', '.join(names)}")
+    out = " (out of scope)" if result.out_of_scope else ""
+    return f"{result.reason.rstrip()} [{'; '.join(parts)}{out}]"
+
+
+def copy_problem(paper: PaperRecord, body: list[Section], *, min_chars: int, ratio: float, title: bool) -> str | None:
+    """Why a downloaded copy is not the paper itself (None if it looks like the paper).
+
+    A landing page, an arXiv "no HTML version" page or a scanned PDF still downloads fine; without this the
+    first such copy was kept and the paper's real PDF, often the next link, was never tried.
+    """
+    chars = sum(len(s.text) for s in body)
+    needed = max(min_chars, int(ratio * len(paper.abstract)))
+    if chars < needed:
+        return f"only {chars} characters of text, {needed} needed (a landing page, an abstract or a scanned PDF?)"
+    words = [w for w in normalize(paper.title).split() if len(w) > 3]
+    if title and len(words) >= 3:
+        head = normalize(" ".join(f"{s.title} {s.text}" for s in body)[:10_000])
+        if sum(w in head for w in words) / len(words) < 0.5:
+            return "the paper's title is not near the start (a different document?)"
+    return None
+
+
+def rank_papers(papers: list[PaperRecord], citations: Iterable[tuple[str, str]]) -> list[PaperRecord]:
+    """Most relevant first: checklist score, then citation links to the other papers, then the model's own
+    score, then citation count.
+
+    A checklist gives few distinct scores, so the order within a score decides what the size cap keeps.
+    Ordering ties by citation count alone (2026-10-14: 281 papers at 8.8 or more for 100 places) kept old,
+    well-cited papers from a neighbouring field and cut new preprints on the topic itself: only 1 of 31
+    such off-topic papers cited or was cited by another high-scoring paper, against 60 of 81 on-topic ones.
+    """
+    ids = {p.id for p in papers}
+    by_openalex = {p.openalex_id: p.id for p in papers if p.openalex_id}
+    pairs = {frozenset(edge) for edge in citations if edge[0] in ids and edge[1] in ids}
+    pairs |= {frozenset((p.id, by_openalex[ref])) for p in papers for ref in p.reference_ids if ref in by_openalex}
+    links: Counter[str] = Counter(pid for pair in pairs if len(pair) == 2 for pid in pair)
+    return sorted(
+        papers,
+        key=lambda p: (p.relevance or 0, links[p.id], p.model_score or 0, p.citation_count or 0),
+        reverse=True,
+    )
 
 
 def local_scratch() -> Path | None:
@@ -88,6 +193,17 @@ def local_scratch() -> Path | None:
 
 def is_included(paper: PaperRecord) -> bool:
     return paper.status in INCLUDED
+
+
+def paper_stem(paper_id: str) -> str:
+    """File name (without extension) of a paper's copy: readable, and unique per id.
+
+    Ids are full of dots (``doi:10.1038/...``, ``arxiv:2401.12345``), so never use
+    ``Path.with_suffix`` on the result: it would cut the name at the first dot and
+    let different papers overwrite each other.
+    """
+    digest = hashlib.sha1(paper_id.encode("utf-8")).hexdigest()[:8]
+    return f"{_SAFE.sub('_', paper_id)[:100]}-{digest}"
 
 
 @register_agent("literature")
@@ -118,10 +234,28 @@ class _LiteratureRun:
         self.kb = kb
         self.brief: ResearchBrief = ctx.inputs.get("research_brief")
         self.prompts = PromptLibrary.for_agent(__package__, "literature", pack=self.brief.domain_pack)
-        self.feedback = [f.text for f in ctx.feedback]
+        # what the researcher wrote (choices made by clicking are applied below, not handed to the model): every
+        # comment on this stage, oldest first, so a later rejection that only drops papers keeps the topic reading
+        new = [f.text for f in ctx.feedback if not f.data.get("choices_only")]
+        earlier = [f.text for f in ctx.earlier_feedback if not f.data.get("choices_only")]
+        self.feedback = list(dict.fromkeys([*earlier, *new]))
+        self.new_comments = bool(new)  # only a new comment re-screens the papers already judged
+        self.choices: dict[str, str] = {}  # paper id -> include | exclude, the latest decision wins
+        for item in ctx.feedback:
+            for choice in ("include", "exclude"):
+                self.choices.update({str(pid): choice for pid in item.data.get(choice, []) or []})
         self.state = ctx.state
         self.index = PaperIndex(kb.papers())
         self.provenance: dict[str, Any] = self.state.setdefault("provenance", {})
+
+    @property
+    def scope(self) -> TopicScope | None:
+        found = self.state.get("scope")
+        return TopicScope.model_validate(found) if found else None
+
+    @property
+    def must_cover(self) -> list[str]:
+        return list(self.state.get("must_cover", []))
 
     # ------------------------------------------------------------- plumbing
     def save(self) -> None:
@@ -142,6 +276,7 @@ class _LiteratureRun:
         return prompt.text
 
     def execute(self) -> None:
+        self.record_choices()
         done = set(self.state.get("done", []))
         for phase in PHASES:
             if phase in done:
@@ -154,8 +289,31 @@ class _LiteratureRun:
 
     # ----------------------------------------------------------------- plan
     def phase_plan(self) -> None:
-        text = self.render("search_plan.j2", brief=self.brief, feedback=self.feedback, n_queries=self.cfg.max_queries)
-        plan = self.ctx.llm.structured(SearchPlan, text, profile="reason", system=SYSTEM)
+        """Read the topic, then plan the searches. Both are kept in the knowledge base and reused while the brief,
+        the researcher's comments and the prompts stay the same: keep/drop clicks do not re-read the topic."""
+        scope_prompt = self.render("scope.j2", brief=self.brief, feedback=self.feedback)
+        plan_hash = self.prompts.render(
+            "search_plan.j2", brief=self.brief, feedback=self.feedback, n_queries=self.cfg.max_queries, scope=None
+        ).template_hash
+        key = sha256_text(f"{scope_prompt}|{plan_hash}|{self.cfg.max_queries}")
+        cached = self.kb.meta("plan") or {}
+        if cached.get("key") == key:
+            scope = TopicScope.model_validate(cached["scope"]) if cached.get("scope") else None
+            plan = SearchPlan.model_validate(cached["plan"])
+            self.provenance["search_plan.j2"] = plan_hash
+        else:
+            try:
+                scope = self.ctx.llm.structured(TopicScope, scope_prompt, profile="reason", system=SYSTEM)
+            except LLMOutputError as exc:
+                scope = None  # screening falls back to the model's own score
+                self.ctx.emit("literature_scope_failed", error=str(exc)[:300])
+            text = self.render(
+                "search_plan.j2", brief=self.brief, feedback=self.feedback, n_queries=self.cfg.max_queries, scope=scope
+            )
+            plan = self.ctx.llm.structured(SearchPlan, text, profile="reason", system=SYSTEM)
+            self.kb.set_meta(
+                "plan", {"key": key, "scope": scope.model_dump() if scope else None, "plan": plan.model_dump()}
+            )
         queries = list(dict.fromkeys([*self.brief.seed_queries, *(q.strip() for q in plan.queries if q.strip())]))
         year_now = datetime.now(UTC).year
         year_from = self.cfg.year_from
@@ -164,9 +322,16 @@ class _LiteratureRun:
         self.state.update(
             queries=queries[: self.cfg.max_queries + len(self.brief.seed_queries)],
             year_from=year_from,
-            must_cover=plan.must_cover,
+            must_cover=[m.strip() for m in plan.must_cover if m.strip()][:8],
+            scope=scope.model_dump() if scope else None,
         )
-        self.ctx.emit("literature_plan", queries=self.state["queries"], year_from=year_from)
+        self.ctx.emit(
+            "literature_plan",
+            queries=self.state["queries"],
+            year_from=year_from,
+            concepts=scope.concepts if scope else [],
+            out_of_scope=scope.out_of_scope if scope else [],
+        )
 
     # --------------------------------------------------------------- search
     def phase_search(self) -> None:
@@ -190,14 +355,43 @@ class _LiteratureRun:
 
     # --------------------------------------------------------------- screen
     def phase_screen(self) -> None:
-        self.screen(rescreen=bool(self.feedback) and not self.state.get("rescreened"))
+        self.screen(rescreen=self.new_comments and not self.state.get("rescreened"))
         self.state["rescreened"] = True
+
+    def record_choices(self) -> None:
+        """Papers the researcher marked to keep or drop: remembered on the paper, so later screening respects them."""
+        papers = {p.id: p for p in self.index.all()}
+        applied = {pid: choice for pid, choice in self.choices.items() if pid in papers}
+        for pid, choice in applied.items():
+            papers[pid].override = choice  # type: ignore[assignment]
+        if applied:
+            self.apply_overrides()
+            self.save()
+            self.ctx.emit(
+                "literature_choices_applied",
+                kept=sum(c == "include" for c in applied.values()),
+                dropped=sum(c == "exclude" for c in applied.values()),
+            )
+
+    def apply_overrides(self) -> None:
+        for paper in self.index.all():
+            if paper.override == "exclude" and paper.status != "excluded":
+                paper.status, paper.note = "excluded", "dropped by you"
+            elif paper.override == "include" and paper.status in ("candidate", "excluded"):
+                paper.status, paper.note = "included", "kept by you"
 
     def screen(self, rescreen: bool = False) -> None:
         todo = [p for p in self.index.all() if p.relevance is None or (rescreen and p.status != "candidate")]
         if not todo:
+            self.apply_overrides()
             return
-        prompts = [self.render("relevance.j2", brief=self.brief, paper=p, feedback=self.feedback) for p in todo]
+        scope, subtopics = self.scope, self.must_cover
+        prompts = [
+            self.render(
+                "relevance.j2", brief=self.brief, paper=p, feedback=self.feedback, scope=scope, subtopics=subtopics
+            )
+            for p in todo
+        ]
         results = self.ctx.llm.structured_many(RelevanceJudgment, prompts, profile="extract", system=SYSTEM)
         failures = 0
         for paper, result in zip(todo, results, strict=True):
@@ -205,51 +399,83 @@ class _LiteratureRun:
                 failures += 1
                 paper.note = f"screening failed: {result}"[:200]
                 continue
-            paper.relevance, paper.relevance_reason = result.score, result.reason
-            keep = result.score >= self.cfg.relevance_threshold
+            score, matches = concept_score(result, scope)
+            paper.relevance, paper.relevance_reason = score, judged_reason(result, matches)
+            paper.model_score = float(result.score)  # breaks ties between equal checklist scores (see ranked)
+            paper.subtopics = [subtopics[i - 1] for i in dict.fromkeys(result.subtopics) if 1 <= i <= len(subtopics)]
+            keep = score >= self.cfg.relevance_threshold
             if paper.status in ("candidate", "excluded", "included"):
                 paper.status = "included" if keep else "excluded"
+                if paper.note == CAP_NOTE:
+                    paper.note = ""  # apply_cap decides again
             elif not keep:
                 paper.status = "excluded"  # already read, but no longer relevant
-        self.apply_cap()
+        self.apply_overrides()  # no size cap yet: snowballing starts from what screening kept
         self.save()
         self.ctx.emit("literature_screened", screened=len(todo), failures=failures, included=len(self.included()))
 
+    def ranked(self, papers: list[PaperRecord]) -> list[PaperRecord]:
+        return rank_papers(papers, self.kb.citations())
+
     def apply_cap(self) -> None:
-        ranked = sorted(self.included(), key=lambda p: (p.relevance or 0, p.citation_count or 0), reverse=True)
-        for paper in ranked[self.cfg.max_papers :]:
-            paper.status = "excluded"
-            paper.note = "below the corpus size cap"
+        """Keep the ``max_papers`` best of what screening kept, counting papers an earlier cut left out.
+
+        So a paper the researcher drops frees its place for the next paper in line, and nothing else moves.
+        """
+        capped = [p for p in self.index.all() if p.status == "excluded" and p.note == CAP_NOTE and p.override is None]
+        ranked = self.ranked([*self.included(), *capped])
+        kept = [p for p in ranked if p.override == "include"]  # the researcher's picks count first
+        ranked = kept + [p for p in ranked if p.override != "include"]
+        for n, paper in enumerate(ranked):
+            if n < self.cfg.max_papers:
+                if paper.status == "excluded":
+                    paper.status, paper.note = "included", ""
+            elif is_included(paper):
+                paper.status, paper.note = "excluded", CAP_NOTE
 
     # ------------------------------------------------------------- snowball
     def neighbours(self, seed: PaperRecord) -> list[tuple[PaperHit, str]]:
-        """References ("refs") and citing papers ("cites") from whichever source can provide them."""
+        """References ("refs") and citing papers ("cites"): Semantic Scholar first, else OpenAlex.
+
+        OpenAlex is also asked when Semantic Scholar fails or knows nothing: without an API key it often
+        answers 429, and a failed lookup used to end the seed's snowballing.
+        """
         limit = self.cfg.snowball_per_paper
         found: list[tuple[PaperHit, str]] = []
         s2 = self.tools.sources.get("semantic_scholar")
         openalex = self.tools.sources.get("openalex")
-        try:
-            ref = s2.reference_for(seed) if s2 is not None else None
-            if ref:
+        ref = s2.reference_for(seed) if s2 is not None else None
+        if ref:
+            try:
                 found += [(h, "refs") for h in s2.references(ref, limit)]
                 found += [(h, "cites") for h in s2.citations(ref, limit)]
-            elif openalex is not None and seed.openalex_id:
+            except HttpError as exc:
+                self.ctx.emit("literature_snowball_failed", paper=seed.id, source="semantic_scholar", error=str(exc))
+        if not found and seed.openalex_id and hasattr(openalex, "citing"):  # a search-only source has no graph
+            try:
                 found += [(h, "refs") for h in openalex.by_ids(seed.reference_ids[:limit])]
                 found += [(h, "cites") for h in openalex.citing(seed.openalex_id, limit)]
-        except HttpError as exc:
-            self.ctx.emit("literature_snowball_failed", paper=seed.id, error=str(exc))
+            except HttpError as exc:
+                self.ctx.emit("literature_snowball_failed", paper=seed.id, source="openalex", error=str(exc))
         return found
 
     def phase_snowball(self) -> None:
+        """Follow references and citations of the best papers, then cut the corpus to its size cap.
+
+        The cap used to apply during screening, so a broad search alone could fill it and snowballing never ran
+        (2026-10-12: 100 of 100 papers came from keyword search). Reference lists find papers keywords miss.
+        """
+        if not self.new_comments and self.kb.meta("snowballed"):
+            # only papers were kept or dropped: the reference lists were followed before, and following them
+            # again from a shifted set of seeds would swap papers nobody asked about (2026-10-15: 14 of 100)
+            self.apply_cap()
+            self.apply_overrides()
+            self.save()
+            self.ctx.emit("literature_snowball_skipped", reason="only papers were kept or dropped")
+            return
         for round_number in range(1, self.cfg.snowball_rounds + 1):
-            if len(self.included()) >= self.cfg.max_papers:
-                break
             expanded = set(self.state.get("expanded", []))
-            seeds = sorted(
-                (p for p in self.included() if p.id not in expanded),
-                key=lambda p: (p.relevance or 0, p.citation_count or 0),
-                reverse=True,
-            )[: self.cfg.snowball_seeds]
+            seeds = self.ranked([p for p in self.included() if p.id not in expanded])[: self.cfg.snowball_seeds]
             if not seeds:
                 break
             new, edges = 0, []
@@ -266,6 +492,10 @@ class _LiteratureRun:
             if new == 0:
                 break
             self.screen()
+        self.kb.set_meta("snowballed", True)
+        self.apply_cap()
+        self.apply_overrides()
+        self.save()
         if len(self.included()) < self.cfg.min_papers:
             self.ctx.emit("literature_small_corpus", included=len(self.included()), wanted=self.cfg.min_papers)
 
@@ -290,7 +520,7 @@ class _LiteratureRun:
                 )
                 record, _ = self.index.add(hit, found_by="manual")
                 record.relevance = record.relevance if record.relevance is not None else 10
-            dest = papers_dir / f"{_SAFE.sub('_', record.id)[:120]}{path.suffix.lower()}"
+            dest = papers_dir / f"{paper_stem(record.id)}{path.suffix.lower()}"
             shutil.move(str(path), dest)
             sidecar.unlink(missing_ok=True)
             record.file, record.status, record.note = self.ctx.relative(dest), "downloaded", "added by hand"
@@ -298,8 +528,9 @@ class _LiteratureRun:
 
     def candidate_urls(self, paper: PaperRecord) -> list[str]:
         urls = []
-        if paper.arxiv_id:
-            urls += [f"https://arxiv.org/html/{paper.arxiv_id}", f"https://arxiv.org/pdf/{paper.arxiv_id}"]
+        arxiv = paper.arxiv_id or arxiv_from_doi(paper.doi)  # records from older knowledge bases
+        if arxiv:
+            urls += [f"https://arxiv.org/html/{arxiv}", f"https://arxiv.org/pdf/{arxiv}"]
         urls += paper.oa_urls
         if paper.doi and self.tools.unpaywall is not None:
             try:
@@ -308,9 +539,54 @@ class _LiteratureRun:
                 self.ctx.emit("literature_unpaywall_failed", paper=paper.id, error=str(exc))
         return list(dict.fromkeys(urls))
 
+    def read_copy(self, paper: PaperRecord, path: Path, *, strict: bool = True) -> str | None:
+        """Parse a downloaded copy and keep its text if it is the paper; otherwise say why not.
+
+        ``strict`` = False for files the researcher added by hand: only the scanned-PDF check applies.
+        """
+        try:
+            text = document_to_text(path, pdf_converter=self.tools.pdf_converter)
+        except (ConversionError, OSError) as exc:
+            return f"could not read it: {exc}"[:160]
+        body, _references = main_text(split_sections(text))
+        problem = copy_problem(
+            paper,
+            body,
+            min_chars=self.cfg.min_text_chars,
+            ratio=self.cfg.min_text_ratio if strict else 0.0,
+            title=strict,
+        )
+        if problem is None:
+            self.kb.set_sections(paper.id, body)
+            self.kb.set_chunks(paper.id, chunk_sections(body))
+        return problem
+
+    def fetch(self, paper: PaperRecord, papers_dir: Path, max_bytes: int) -> None:
+        """Try each open-access link in turn until one gives the paper itself (parsed and stored)."""
+        stem = paper_stem(paper.id)
+        rejected = []
+        for url in self.candidate_urls(paper):
+            try:
+                result = self.tools.http.download(url, papers_dir / f"{stem}.part", max_bytes=max_bytes)
+            except HttpError:
+                continue
+            suffix = ".pdf" if result.content_type == "application/pdf" else ".html"
+            final = papers_dir / f"{stem}{suffix}"
+            result.path.replace(final)
+            problem = self.read_copy(paper, final)
+            if problem is None:
+                paper.file, paper.file_sha256, paper.status = self.ctx.relative(final), result.sha256, "parsed"
+                return
+            final.unlink(missing_ok=True)
+            rejected.append(f"{url.split('/')[2] if '//' in url else url}: {problem}")
+        paper.status = "unavailable"
+        paper.note = ("no usable open-access copy found" + (f" ({'; '.join(rejected)})" if rejected else ""))[:400]
+
     def phase_download(self) -> None:
         papers_dir = self.ctx.workspace.mkdir("papers")
         self.ingest_inbox(papers_dir)
+        self.apply_cap()  # also for knowledge bases screened before the cap moved to the end of snowballing
+        self.apply_overrides()
         todo = [p for p in self.included() if p.status == "included"]
         if not self.cfg.download or not todo:
             return
@@ -320,41 +596,25 @@ class _LiteratureRun:
             raise StageFailed(f"not enough storage for {len(todo)} papers: {exc}", needs_human=True) from None
         max_bytes = self.cfg.max_download_mb * 1024 * 1024
         for n, paper in enumerate(todo, 1):
-            base = papers_dir / _SAFE.sub("_", paper.id)[:120]
-            for url in self.candidate_urls(paper):
-                try:
-                    result = self.tools.http.download(url, base.with_suffix(".part"), max_bytes=max_bytes)
-                except HttpError:
-                    continue
-                suffix = ".pdf" if result.content_type == "application/pdf" else ".html"
-                final = base.with_suffix(suffix)
-                result.path.replace(final)
-                paper.file, paper.file_sha256, paper.status = self.ctx.relative(final), result.sha256, "downloaded"
-                break
-            else:
-                paper.status, paper.note = "unavailable", "no open-access copy found"
+            self.fetch(paper, papers_dir, max_bytes)
             if n % 10 == 0:
                 self.checkpoint()
         self.ctx.emit(
             "literature_downloaded",
-            downloaded=sum(p.status == "downloaded" for p in todo),
+            downloaded=sum(p.status == "parsed" for p in todo),
             unavailable=sum(p.status == "unavailable" for p in todo),
+            copies_rejected=sum(p.status == "unavailable" and "copy found (" in p.note for p in todo),
         )
 
     # ---------------------------------------------------------------- parse
     def phase_parse(self) -> None:
+        """Copies downloaded but not parsed yet: papers added by hand (downloads are parsed as they arrive)."""
         for paper in [p for p in self.included() if p.status == "downloaded" and p.file]:
-            try:
-                text = document_to_text(self.ctx.absolute(paper.file), pdf_converter=self.tools.pdf_converter)
-            except (ConversionError, OSError) as exc:
-                paper.status, paper.note = "failed", f"could not read file: {exc}"[:200]
+            by_hand = "manual" in paper.found_by or paper.note == "added by hand"
+            problem = self.read_copy(paper, self.ctx.absolute(paper.file), strict=not by_hand)
+            if problem is not None:
+                paper.status, paper.note = "failed", problem[:200]
                 continue
-            body, _references = main_text(split_sections(text))
-            if sum(len(s.text) for s in body) < self.cfg.min_text_chars:
-                paper.status, paper.note = "failed", "too little text extracted (scanned PDF?)"
-                continue
-            self.kb.set_sections(paper.id, body)
-            self.kb.set_chunks(paper.id, chunk_sections(body))
             paper.status = "parsed"
         self.save()
 
@@ -389,6 +649,72 @@ class _LiteratureRun:
         self.save()
         self.ctx.emit("literature_extracted", papers=len(todo) - failures, failures=failures)
 
+    # --------------------------------------------------------------- digest
+    def phase_digest(self) -> None:
+        """A digest per paper (summary, design, sample, procedure, gaps) for the reader: model prose, so the UI
+        marks it as AI-written, and numbers in it that the paper text does not contain are listed.
+
+        Papers that already have one are skipped, so an older knowledge base is filled in on the next run.
+        """
+        if not self.cfg.digest:
+            return
+        todo: list[tuple[PaperRecord, dict[str, Any], dict[str, Any], str, bool]] = []
+        for paper in self.included():
+            found = self.kb.extraction(paper.id)
+            if found is None or "digest" in found[0]:
+                continue
+            sections = self.kb.sections(paper.id)
+            text = budgeted_text(sections, self.cfg.digest_chars) if sections else paper.abstract
+            whole = sum(len(s.text) for s in sections) if sections else len(paper.abstract)
+            if text:
+                todo.append((paper, *found, text, len(text) < 0.9 * whole))
+        if not todo:
+            return
+        prompts = [
+            self.render(
+                "digest.j2",
+                topic=self.brief.topic,
+                title=paper.title,
+                text=text,
+                partial=partial,
+                facts=self.stated_facts(paper, PaperExtraction.model_validate(data)),
+            )
+            for paper, data, _meta, text, partial in todo
+        ]
+        results = self.ctx.llm.structured_many(PaperDigest, prompts, profile="extract", system=SYSTEM)
+        failures = 0
+        for (paper, data, meta, text, partial), result in zip(todo, results, strict=True):
+            if isinstance(result, Exception):
+                failures += 1
+                continue
+            # from part of a paper, "it does not say X" may simply be wrong: such gaps are dropped
+            gaps = [g for g in result.gaps if not (partial and ABSENCE.search(g))]
+            prose = " ".join([result.summary, result.design, result.sample, result.procedure, *gaps])
+            numbers = {float(n) for n in re.findall(r"\d+(?:\.\d+)?", text)}
+            digest = {
+                **result.model_dump(),
+                "gaps": gaps,
+                "gaps_dropped": len(result.gaps) - len(gaps),
+                "partial_text": partial,
+                "unverified_numbers": bare_numbers(prose, numbers),
+            }
+            meta = {**meta, "digest_hash": self.provenance["digest.j2"]}
+            self.kb.put_extraction(paper.id, {**data, "digest": digest}, meta)
+        self.ctx.emit("literature_digested", papers=len(todo) - failures, failures=failures)
+
+    def stated_facts(self, paper: PaperRecord, facts: PaperExtraction) -> PaperExtraction:
+        """The extraction, keeping only limitations and future work whose quotes are really in the paper."""
+        source = normalize(self.kb.full_text(paper.id) or paper.abstract)
+
+        def found(items: list[Any]) -> list[Any]:
+            return [
+                i for i in items if quote_support(i.quote, "", normalized_source=source) >= self.cfg.quote_threshold
+            ]
+
+        return facts.model_copy(
+            update={"limitations": found(facts.limitations), "future_work": found(facts.future_work)}
+        )
+
     # ---------------------------------------------------------------- embed
     def phase_embed(self) -> None:
         extractions = self.kb.extractions()
@@ -419,7 +745,8 @@ class _LiteratureRun:
         topics = self.label_topics(papers)
         problems = self.open_problems(papers, claims)
         overview, unknown_citations = self.overview(papers, extractions, claims)
-        gaps = mapping.find_gaps(entities, coverage, topics, papers)
+        subtopics = mapping.subtopic_papers(self.must_cover, papers.values())
+        gaps = mapping.find_gaps(entities, coverage, topics, papers, subtopics=subtopics)
 
         statuses = [p.status for p in self.index.all()]
         stats: dict[str, Any] = {
@@ -429,10 +756,20 @@ class _LiteratureRun:
             "full_text": sum(p.status == "extracted" for p in papers.values()),
             "abstract_only": sum(p.status != "extracted" for p in papers.values()),
             "unavailable": statuses.count("unavailable"),
+            "from_citations": sum(any(f.startswith(("refs:", "cites:")) for f in p.found_by) for p in papers.values()),
             "claims": len(claims),
             "verified_claims": sum(c.verified for c in claims),
             "unknown_citations_removed": unknown_citations,
         }
+        checks = quality.checks(
+            candidates=self.index.all(),
+            papers=papers,
+            extractions=extractions,
+            claims=claims,
+            subtopics=subtopics,
+            threshold=self.cfg.relevance_threshold,
+            snowball_rounds=self.cfg.snowball_rounds,
+        )
         knowledge_map = KnowledgeMap(
             topic=self.brief.topic,
             overview=overview,
@@ -444,6 +781,8 @@ class _LiteratureRun:
             gaps=gaps,
             timeline=mapping.timeline(papers.values()),
             stats=stats,
+            scope=self.scope,
+            quality=checks,
         )
         markdown = self.ctx.workspace.write_text("knowledge_map.md", mapping.render_markdown(knowledge_map, papers))
         knowledge_map.markdown_path = self.ctx.relative(markdown)
@@ -460,7 +799,12 @@ class _LiteratureRun:
             kb_path=self.ctx.relative(snapshot),
             kb_sha256=digest,
             bibtex_path=self.ctx.relative(bib),
+            scope=self.scope,
+            must_cover=self.must_cover,
         )
+        failed = [c.check for c in checks if not c.ok]
+        if failed:
+            self.ctx.emit("literature_quality_warnings", checks=failed)
         meta = {"review": knowledge_map.markdown_path, "prompts": dict(self.provenance)}
         self.ctx.outputs.put("corpus", corpus, meta=meta)
         self.ctx.outputs.put("knowledge_map", knowledge_map, meta=meta)
@@ -470,9 +814,10 @@ class _LiteratureRun:
         ids = [pid for pid in papers if pid in vectors]
         if not ids:
             return []
-        groups = [
-            [ids[i] for i in group] for group in agglomerative([vectors[i] for i in ids], suggested_clusters(len(ids)))
-        ]
+        points = center([vectors[i] for i in ids])  # how the papers differ, not how alike the whole corpus is
+        # in a corpus of 30 or more, a group of one or two is an outlier; in a small one, two can be a theme
+        clusters = absorb_small(agglomerative(points, suggested_clusters(len(ids))), points, 3 if len(ids) >= 30 else 2)
+        groups = [[ids[i] for i in group] for group in clusters]
         prompts = [self.render("topic_label.j2", papers=[papers[p] for p in group][:15]) for group in groups]
         labels = self.ctx.llm.structured_many(TopicLabel, prompts, profile="extract", system=SYSTEM)
         topics = []
@@ -492,9 +837,11 @@ class _LiteratureRun:
             return []
         text = self.render("open_problems.j2", topic=self.brief.topic, items=items, max_problems=8)
         result = self.ctx.llm.structured(OpenProblems, text, profile="reason", system=SYSTEM)
+        listed = {item["paper_id"] for item in items}
         kept = []
         for problem in result.problems:
-            problem.paper_ids = [p for p in problem.paper_ids if p in papers]  # drop ids the model made up
+            # only papers whose own limitations were shown: drop ids the model made up or took from elsewhere
+            problem.paper_ids = list(dict.fromkeys(p for p in problem.paper_ids if p in listed and p in papers))
             if problem.paper_ids:
                 kept.append(problem)
         return kept
@@ -502,7 +849,7 @@ class _LiteratureRun:
     def overview(
         self, papers: dict[str, PaperRecord], extractions: dict[str, PaperExtraction], claims: list[Any]
     ) -> tuple[str, int]:
-        ranked = sorted(papers.values(), key=lambda p: (p.relevance or 0, p.citation_count or 0), reverse=True)
+        ranked = self.ranked(list(papers.values()))
         digest = []
         for paper in ranked[: self.cfg.overview_papers]:
             extraction = extractions.get(paper.id)

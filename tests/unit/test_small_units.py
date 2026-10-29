@@ -82,3 +82,24 @@ def test_fake_slurm_cancel(tmp_path: Path) -> None:
     job = slurm.submit(JobSpec(name="x", partition="p", command="true", workdir=tmp_path))
     slurm.cancel(job)
     assert slurm.status(job).state is JobState.CANCELLED
+
+
+def test_event_log_cursor_tails_complete_lines(tmp_path: Path) -> None:
+    from research_tool.core.events import EventLog
+
+    log = EventLog(tmp_path / "events.jsonl", "r1")
+    assert log.read_from(0) == ([], 0)
+    for n in range(3):
+        log.emit("tick", n=n)
+    events, cursor = log.read_from(0, limit=2)
+    assert [e["data"]["n"] for e in events] == [0, 1]
+    with open(log.path, "ab") as f:
+        f.write(b'{"kind": "half-writ')  # an append in progress
+    events, cursor = log.read_from(cursor)
+    assert [e["data"]["n"] for e in events] == [2]
+    assert log.read_from(cursor) == ([], cursor)  # the torn line waits until it is complete
+    with open(log.path, "ab") as f:
+        f.write(b'ten"}\n')
+    events, end = log.read_from(cursor)
+    assert [e["kind"] for e in events] == ["half-written"] and end == log.path.stat().st_size
+    assert log.read_from(end + 100)[0][0]["data"]["n"] == 0  # a cursor past the end starts over

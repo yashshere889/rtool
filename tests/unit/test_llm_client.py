@@ -78,3 +78,41 @@ def test_profiles_and_budget_charging() -> None:
 def test_example_from_schema_is_valid_for_models() -> None:
     for model in (ToyNumbers, ToyStats):
         model.model_validate(example_from_schema(model.model_json_schema()))
+
+
+def test_structured_prompts_spell_out_the_fields_and_require_them_all() -> None:
+    """The server's constraint never shows the model a field's description, and lets it skip defaulted fields:
+    on 2026-10-12 that left 88 of 98 paper extractions without a method."""
+    from research_tool.schemas.literature import PaperExtraction
+
+    llm = MockLLM()
+    LLMClient(llm, LLMConfig()).structured(PaperExtraction, "Extract the facts.\n<<<\npaper\n>>>")
+    request = llm.calls[0]
+    prompt = request.messages[-1].content
+    assert prompt.startswith("Extract the facts.\n<<<\npaper\n>>>")  # the guide goes after the task
+    assert '- "methods" (list of texts): Names of the methods' in prompt
+    assert '- "key_results" (list of up to 8 objects, each with:)' in prompt
+    assert '  - "quote" (text): Sentence copied verbatim from the paper that supports the claim' in prompt
+    schema = request.json_schema or {}
+    assert schema["required"] == list(schema["properties"])
+    assert schema["$defs"]["KeyResult"]["required"] == ["claim", "quote", "method", "dataset", "metric", "value"]
+
+    plain = MockLLM()
+    LLMClient(plain, LLMConfig(describe_schema=False)).structured(PaperExtraction, "Extract the facts.")
+    assert plain.calls[0].messages[-1].content == "Extract the facts."
+    assert "methods" not in (plain.calls[0].json_schema or {}).get("required", [])
+
+
+def test_schema_guide_describes_types_choices_and_bounds() -> None:
+    from research_tool.llm.schema_guide import schema_guide
+    from research_tool.schemas.literature import RelevanceJudgment, SearchPlan
+
+    guide = schema_guide(RelevanceJudgment.model_json_schema())
+    lines = guide.splitlines()[1:]
+    assert [line.split('"')[1] for line in lines if line.startswith("- ")] == [
+        "reason", "concepts", "subtopics", "out_of_scope", "score"
+    ]  # fmt: skip
+    assert '  - "match" ("yes" | "partly" | "no"): yes = the paper is about it' in guide
+    assert '- "subtopics" (list of whole numbers)' in guide and '- "out_of_scope" (true or false)' in guide
+    assert '- "score" (whole number 0-10)' in guide
+    assert '- "year_from" (whole number, or null)' in schema_guide(SearchPlan.model_json_schema())

@@ -11,6 +11,10 @@ episodes: when the engine stops, the episode decides what comes next.
     WAITING_GATE     nothing; `rtool approve` / `reject` / `select` submit the next one
     DONE/NEEDS_HUMAN nothing
 
+If vLLM cannot start on a node (2026-10-15: gpu45's /dev/shm was full, twice in a row), the node is
+remembered for a day and the next GPU episode excludes it; after three such failures the run waits
+for a human instead of trying node after node.
+
 CPU episodes are cheap and start quickly, so decisions are applied there; they
 hand over to a GPU episode only when a stage that needs the LLM is ready. GPU
 episodes start vLLM lazily, the first time such a stage actually runs.
@@ -20,6 +24,8 @@ from __future__ import annotations
 
 import os
 import shlex
+import socket
+import time
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -35,11 +41,14 @@ from ..core.run import RunHandle
 from ..core.services import LLMEndpoint, Services, build_llm
 from ..core.state import StageState, StageStatus
 from ..llm.client import LLMClient
-from ..llm.server import ServerHandle, VLLMServer
+from ..llm.server import ServerHandle, VLLMServer, VLLMServerError, node_facts
 from .jobspec import GPURequest, JobSpec
 from .slurm import SlurmClient
 
 EPISODE_FILE = "episode_job.json"
+BAD_NODES_FILE = "bad_nodes.json"  # nodes where vLLM would not start: {node: {failures, at, error}}
+BAD_NODE_HOURS = 24.0
+MAX_SERVER_FAILURES = 3  # in BAD_NODE_HOURS, across nodes; then a human looks
 SAFETY_MARGIN_S = 15 * 60  # stop starting new stages this long before the job's time limit
 # Jobs inherit the submitting shell's environment: never let other Python setups leak in.
 ISOLATE_PYTHON = "unset PYTHONPATH PYTHONHOME && export PYTHONNOUSERSITE=1 && "
@@ -48,6 +57,27 @@ ISOLATE_PYTHON = "unset PYTHONPATH PYTHONHOME && export PYTHONNOUSERSITE=1 && "
 def gpu_choices(config: AppConfig) -> list[GPUChoice]:
     ep = config.slurm.episode
     return list(ep.gpu_choices) or [GPUChoice(partition=ep.partition, gpu_type=ep.gpu_type)]
+
+
+def bad_nodes(run: RunHandle, *, now: float | None = None) -> dict[str, dict[str, Any]]:
+    """Nodes where vLLM failed to start in the last day (older entries are forgotten)."""
+    path = run.state_dir / BAD_NODES_FILE
+    if not path.exists():
+        return {}
+    now = time.time() if now is None else now
+    return {n: v for n, v in read_json(path).items() if now - float(v.get("at", 0)) < BAD_NODE_HOURS * 3600}
+
+
+def note_bad_node(run: RunHandle, node: str, error: str, *, now: float | None = None) -> dict[str, dict[str, Any]]:
+    nodes = bad_nodes(run, now=now)
+    failures = int(nodes.get(node, {}).get("failures", 0)) + 1
+    nodes[node] = {"failures": failures, "at": time.time() if now is None else now, "error": error[:400]}
+    atomic_write_json(run.state_dir / BAD_NODES_FILE, nodes)
+    return nodes
+
+
+def this_node() -> str:
+    return os.environ.get("SLURMD_NODENAME") or socket.gethostname().split(".")[0]
 
 
 def episode_job_spec(
@@ -69,6 +99,7 @@ def episode_job_spec(
         dependency_type="afterany",
         modules=list(ep.modules),
         requeue=True,  # episodes resume where they stopped, so preemption only costs time
+        exclude=sorted(bad_nodes(run)) if needs_llm else [],
         signal=f"B:USR1@{ep.signal_seconds}" if ep.signal_seconds else None,
         metadata={"kind": "episode", "run": run.run_id, "needs_llm": needs_llm},
     )
@@ -216,25 +247,49 @@ class LazyLLM:
         self._factory = factory
         self._client: LLMClient | None = None
         self._handle: ServerHandle | None = None
+        self.events: EventLog | None = None  # where the server's start-up is recorded (`rtool stats`)
+        self.failure: dict[str, Any] = {}  # how a start that failed went, for server_failed()'s event
 
     @property
     def started(self) -> bool:
         return self._client is not None
 
-    def _ensure(self) -> LLMClient:
+    def _ensure(self, stage: str | None = None) -> LLMClient:
         if self._client is None:
             if self._factory is not None:
                 self._client = self._factory()
             elif self.config.llm.backend != "vllm":
                 self._client = build_llm(self.config)  # mock or an external server: nothing to start
             else:
-                self._handle = VLLMServer(self.config.llm, self.log_dir).start()
+                self._handle = self._start_server(stage)
                 endpoint = LLMEndpoint(url=self._handle.url, api_key=self._handle.api_key)
                 self._client = build_llm(self.config, endpoint)
         return self._client
 
+    def _start_server(self, stage: str | None) -> ServerHandle:
+        # One llm_server_failed emitter for a server that will not start: server_failed() in run_episode, which
+        # also excludes the node; it gets this attempt's stage, seconds, GPU, partition and job from self.failure.
+        started = time.monotonic()
+        try:
+            handle = VLLMServer(self.config.llm, self.log_dir).start()
+        except VLLMServerError:
+            facts = {k: v for k, v in node_facts().items() if k != "node"}  # server_failed() names the node
+            seconds = round(time.monotonic() - started, 1)
+            self.failure = {"stage": stage, "seconds": seconds, "model": self.config.llm.model, **facts}
+            raise
+        except Exception as exc:
+            self._record("llm_server_failed", stage, started, error=str(exc)[:300])
+            raise
+        self._record("llm_server_ready", stage, started)
+        return handle
+
+    def _record(self, kind: str, stage: str | None, started: float, **data: Any) -> None:
+        if self.events is not None:
+            seconds = round(time.monotonic() - started, 1)
+            self.events.emit(kind, stage=stage, seconds=seconds, model=self.config.llm.model, **node_facts(), **data)
+
     def bind(self, **kwargs: Any) -> LLMClient:
-        return self._ensure().bind(**kwargs)
+        return self._ensure(kwargs.get("stage")).bind(**kwargs)
 
     def close(self) -> None:
         if self._handle is not None:
@@ -265,7 +320,36 @@ def run_episode(
             episode_id=episode_id,
             stage_filter=None if gpu else cpu_only,
         )
+        if lazy is not None:
+            lazy.events = engine.events
         return engine.advance(max_seconds=max_seconds)
+    except VLLMServerError as exc:
+        # The node, not the stage, is at fault: the stage stays as it was (the next episode resumes it).
+        return server_failed(run, this_node(), str(exc), **(lazy.failure if lazy is not None else {}))
     finally:
         if lazy is not None:
             lazy.close()
+
+
+def server_failed(run: RunHandle, node: str, error: str, **facts: Any) -> AdvanceResult:
+    """vLLM would not start here: avoid this node next time, or stop after repeated failures.
+
+    ``facts``: how the start went (stage, seconds, GPU, partition, job), recorded for `rtool stats`.
+    """
+    nodes = note_bad_node(run, node, error.split("; last log lines")[0])
+    failures = sum(int(v.get("failures", 0)) for v in nodes.values())
+    giving_up = failures >= MAX_SERVER_FAILURES
+    EventLog(run.events_path, run.run_id).emit(
+        "llm_server_failed", node=node, error=error[:1000], excluded=sorted(nodes), giving_up=giving_up, **facts
+    )
+    reason = error.split("; last log lines")[0]
+    if giving_up:
+        return AdvanceResult(
+            Outcome.NEEDS_HUMAN,
+            message=(
+                f"vLLM failed to start {failures} times in the last day (nodes {', '.join(sorted(nodes))}); "
+                f"last error: {reason}. Fix the cause, then `rtool run` (failures are forgotten after "
+                f"{BAD_NODE_HOURS:g} h, or delete state/{BAD_NODES_FILE})"
+            ),
+        )
+    return AdvanceResult(Outcome.NEEDS_LLM, message=f"{reason} on {node}; the next GPU episode avoids that node")

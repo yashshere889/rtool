@@ -1,0 +1,36 @@
+You are starting a literature review. Before any searching, work out exactly what the research topic is about.
+
+Research topic: {{ brief.topic }}
+{% if brief.questions %}
+Research questions:
+{% for q in brief.questions %}
+- {{ q }}
+{% endfor %}
+{% endif %}
+{% if brief.constraints %}
+Constraints:
+{% for c in brief.constraints %}
+- {{ c }}
+{% endfor %}
+{% endif %}
+{% if brief.notes %}
+Notes from the researcher: {{ brief.notes }}
+{% endif %}
+{% if feedback %}
+Feedback from the researcher on the previous attempt (follow it; it overrides your earlier reading):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
+
+Topics are often only a few words. Read every word: a word such as "pipeline", "framework", "system" or "tool" usually names the thing being studied, so it narrows the topic. Think about what a researcher who wrote this topic most likely wants to study, and which fields use the same words for something else.
+
+- interpretation: two or three sentences saying what the topic is about, in the vocabulary of its field. Name the kind of system, method or population it is about (what it is built from or who it studies) when the topic implies one.
+- concepts: 2 to 4 key concepts. A paper belongs in the review only if it is about all or most of them, so each concept must rule out a large part of the neighbouring literature:
+  - make each one specific, never a single broad word that many unrelated fields share;
+  - make them distinct: no two concepts that the same papers would always match (such as a field and a sub-area of it);
+  - never a property that most research papers have, such as being evaluated, being systematic or measuring performance.
+- out_of_scope: neighbouring areas that share words with the topic but are not what it is about, so papers on them should be left out. Never list the topic itself or a part of it here.
+- other_readings: other plausible meanings of the topic. A topic of only a few words can usually be read in more than one way: list the main alternatives, so the researcher can correct you. Leave it empty only if the topic is unambiguous.
+
+Example, for the topic "Transformers for protein structure": concepts "transformer neural networks", "protein structure prediction"; out of scope "electrical power transformers", "protein folding measured in the wet lab".

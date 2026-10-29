@@ -43,6 +43,9 @@ class Agent(ABC):
     produces: ClassVar[tuple[str, ...]] = ()
     needs_llm: ClassVar[bool] = True
     config_model: ClassVar[type[BaseModel] | None] = None
+    # workspace-relative files a researcher may rewrite while the stage waits at its own checkpoint
+    # or after it failed (the agent must cope with the edit when it resumes)
+    editable_files: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, config: BaseModel | dict[str, Any] | None = None) -> None:
         if config is None:

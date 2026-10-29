@@ -21,7 +21,7 @@ from ...llm.prompts import PromptLibrary
 from ...schemas.common import ResearchBrief, SelectedItem
 from ...schemas.hypothesis import Hypothesis
 from ...schemas.literature import Corpus, KnowledgeMap
-from ...schemas.plan import ComputeEstimate, ExperimentPlan, PlanCore, ResourcePlan, ResourceSpec
+from ...schemas.plan import ComputeEstimate, ExperimentPlan, Metric, PlanCore, ResourcePlan, ResourceSpec
 from ...tools.http import PoliteHttp
 from ...tools.resources.checks import HubChecker, ResourceChecker
 from ..common import SYSTEM, compute_profile, open_corpus_kb
@@ -62,6 +62,8 @@ class PlannerAgent(Agent):
         known = [e.name for e in km.entities if e.kind == "dataset"][:15]
         compute = compute_profile(ctx.app_config)
         feedback = [f.text for f in ctx.feedback]
+        if selected.note.strip():
+            feedback.insert(0, f"When choosing this hypothesis the researcher noted: {selected.note.strip()}")
         checker = self.checker(ctx)
 
         core_issues: list[str] = []
@@ -90,7 +92,14 @@ class PlannerAgent(Agent):
             if resources is None or res_issues:
                 plan = ctx.llm.structured(
                     ResourcePlan,
-                    render("resources.j2", h=hypothesis, core=core, known_datasets=known, issues=res_issues),
+                    render(
+                        "resources.j2",
+                        h=hypothesis,
+                        core=core,
+                        known_datasets=known,
+                        feedback=feedback,
+                        issues=res_issues,
+                    ),
                     profile="reason",
                     system=SYSTEM,
                 )
@@ -100,7 +109,15 @@ class PlannerAgent(Agent):
             if estimate is None or cmp_issues:
                 estimate = ctx.llm.structured(
                     ComputeEstimate,
-                    render("compute.j2", core=core, resources=resources, compute=compute, runs=runs, issues=cmp_issues),
+                    render(
+                        "compute.j2",
+                        core=core,
+                        resources=resources,
+                        compute=compute,
+                        runs=runs,
+                        feedback=feedback,
+                        issues=cmp_issues,
+                    ),
                     profile="reason",
                     system=SYSTEM,
                 )
@@ -123,7 +140,7 @@ class PlannerAgent(Agent):
             controls=core.controls,
             conditions=core.conditions,
             ablations=core.ablations,
-            metrics=one_primary(core.metrics),
+            metrics=one_primary([Metric.model_validate(m.model_dump()) for m in core.metrics]),
             statistical_tests=core.statistical_tests,
             seeds=seeds,
             procedure=core.procedure,
@@ -134,7 +151,7 @@ class PlannerAgent(Agent):
             results_schema=results_schema(conditions, core.metrics, seeds),
             issues=core_issues + res_issues + cmp_issues,
         )
-        markdown = ctx.workspace.write_text("experiment_plan.md", render_markdown(plan_artifact, hypothesis))
+        markdown = ctx.workspace.write_text("experiment_plan.md", render_markdown(plan_artifact, hypothesis.title))
         plan_artifact.markdown_path = ctx.relative(markdown)
         ctx.outputs.put(
             "experiment_plan", plan_artifact, meta={"review": plan_artifact.markdown_path, "prompts": provenance}
@@ -172,7 +189,7 @@ class PlannerAgent(Agent):
         spec = ResourceSpec(**choice.model_dump())
         if not enabled:
             spec.note = "not checked"
-            spec.verified = True
+            spec.verified = spec.source != "manual"  # nothing public to check, nor to download
             return spec
         result = checker.check(choice)
         spec.verified, spec.license, spec.size_gb, spec.note = (
@@ -184,10 +201,10 @@ class PlannerAgent(Agent):
         return spec
 
 
-def render_markdown(plan: ExperimentPlan, h: Hypothesis) -> str:
+def render_markdown(plan: ExperimentPlan, title: str) -> str:
     c, primary = plan.compute, plan.primary_metric()
     lines = [
-        f"# Experiment plan: {h.title}",
+        f"# Experiment plan: {title}",
         "",
         "Approve with `rtool approve <run>`, or reject with feedback.",
         "",
@@ -238,7 +255,8 @@ def render_markdown(plan: ExperimentPlan, h: Hypothesis) -> str:
         "## Resources",
         "",
         *[
-            f"- {r.name} — {r.source}:`{r.identifier}` ({r.kind}; {'found' if r.verified else 'NOT FOUND'}"
+            f"- {r.name} — {r.source}:`{r.identifier}` ({r.kind}; "
+            f"{'NOT PUBLIC' if r.source == 'manual' else 'found' if r.verified else 'NOT FOUND'}"
             f"{f', {r.size_gb:g} GB' if r.size_gb else ''}{f', licence {r.license}' if r.license else ''})"
             f"{f' — {r.note}' if r.note else ''}"
             for r in plan.resources

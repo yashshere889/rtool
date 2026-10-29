@@ -101,6 +101,19 @@ def make_embedder(
     return HashingEmbedder()
 
 
+def center(vectors: Sequence[Sequence[float]]) -> list[Vector]:
+    """Subtract the mean vector and re-normalise, so similarity measures how items differ within the set.
+
+    Every paper in a focused corpus shares the topic, so raw similarities bunch together (bge-small 0.79 ± 0.06 on
+    the 2026-10-14 run) and average linkage merges whole themes before it places one odd paper: that run's 100
+    papers came out as 68/20/12. Centred, they split into seven topics that match a hand grouping far better.
+    """
+    if not vectors:
+        return []
+    mean = [sum(column) / len(vectors) for column in zip(*vectors, strict=True)]
+    return [unit([x - m for x, m in zip(vector, mean, strict=True)]) for vector in vectors]
+
+
 def agglomerative(vectors: Sequence[Sequence[float]], n_clusters: int) -> list[list[int]]:
     """Average-linkage clustering on cosine similarity; returns groups of indices (largest first)."""
     n = len(vectors)
@@ -125,6 +138,25 @@ def agglomerative(vectors: Sequence[Sequence[float]], n_clusters: int) -> list[l
         clusters[next_id] = merged
         next_id += 1
     return sorted((sorted(members) for members in clusters.values()), key=len, reverse=True)
+
+
+def absorb_small(groups: list[list[int]], vectors: Sequence[Sequence[float]], min_size: int = 3) -> list[list[int]]:
+    """Move the members of groups smaller than ``min_size`` into the most similar larger group.
+
+    Average linkage leaves outliers as groups of one or two; on the first real run (2026-10-12) that gave one
+    90-paper topic and six tiny ones, each then reported as a "thin topic". An outlier is a paper, not a topic.
+    """
+    large = [list(g) for g in groups if len(g) >= min_size]
+    if not large:
+        return groups
+    for group in (g for g in groups if len(g) < min_size):
+        for member in group:
+            best = max(
+                range(len(large)),
+                key=lambda i: sum(dot(vectors[member], vectors[j]) for j in large[i]) / len(large[i]),
+            )
+            large[best].append(member)
+    return sorted((sorted(g) for g in large), key=len, reverse=True)
 
 
 def suggested_clusters(n_items: int) -> int:

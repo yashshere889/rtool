@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -101,19 +101,79 @@ def validate(data: Any, schema: dict[str, Any], where: str = "$") -> list[str]:
 
 
 # ------------------------------------------------------------ statistics
+# What rtool can run for each condition against the baseline, recognised in the plan's free text. ANOVA and
+# Tukey's HSD become t-tests, Kruskal-Wallis becomes Mann-Whitney U: the same question asked pairwise.
+_FAMILIES = (
+    ("wilcoxon", re.compile(r"wilcoxon|signed[- ]rank")),
+    ("mann-whitney", re.compile(r"mann|whitney|kruskal|rank[- ]sum|\bu[- ]test")),
+    ("t", re.compile(r"t[- ]test|student|welch|anova|tukey|\bt\b")),
+)
+_RUN_AS = {"t": "t-tests", "wilcoxon": "Wilcoxon signed-rank tests", "mann-whitney": "Mann-Whitney U tests"}
+_SAME = {  # a plan's test that names exactly what rtool runs (not something translated into it)
+    "t": re.compile(r"t[- ]test|student|welch|\bt\b"),
+    "wilcoxon": _FAMILIES[0][1],
+    "mann-whitney": re.compile(r"mann|whitney|rank[- ]sum|\bu[- ]test"),
+}
+
+
+def _family_of(text: str) -> str | None:
+    return next((family for family, pattern in _FAMILIES if pattern.search(text.lower())), None)
+
+
 def _test_family(plan: ExperimentPlan) -> tuple[str, Literal["holm", "bonferroni"]]:
     """(test, correction) chosen from the plan's statistical tests (free text written by the planner).
 
+    The first test rtool recognises decides (the plan's main analysis; later ones are often robustness checks).
     The correction is Holm unless the plan asks for Bonferroni (and not Holm); ``aggregate`` applies it
-    whenever there is more than one comparison. A plan that says "none" (or names a correction we do not
+    whenever more than one comparison has a p-value. A plan that says "none" (or names a correction we do not
     implement) still gets Holm: "none" is the field's default, so it cannot be told apart from a planner
     that never considered the question, and an uncorrected family of metrics x conditions is how false
     positives get reported. The raw p-values stay in the results next to the adjusted ones.
     """
-    text = " ".join(f"{t.test} {t.comparison}" for t in plan.statistical_tests).lower()
+    test = next((f for t in plan.statistical_tests if (f := _family_of(t.test))), None)
+    test = test or _family_of(" ".join(t.comparison for t in plan.statistical_tests)) or "t"
     corrections = " ".join(t.correction for t in plan.statistical_tests).lower()
-    test = "wilcoxon" if "wilcoxon" in text else "mann-whitney" if re.search(r"mann|whitney", text) else "t"
     return test, "bonferroni" if "bonferroni" in corrections and "holm" not in corrections else "holm"
+
+
+def translated_tests(plan: ExperimentPlan) -> list[str]:
+    """The plan's tests that rtool does not run as named (e.g. ANOVA, run as pairwise t-tests)."""
+    family, _ = _test_family(plan)
+    return [t.test for t in plan.statistical_tests if not _SAME[family].search(t.test.lower())]
+
+
+def correction_used(plan: ExperimentPlan, comparisons: list[Comparison]) -> str:
+    """'holm' or 'bonferroni' if the comparisons' p-values were corrected, else ''."""
+    return next((c.correction for c in comparisons if c.correction != "none"), "")
+
+
+def analysis_notes(plan: ExperimentPlan, comparisons: list[Comparison]) -> list[str]:
+    """What the analysis did, in words, where it differs from what the plan says."""
+    if not comparisons:
+        return []
+    family, _ = _test_family(plan)
+    tests = sorted({c.test for c in comparisons})
+    notes = [f"each condition is compared with the baseline using the {' / '.join(tests)}"]
+    translated = translated_tests(plan)
+    if translated:
+        notes.append(
+            f"the plan named {', '.join(translated)}; rtool runs pairwise {_RUN_AS[family]} against the baseline "
+            "instead"
+        )
+    adjusted = [c for c in comparisons if c.p_adjusted is not None]
+    if adjusted:
+        method = "Bonferroni" if correction_used(plan, comparisons) == "bonferroni" else "Holm's method"
+        notes.append(
+            f"p-values are corrected with {method} within the confirmatory and within the exploratory comparisons "
+            f"({len(adjusted)} corrected in all)"
+        )
+    untestable = sorted({c.metric for c in comparisons if c.p_value is None and c.n >= 2})
+    if untestable:
+        notes.append(
+            f"no test was possible for {', '.join(untestable)}: the results (or their differences from the "
+            "baseline) did not vary across seeds"
+        )
+    return notes
 
 
 def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[MetricSummary], list[Comparison]]:
@@ -179,16 +239,18 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
                     effect_size=result.effect_size,
                     n=result.n,
                     no_seed_variation=result.no_variation,
+                    constant_difference=result.constant_difference,
                     analysis="confirmatory" if metric.name == primary else "exploratory",
                 )
             )
-    adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}[correction] if len(comparisons) > 1 else None
+    tested = sum(1 for c in comparisons if c.p_value is not None)
+    adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}[correction] if tested > 1 else None
     direction = {m.name: m.higher_is_better for m in plan.metrics}
     for analysis in ("confirmatory", "exploratory"):
         members = [c for c in comparisons if c.analysis == analysis]
         adjusted = adjust([c.p_value for c in members]) if adjust else [c.p_value for c in members]
         for comparison, p in zip(members, adjusted, strict=True):
-            if adjust:
+            if adjust and p is not None:
                 comparison.p_adjusted, comparison.correction = p, correction
             comparison.significant = p is not None and p < stats.ALPHA
             if comparison.significant:
@@ -197,7 +259,7 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
 
 
 def variation_notes(plan: ExperimentPlan, records: list[RunRecord], comparisons: list[Comparison]) -> list[str]:
-    """Notes on results that do not vary across seeds (they reach the Writer and the Reviewer)."""
+    """Notes on results, or differences, that do not vary across seeds (they reach the Writer and the Reviewer)."""
     ok = [r for r in records if r.status == "ok"]
     fixed = []
     for condition in (c.name for c in plan.run_conditions()):
@@ -216,6 +278,16 @@ def variation_notes(plan: ExperimentPlan, records: list[RunRecord], comparisons:
             f"not testable, so not significant: {', '.join(untested)} (both sides give the same value for every "
             "seed, so there is no noise to test a difference against)"
         )
+    offsets = [
+        f"`{c.condition}` vs `{c.baseline}` on {c.metric} (difference {fmt(c.difference)})"
+        for c in comparisons
+        if c.constant_difference
+    ]
+    if offsets:
+        notes.append(
+            f"not testable, so not significant: {', '.join(offsets)} (the difference is identical for every seed: "
+            "it may be a fixed offset rather than a measured effect)"
+        )
     return notes
 
 
@@ -226,6 +298,8 @@ def render_tables(
     summaries: list[MetricSummary],
     comparisons: list[Comparison],
     figures: dict[str, str],
+    *,
+    warnings: Sequence[str] = (),
 ) -> str:
     ok = sum(1 for r in records if r.status == "ok")
     baseline = next((c.name for c in plan.conditions if c.is_baseline), "")
@@ -248,6 +322,8 @@ def render_tables(
         ),
         "",
     ]
+    if warnings:
+        lines += ["## Warnings: check before trusting these numbers", "", *[f"- {w}" for w in warnings], ""]
     for metric in plan.metrics_primary_first():
         direction = "higher" if metric.higher_is_better else "lower"
         role = "primary outcome" if metric is primary else "exploratory"
@@ -264,7 +340,8 @@ def render_tables(
                 "|---|---|---|---|---|---|---|---|",
             ]
             for c in rows:
-                p = fmt_p(c.p_value) + (" (no variation across seeds)" if c.no_seed_variation else "")
+                why = "no variation across seeds" if c.no_seed_variation else "same difference for every seed"
+                p = fmt_p(c.p_value) + (f" ({why})" if c.no_seed_variation or c.constant_difference else "")
                 lines.append(
                     f"| {c.condition} vs {c.baseline} | {c.analysis} | {fmt(c.difference)} "
                     f"| {fmt_ci(c.ci_low, c.ci_high)} | {c.test} | {p} "

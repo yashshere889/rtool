@@ -9,17 +9,24 @@ Format: ``KEY=VALUE`` per line, ``#`` comments. Keys used by the tool:
 
 The file must be private (``chmod 600``). Variables already set in the
 environment win, so a job can override them.
+
+Secrets stay in the rtool process that loaded them: environments handed to
+anything else (experiment code written by the model, the vLLM server, Slurm
+jobs via ``sbatch``) go through :func:`without_secrets`. Episode jobs load the
+file again themselves.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 
 from .errors import RToolError
 
 DEFAULT_PATH = "~/.config/rtool/secrets.env"
+SECRET_NAMES = frozenset({"OPENALEX_API_KEY", "S2_API_KEY", "UNPAYWALL_EMAIL", "HF_TOKEN", "RTOOL_SECRETS"})
+_loaded: set[str] = set()  # names read from a secrets file by this process
 
 
 class SecretsError(RToolError):
@@ -58,4 +65,18 @@ def load_secrets(environ: MutableMapping[str, str] | None = None) -> list[str]:
     values = parse_env_file(path.read_text(encoding="utf-8"))
     for key, value in values.items():
         environ.setdefault(key, value)
+    _loaded.update(values)
     return sorted(values)
+
+
+def without_secrets(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """A copy of ``environ`` without API keys, for processes rtool starts but does not trust with them."""
+    environ = os.environ if environ is None else environ
+    hidden = SECRET_NAMES | _loaded
+    return {k: v for k, v in environ.items() if k not in hidden}
+
+
+def secrets_status(environ: Mapping[str, str] | None = None) -> dict[str, bool]:
+    """Which of the known keys are set (never their values), e.g. for a settings page."""
+    environ = os.environ if environ is None else environ
+    return {name: bool(environ.get(name)) for name in sorted(SECRET_NAMES - {"RTOOL_SECRETS"})}

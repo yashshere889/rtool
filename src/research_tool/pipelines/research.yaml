@@ -1,8 +1,9 @@
 # The research pipeline:
 #   literature -> hypotheses -> plan -> fetch -> code -> report -> review
-# Human gates: literature_review, hypothesis_selection, experiment_plan, gpu_runs (inside
-# the code stage, before any GPU time is spent) and final_report. Set any of them to
-# `auto` under gates.modes in the config for unattended runs.
+# Human gates: literature_review, hypothesis_selection, experiment_plan, manual_resources
+# (inside the fetch stage, only if the plan names a resource that is not public and nobody
+# has provided it), gpu_runs (inside the code stage, before any GPU time is spent) and
+# final_report. Set any of them to `auto` under gates.modes in the config for unattended runs.
 name: research
 description: From a topic to a reviewed report, with a human gate before every costly or irreversible step.
 initial_artifacts: [research_brief]
@@ -11,8 +12,9 @@ gates:
   literature_review:
     kind: approve
     prompt: >-
-      Review the corpus and knowledge map. Approve to continue, or reject with feedback
-      (e.g. "focus on X", "drop Y"). Add paywalled papers with `rtool add-paper`.
+      Review the papers and the literature map. Approve to continue, or request changes
+      with feedback (e.g. "focus on X", "drop Y"). Papers without an open-access copy can be
+      added by hand (Upload PDF in the web UI, or `rtool add-paper`).
   hypothesis_selection:
     kind: select
     prompt: Choose the hypothesis to test (or reject with feedback to get new ones).

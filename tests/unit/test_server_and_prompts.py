@@ -124,3 +124,24 @@ def test_prompt_library_overrides_and_strictness(tmp_path: Path) -> None:
     with pytest.raises(PromptError, match="not found"):
         library.render("missing.j2")
     assert PromptLibrary.for_agent("research_tool.testing", "toy").names() == []  # no prompts dir: empty
+
+
+def test_startup_crash_names_the_root_cause_even_when_the_tail_does_not(tmp_path: Path) -> None:
+    """2026-10-15 on gpu45: the cause sat 70 lines above the end, under ANSI colour codes."""
+    log = "\n".join(
+        [
+            "INFO 10-15 09:29:43 [core.py:77] Initializing a V1 LLM engine (v0.11.0)",
+            "\x1b[1;36m(EngineCore_DP0 pid=2663372)\x1b[0;0m ERROR [core.py:708] "
+            "OSError: [Errno 28] No space left on device",
+            *[f'  File "/usr/lib/python3.10/x{i}.py", line {i}, in f' for i in range(60)],
+            "(APIServer pid=2662695) RuntimeError: Engine core initialization failed. See root cause above.",
+        ]
+    )
+    script = tmp_path / "crash.py"
+    script.write_text(f"print({log!r}, flush=True)\nraise SystemExit(1)\n")
+    crash = [sys.executable, str(script)]
+    server = VLLMServer(config(), tmp_path, command_override=lambda _p: crash, poll_interval_s=0.05)
+    with pytest.raises(VLLMServerError) as caught:
+        server.start()
+    first_line = str(caught.value).split(";")[0]
+    assert first_line == "vLLM exited with code 1 during startup (OSError: [Errno 28] No space left on device)"

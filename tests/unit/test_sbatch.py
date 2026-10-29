@@ -170,3 +170,13 @@ def test_termination_waits_for_the_work_to_clean_up(tmp_path: Path) -> None:
     proc.send_signal(signal.SIGTERM)
     assert proc.wait(timeout=30) == 143
     assert (tmp_path / "cleaned-up").exists()  # the shell waited for the cleanup
+
+
+def test_bad_nodes_are_excluded(tmp_path: Path) -> None:
+    spec = gpu_job(tmp_path).model_copy(update={"exclude": ["gpu45", "gpu46", "bad;rm -rf"]})
+    lines = render_script(spec, sentinel_dir=tmp_path / "s", log_dir=tmp_path / "l").splitlines()
+    assert "#SBATCH --exclude=gpu45,gpu46" in lines  # anything that is not a node name is left out
+    assert not any(
+        "--exclude" in line
+        for line in render_script(gpu_job(tmp_path), sentinel_dir=tmp_path / "s", log_dir=tmp_path / "l").splitlines()
+    )

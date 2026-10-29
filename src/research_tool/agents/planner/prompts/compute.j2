@@ -10,6 +10,13 @@ Resources: {% for r in resources %}{{ r.name }} ({{ r.kind }}{% if r.size_gb %},
 Available compute:
 {{ compute }}
 Number of runs planned: {{ runs }}
+{% if feedback %}
+
+Feedback from the researcher (follow it where it concerns compute, time or GPUs):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
 {% if issues %}
 
 Problems with the previous estimate that you must fix:

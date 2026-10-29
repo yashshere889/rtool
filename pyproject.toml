@@ -18,13 +18,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]  # httpx: FastAPI's TestClient (tests/web)
 # Installed on Barkla only (the code falls back to the standard library without them).
 barkla = [
   "numpy>=1.26",         # fast vector math for embeddings / clustering
   "pymupdf4llm>=0.0.17", # PDF -> Markdown with reading order (PyMuPDF is AGPL; fine for research use)
   "fastembed>=0.4",      # small CPU (ONNX) embedding models; downloads the model on first use
   "huggingface_hub>=0.24", # dataset/model downloads for experiments
+  "ruff>=0.6",            # the Coder's undefined-name check on generated code (skipped without it)
+]
+
+# The web UI (`rtool ui`). Its built frontend ships in research_tool/web/static, so no Node is needed to run it.
+web = [
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
 ]
 
 [project.scripts]
@@ -41,6 +48,7 @@ research_tool = [
   "packs/*/pack.yaml",
   "packs/*/templates/*.j2",
   "packs/*/prompts/*/*.j2",
+  "web/static/**/*",
 ]
 
 [tool.pytest.ini_options]

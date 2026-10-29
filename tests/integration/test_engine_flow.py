@@ -8,12 +8,15 @@ import pytest
 
 from research_tool.core.actions import Action, ActionInbox, ActionKind
 from research_tool.core.artifacts import ArtifactStore
-from research_tool.core.engine import Engine, Outcome, load_status
+from research_tool.core.engine import Engine, Outcome, edit_option, load_status
+from research_tool.core.errors import ActionError
 from research_tool.core.events import EventLog
 from research_tool.core.fs import FileLease
+from research_tool.core.pipeline import GateSpec
 from research_tool.core.run import RunHandle
 from research_tool.core.state import StageStatus
 from research_tool.llm.mock_backend import MockLLM
+from research_tool.schemas.hypothesis import Hypothesis
 from research_tool.testing.harness import drive, make_run, make_services, queue
 
 LINEAR = {
@@ -213,3 +216,88 @@ def test_several_open_gates_need_disambiguation(runs_root: Path, mock_llm: MockL
     result = Engine(run, services).advance()
     assert [g["gate"] for g in result.open_gates] == ["a"]
     assert "several gates are open" in processed_outcomes(run)[0]["error"]
+
+
+def test_a_decision_names_the_gate_it_was_made_at(runs_root: Path, mock_llm: MockLLM) -> None:
+    run = make_run(runs_root, GATED)
+    services = make_services(run, mock_llm)
+    assert Engine(run, services).advance().outcome is Outcome.WAITING_GATE
+    _, stages, _ = load_status(run)
+    gate = stages["source"].gate
+    assert gate is not None and len(gate.nonce) == 12
+    seen = {"gate_nonce": gate.nonce, "artifacts": gate.summary["artifacts"]}
+
+    queue(run, ActionKind.APPROVE, stage="source", gate="check", payload={"expect": {"gate_nonce": "0" * 12}})
+    stale = {"gate_nonce": gate.nonce, "artifacts": {"toy_numbers": 99}}
+    queue(run, ActionKind.APPROVE, stage="source", gate="check", payload={"expect": stale})
+    assert Engine(run, services).advance().outcome is Outcome.WAITING_GATE  # both refused: the gate stays open
+    errors = [o.get("error", "") for o in processed_outcomes(run)]
+    assert "opened again" in errors[0] and "toy_numbers (v99 -> v1)" in errors[1]
+
+    queue(run, ActionKind.APPROVE, stage="source", gate="check", payload={"expect": seen})
+    assert Engine(run, services).advance().outcome is Outcome.DONE
+
+
+def test_reopening_a_finished_choice(runs_root: Path) -> None:
+    run = make_run(runs_root, SELECT, topic="T")
+    services = make_services(run)
+    Engine(run, services).advance()
+    queue(run, ActionKind.REOPEN, stage="options")  # still open: nothing to reopen
+    queue(run, ActionKind.SELECT, payload={"index": 0})
+    assert Engine(run, services).advance().outcome is Outcome.DONE
+    store = ArtifactStore(run.artifacts_dir)
+
+    queue(run, ActionKind.REOPEN, stage="choose")  # this stage has no checkpoint
+    queue(run, ActionKind.REOPEN, stage="options")
+    result = Engine(run, services).advance()
+    assert result.outcome is Outcome.WAITING_GATE
+    summary = result.open_gates[0]["summary"]
+    assert summary["reopened"] and summary["current"] == {"index": 0, "version": 1} and summary["options"]
+    _, stages, _ = load_status(run)
+    assert stages["choose"].status is StageStatus.DONE  # later stages wait for the decision
+
+    queue(run, ActionKind.APPROVE, stage="options")  # keep the current choice: nothing downstream changes
+    assert Engine(run, services).advance().outcome is Outcome.DONE
+    assert store.head("toy_choice") == 1 and store.head("toy_decision") == 1
+
+    queue(run, ActionKind.REOPEN, stage="options")
+    Engine(run, services).advance()
+    queue(run, ActionKind.SELECT, stage="options", payload={"index": 2})
+    assert Engine(run, services).advance().outcome is Outcome.DONE
+    assert store.get("toy_choice").index == 2 and store.get("toy_decision").chosen_title == "T — option 2"
+
+    outcomes = processed_outcomes(run)
+    assert [o["status"] for o in outcomes] == ["rejected", "applied", "rejected"] + ["applied"] * 4
+    assert "only a finished stage" in outcomes[0]["error"] and "no checkpoint" in outcomes[2]["error"]
+    assert kinds(run).count("gate_opened") == 3
+
+
+def test_an_edited_choice_must_still_fit_the_schema() -> None:
+    gate = GateSpec(
+        kind="select",
+        options_artifact="hypothesis_set",
+        options_path="hypotheses",
+        selection_artifact="selected_hypothesis",
+    )
+    option = Hypothesis(
+        id="h1",
+        title="t",
+        statement="s",
+        null_hypothesis="n",
+        rationale="r",
+        evidence=[],
+        independent_variables=["x"],
+        dependent_variables=["y"],
+        success_criteria="c",
+        compute="cpu_only",
+    ).model_dump(mode="json")
+    edited = edit_option(gate, option, {"statement": "new", "methods": ["a", "b"]})
+    assert edited == option | {"statement": "new", "methods": ["a", "b"]}
+    with pytest.raises(ActionError, match="compute"):
+        edit_option(gate, option, {"compute": "huge_gpu"})
+    with pytest.raises(ActionError, match="no field 'colour'"):
+        edit_option(gate, option, {"colour": "red"})
+    with pytest.raises(ActionError, match="map field names"):
+        edit_option(gate, option, ["statement"])
+    toy = GateSpec(kind="select", options_artifact="toy_options", options_path="options", selection_artifact="c")
+    assert edit_option(toy, {"title": "a"}, {"detail": "b"}) == {"title": "a", "detail": "b"}  # no item schema

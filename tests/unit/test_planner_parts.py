@@ -6,13 +6,16 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from research_tool.agents.planner.checks import (
     design_issues,
     fit_compute,
     format_time,
+    metric_issues,
     normalise_core,
     one_primary,
+    resource_issues,
     results_schema,
     slug,
 )
@@ -79,7 +82,7 @@ def core_with(metrics: list[dict]) -> PlanCore:
         independent_variables=[{"name": "x", "description": "x"}],
         dependent_variables=[{"name": "y", "description": "y"}],
         conditions=[{"name": "a", "description": "a"}, {"name": "a", "description": "b"}],
-        metrics=metrics,
+        metrics=[{"higher_is_better": True} | m for m in metrics],
         statistical_tests=[{"test": "t", "comparison": "a vs b"}],
         n_seeds=1,
         procedure=["1", "2", "3"],
@@ -92,6 +95,8 @@ def test_design_rules() -> None:
     issues = " ".join(design_issues(core, min_seeds=3))
     assert "baseline" in issues and "unique" in issues and "at least 3 seeds" in issues
     assert "primary" not in issues
+    with pytest.raises(ValidationError, match="higher_is_better"):  # the model may not leave the direction out
+        PlanCore.model_validate(core.model_dump() | {"metrics": [{"name": "acc", "definition": "accuracy"}]})
 
 
 def test_exactly_one_primary_metric() -> None:
@@ -108,6 +113,21 @@ def test_exactly_one_primary_metric() -> None:
     )
     assert any("exactly one metric as the primary outcome" in i for i in design_issues(several, min_seeds=1))
     assert [m.primary for m in one_primary(several.metrics)] == [True, False]  # unresolved after repair: the first
+
+
+def test_metric_direction_is_checked_against_the_name() -> None:
+    barkla = [
+        Metric(name="task_success_rate", definition="share of episodes solved", higher_is_better=True),
+        Metric(name="collision_frequency", definition="collisions per episode", higher_is_better=True),
+        Metric(name="Test Loss", definition="cross-entropy", higher_is_better=True),
+        Metric(name="accuracy", definition="test accuracy", higher_is_better=False),
+        Metric(name="error_reduction", definition="fewer errors than the baseline", higher_is_better=True),
+        Metric(name="so_amplitude", definition="slow-oscillation amplitude", higher_is_better=True),
+    ]
+    issues = metric_issues(barkla)
+    assert len(issues) == 3
+    assert issues[0].startswith("metric collision_frequency says higher is better, but a higher collision")
+    assert "Test Loss" in issues[1] and "accuracy says lower is better" in issues[2]
 
 
 def test_results_schema_shape() -> None:
@@ -129,6 +149,8 @@ def test_hub_checker() -> None:
             return httpx.Response(
                 200, json={"gated": "manual", "tags": ["license:llama3"], "siblings": [{"size": 10**9}]}
             )
+        if request.url.path == "/pypi/pettingzoo/json":
+            return httpx.Response(200, json={"info": {"name": "PettingZoo", "license": "MIT"}})
         return httpx.Response(404)
 
     checker = HubChecker(
@@ -148,8 +170,29 @@ def test_hub_checker() -> None:
         ResourceChoice(kind="dataset", name="n", source="huggingface", identifier="nope/x", purpose="")
     )
     assert not missing.exists and "404" in missing.note
-    pip = checker.check(ResourceChoice(kind="code", name="p", source="pip", identifier="scikit-learn", purpose=""))
-    assert pip.exists
+    pip = checker.check(
+        ResourceChoice(kind="code", name="p", source="pip", identifier="pettingzoo[mpe]>=1.24", purpose="")
+    )
+    assert pip.exists and pip.license == "MIT"
+    typo = checker.check(ResourceChoice(kind="code", name="p", source="pip", identifier="petingzoo", purpose=""))
+    assert not typo.exists and "404" in typo.note
+    torchvision = checker.check(
+        ResourceChoice(kind="dataset", name="c", source="torchvision", identifier="CIFAR10", purpose="")
+    )
+    assert torchvision.exists
+    # nothing public was named: never "verified", whatever it is called
+    manual = checker.check(
+        ResourceChoice(kind="dataset", name="CS:GO env", source="manual", identifier="custom", purpose="")
+    )
+    assert not manual.exists and "someone must provide it" in manual.note
+
+
+def test_manual_resources_are_an_issue_not_a_verified_resource() -> None:
+    manual = ResourceSpec(
+        kind="dataset", name="CS:GO env", source="manual", identifier="custom", purpose="", verified=True
+    )
+    issues = resource_issues([manual], max_dataset_gb=100)
+    assert len(issues) == 1 and "marked manual" in issues[0] and "pip package" in issues[0]
 
 
 def test_fetcher(tmp_path: Path) -> None:

@@ -247,16 +247,18 @@ class _HypothesisRun:
                 self.ctx.emit("hypothesis_draft_failed", opportunity=op.id, error=str(result)[:300])
                 continue
             for draft in result.hypotheses:
-                candidates.append(self.to_hypothesis(f"h{len(candidates) + 1}", draft, op.id))
+                candidates.append(self.to_hypothesis(f"h{len(candidates) + 1}", draft, op))
         return candidates
 
-    @staticmethod
-    def to_hypothesis(hid: str, draft: HypothesisDraft, opportunity: str) -> Hypothesis:
+    def to_hypothesis(self, hid: str, draft: HypothesisDraft, opportunity: Opportunity) -> Hypothesis:
         data = draft.model_dump(exclude={"evidence"})
         evidence = [
             CheckedEvidence(paper_id=e.paper_id, quote=e.quote, verified=False, support=0.0) for e in draft.evidence
         ]
-        return Hypothesis(id=hid, evidence=evidence, source_opportunity=opportunity, **data)
+        related = [pid for pid in opportunity.paper_ids if pid in self.papers]
+        return Hypothesis(
+            id=hid, evidence=evidence, source_opportunity=opportunity.id, related_paper_ids=related, **data
+        )
 
     def check_grounding(self, candidates: list[Hypothesis]) -> None:
         for h in candidates:
@@ -295,7 +297,11 @@ class _HypothesisRun:
         return out
 
     def check_novelty(self, live: list[Hypothesis]) -> None:
-        texts = [self.render("novelty.j2", statement=h.statement, neighbours=self.neighbours(h)) for h in live]
+        texts = []
+        for h in live:
+            neighbours = self.neighbours(h)
+            h.related_paper_ids = list(dict.fromkeys([*h.related_paper_ids, *(n["id"] for n in neighbours)]))
+            texts.append(self.render("novelty.j2", statement=h.statement, neighbours=neighbours))
         results = self.ctx.llm.structured_many(NoveltyJudgment, texts, profile="judge", system=SYSTEM)
         for h, result in zip(live, results, strict=True):
             if isinstance(result, Exception):
@@ -336,6 +342,7 @@ class _HypothesisRun:
                 h.rejected_reason = "could not be scored"
                 continue
             h.scores = {c: float(statistics.median(getattr(s, c) for s in scores)) for c in CRITERIA}
+            h.rubric_comments = list(dict.fromkeys(s.comment.strip() for s in scores if s.comment.strip()))
             if any("GPU-hours" in note for note in h.feasibility_notes):
                 h.scores["feasibility"] = min(h.scores["feasibility"], 2.0)
             total = sum(weights.get(c, 0) * (h.scores[c] - 1) / 4 for c in CRITERIA) / max(sum(weights.values()), 1e-9)
@@ -382,6 +389,8 @@ def render_markdown(hypothesis_set: HypothesisSet, papers: dict[str, PaperRecord
             lines += ["", "**Notes.**", *[f"- {n}" for n in notes]]
         scores = ", ".join(f"{k} {v:g}" for k, v in h.scores.items())
         lines += ["", f"_Rubric: {scores}_", ""]
+        if h.rubric_comments:
+            lines += ["**Judges.**", *[f"- {c}" for c in h.rubric_comments], ""]
     rejected = [h for h in hypothesis_set.candidates if h.rejected_reason]
     if rejected:
         lines += ["## Considered and rejected", ""]

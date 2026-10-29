@@ -35,6 +35,8 @@ Requirements:
 - Compare at least one baseline condition with the treatment condition(s); mark baselines with is_baseline = true.
 - Use short snake_case names for conditions and metrics.
 - Mark exactly one metric as the primary outcome (primary = true): the one whose comparison with the baseline decides the hypothesis. It is fixed before the experiment runs; every other metric is reported as exploratory.
-- Use at least {{ min_seeds }} seeds (independent runs) per condition, and statistical tests that fit the design.
+- For every metric say which way is better: higher_is_better is false when smaller values are better (errors, losses, collisions, latency, cost), and the definition must match the name (a count of messages is not an "efficiency").
+- Use at least {{ min_seeds }} seeds (independent runs) per condition.
+- Statistics: rtool compares every condition with the baseline, so name one of the tests it runs: "paired t-test" (the same seeds in every condition), "Welch t-test", "Wilcoxon signed-rank" or "Mann-Whitney U". With several comparisons it corrects the p-values with Holm's method (or Bonferroni, if you name it), within the primary outcome's comparisons and within the exploratory ones.
 - Write the procedure as concrete steps a programmer can implement: loading data, preprocessing, training or analysis, evaluation, saving results.
 - Keep it achievable with the compute above within a few days.

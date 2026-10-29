@@ -33,19 +33,29 @@ llm:
     gpu_memory_utilization: 0.90
     # Model-card flags, plus eager loading: on Lustre, whole-file reads run at ~1.6 GB/s while
     # vLLM's default memory-mapped loading managed ~0.12 GB/s (3.5 min per cold start).
-    extra_args: [--trust-remote-code, --mamba_ssm_cache_dtype, float32, --safetensors-load-strategy, eager]
+    # No free whitespace in constrained JSON: with it, the model sometimes finishes the object's
+    # content and then emits only newlines until max_tokens (the planner's ResourcePlan, 2026-10-12:
+    # 32 lines of JSON, then 8192 tokens, three tries). xgrammar reads this only from the server
+    # config, and only with the backend named explicitly.
+    extra_args: [--trust-remote-code, --mamba_ssm_cache_dtype, float32, --safetensors-load-strategy, eager,
+                 --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}']
     # vLLM's deepseek_r1 parser needs <think>/</think> as single tokens, which this tokenizer lacks
     # (it refused to start). rtool splits the reasoning from the answer itself instead.
     reasoning_parser: null
 
 experiments:
-  # Experiments run in the Nemotron image too: torch 2.8.0 + CUDA 12.8, transformers 4.57.1,
-  # accelerate 1.11 (Python 3.10). Anything else is pip-installed into a venv layered on it.
+  # Experiments run in the Nemotron image too (Python 3.10.12, user site off). `pip list` inside it
+  # on 2026-10-10: torch 2.8.0 (+ torchvision 0.23, torchaudio 2.8, CUDA 12.8), numpy 2.1.2,
+  # scipy 1.15.3, transformers 4.57.1, accelerate 1.11, tokenizers 0.22, safetensors 0.6,
+  # huggingface_hub 0.36, pydantic 2.12, einops, sentencepiece, pillow, networkx, PyYAML, tqdm,
+  # requests. Not in it: pandas, scikit-learn, datasets, matplotlib, statsmodels; anything
+  # else is pip-installed into a venv layered on the image.
   container: $NEMOTRON_SIF
   modules: [apptainer/1.3.6, nemotron/nano-12b-v2]
   binds: [/mnt/scratch, /mnt/fastscratch]
   home: /mnt/scratch/users/${USER}/rtool/exp-home   # fresh HOME: ~/.local stays out
-  packages: [torch, numpy, transformers, accelerate, tokenizers, safetensors, huggingface_hub, pydantic]
+  packages: [torch, torchvision, torchaudio, numpy, scipy, transformers, accelerate, tokenizers, safetensors,
+             huggingface_hub, pydantic, einops, sentencepiece, pillow, networkx, pyyaml, tqdm, requests]
   max_parallel_runs: 4                                # GPUs one run may use at the same time
 
 slurm:

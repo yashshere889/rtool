@@ -42,6 +42,35 @@ class EventLog:
                 except json.JSONDecodeError:
                     continue  # a torn final line after a crash
 
+    def read_from(self, offset: int = 0, *, limit: int | None = None) -> tuple[list[dict[str, Any]], int]:
+        """Events after byte ``offset`` and the offset to continue from (a cursor for tailing).
+
+        Only complete lines are returned, so a line still being appended is read
+        next time. A cursor past the end (the log was replaced) starts over.
+        """
+        if not self.path.exists():
+            return [], 0
+        with open(self.path, "rb") as f:
+            size = f.seek(0, 2)
+            if offset > size:
+                offset = 0
+            f.seek(offset)
+            data = f.read(size - offset)
+        events: list[dict[str, Any]] = []
+        position = offset
+        for line in data.splitlines(keepends=True):
+            if not line.endswith(b"\n"):
+                break  # torn or still being written
+            position += len(line)
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            events.append(event)
+            if limit is not None and len(events) >= limit:
+                break
+        return events, position
+
     def read(
         self,
         *,

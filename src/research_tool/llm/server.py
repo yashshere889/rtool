@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import secrets
 import signal
 import socket
 import subprocess
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +25,7 @@ import httpx
 from ..core.config import LLMConfig
 from ..core.errors import RToolError
 from ..core.fs import atomic_write_json
+from ..core.secrets import without_secrets
 
 
 class VLLMServerError(RToolError):
@@ -40,11 +42,57 @@ def free_port(host: str = "127.0.0.1") -> int:
         return int(sock.getsockname()[1])
 
 
+def gpu_names() -> str | None:
+    """The GPU model(s) this node shows (e.g. "NVIDIA L40S, 46068 MiB"), or None without nvidia-smi."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    names = dict.fromkeys(line.strip() for line in out.splitlines() if line.strip())
+    return "; ".join(names) or None
+
+
+def node_facts(env: Mapping[str, str] | None = None) -> dict[str, str | None]:
+    """Where a server runs: node, GPU and Slurm job (recorded in events for `rtool stats`)."""
+    env = os.environ if env is None else env
+    return {
+        "node": env.get("SLURMD_NODENAME") or socket.gethostname().split(".")[0],
+        "gpu": gpu_names(),
+        "devices": env.get("CUDA_VISIBLE_DEVICES") or env.get("SLURM_JOB_GPUS"),
+        "partition": env.get("SLURM_JOB_PARTITION"),
+        "job": env.get("SLURM_JOB_ID"),
+    }
+
+
 def log_tail(path: Path, lines: int = 40) -> str:
     try:
         return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:])
     except FileNotFoundError:
         return "(no log written)"
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_ERROR_LINE = re.compile(r"\b([A-Za-z]+(?:Error|Exception)): (.+)$")
+_GENERIC = ("Engine core initialization failed", "Engine process failed to start")
+
+
+def root_cause(path: Path) -> str | None:
+    """The first specific ``SomeError: message`` line in a vLLM log (the tail often holds only the wrapper)."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return None
+    for line in text.splitlines():
+        match = _ERROR_LINE.search(_ANSI.sub("", line))
+        if match and not any(g in match.group(2) for g in _GENERIC):
+            return f"{match.group(1)}: {match.group(2).strip()}"
+    return None
 
 
 @dataclass
@@ -120,7 +168,7 @@ class VLLMServer:
             inner["HF_HOME"] = expand_path(self.settings.hf_home)
         if self.settings.offline:
             inner["HF_HUB_OFFLINE"] = "1"
-        env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
+        env = {k: v for k, v in without_secrets().items() if k not in ("PYTHONPATH", "PYTHONHOME")}
         env.update(inner)
         # Images may set these themselves (the Nemotron image sets HF_HOME), and an image's
         # own values beat the host's; APPTAINERENV_* values beat the image's.
@@ -169,8 +217,11 @@ class VLLMServer:
             while True:
                 code = handle.process.poll()
                 if code is not None:
+                    cause = root_cause(handle.log_path)
                     raise VLLMServerError(
-                        f"vLLM exited with code {code} during startup; last log lines:\n{log_tail(handle.log_path)}"
+                        f"vLLM exited with code {code} during startup"
+                        + (f" ({cause})" if cause else "")
+                        + f"; last log lines:\n{log_tail(handle.log_path)}"
                     )
                 with contextlib.suppress(httpx.TransportError):
                     if client.get(handle.url + "/health").status_code == 200:

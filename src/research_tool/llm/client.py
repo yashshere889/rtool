@@ -18,6 +18,7 @@ from pydantic import BaseModel, ValidationError
 from ..core.budgets import BudgetTracker
 from ..core.config import LLMConfig
 from ..core.errors import BudgetExceeded, RToolError
+from .schema_guide import require_all, schema_guide
 from .types import ChatMessage, ChatRequest, ChatResponse, LLMBackend
 
 M = TypeVar("M", bound=BaseModel)
@@ -164,6 +165,12 @@ class LLMClient:
         """Ask for JSON matching ``model``; on invalid output, show the error and retry."""
         schema = model.model_json_schema()
         messages = _as_messages(prompt, system)
+        if self.config.describe_schema:
+            # The server's constraint never shows the model the field descriptions, and lets it skip
+            # any field with a default: spell the fields out, and make the constraint ask for all of them.
+            guide = schema_guide(schema)
+            messages = _with_note(messages, guide) if guide else messages
+            schema = require_all(schema)
         overrides: dict[str, Any] = {}
         if self.config.profile(profile).reasoning == "on" and not self.config.structured_with_reasoning:
             # The server can't constrain output after free-form reasoning: think first, then format.

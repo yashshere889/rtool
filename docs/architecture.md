@@ -8,7 +8,7 @@ fit together; [adding_an_agent.md](adding_an_agent.md) shows how to extend it an
 ## The pipeline
 
 ```
-literature ─▶[literature_review]─▶ hypotheses ─▶[hypothesis_selection]─▶ plan ─▶[experiment_plan]─▶ fetch
+literature ─▶[literature_review]─▶ hypotheses ─▶[hypothesis_selection]─▶ plan ─▶[experiment_plan]─▶ fetch ─▶[manual_resources]
    ─▶ code: write ─▶ smoke test ─▶[gpu_runs]─▶ Slurm runs ─▶ analysis ─▶ report ─▶ review ─▶[final_report]
             ▲______________________ change requests (bounded) ______________________│
 ```
@@ -41,8 +41,19 @@ Kill it at any point and the next episode resumes: a stage that was running is
 re-entered with its saved `ctx.state`; a commit that was half done is finished.
 
 **Gates.** After a stage (`gate:` in the YAML) or inside one (`ctx.gate(...)`,
-e.g. the Coder's `gpu_runs` before spending GPU hours). Humans answer with
-`rtool approve | reject -f "…" | select <n>`; any gate can be set to `auto`.
+e.g. the Coder's `gpu_runs` before spending GPU hours, and the fetch stage's `manual_resources`
+when the plan names something that is not public and nobody has provided it yet). Humans answer with
+`rtool approve | reject -f "…" | select <n>` or in the web UI; any gate can be set to
+`auto`. A finished stage's gate can be reopened (`rtool reopen`): later stages are
+redone only if the decision changes its outputs.
+
+**Hand edits.** A researcher can replace an output with an edited version
+(`rtool edit`, or the plan, report and final report pages): the owning agent
+registers an editor (`core/editing.py`) that recomputes what follows from the
+edit and refuses what would break later stages; the new version is made by
+`human:<user>` and stales only what read the old one. Agents may also declare
+files researchers can rewrite while the stage waits for them (`editable_files`,
+the Coder's `experiment.py`). See [frontend.md](frontend.md).
 
 **Change requests.** A later stage can ask the producer of one of its inputs
 to redo its work (`ctx.request_change(artifact=…)`): the Writer when planned
@@ -80,6 +91,10 @@ Episodes are requeued if preempted (low-priority partitions): `TERM` makes the
 episode stop cleanly within Slurm's grace period, and the requeued job — same
 id — reclaims its own lease and resumes. One episode per run at a time (a lease
 file); a time-limit warning (`USR1` 10 min before) queues the continuation.
+If vLLM cannot start on a node (e.g. its `/dev/shm` is full), the stage is left as
+it was, the node goes into `state/bad_nodes.json` for a day, and the next GPU
+episode asks Slurm to `--exclude` it; after three such failures the run waits
+for a human (`llm_server_failed` events name the node and the root cause).
 
 ## The LLM layer
 
@@ -90,6 +105,10 @@ model. The client gives them:
   structured outputs), validated with Pydantic; invalid output is shown back
   with the error and retried. A reply that ran out of tokens (greedy decoding
   repeating itself) is retried briefly re-prompted and sampled instead.
+- the JSON constraint only limits which tokens come next: the model never reads
+  the schema. So every structured prompt ends with its fields spelled out (name,
+  type, description), and the constraint requires every field
+  (`llm.describe_schema`); before this, 88 of 98 paper extractions had no method.
 - reasoning on/off via Nemotron's `/think` / `/no_think`; reasoning is split
   from the answer. With reasoning on, JSON is produced in a second call.
 - `parallel(...)` — many requests at once (32 on Barkla), batched by vLLM.
@@ -103,11 +122,19 @@ The model is good but small, so every step is narrow and checked by code:
 
 | risk | guard |
 |---|---|
-| invented findings | every extracted claim carries a quote that must match the paper text (fuzzy, ≥ 0.85) |
+| wrong field | before searching, the Literature agent writes down how it reads the topic (key concepts, what is out of scope), shown at the literature checkpoint; queries must combine concepts |
+| lenient screening | each paper is checked against the key concepts (yes / partly / no) and scored from that checklist, not from the model's own 0-10 (which gave every one of 507 candidates 6-10); papers on an out-of-scope area score at most 3; ties for the size cap go to papers linked by citation to the others, then to the model's own score, and only then to citation count (which favoured old papers from a neighbouring field) |
+| wrong downloads | a copy counts only if it has the paper's title near the start and at least 4× the abstract's length of text (landing pages and arXiv's "no HTML" page do not); otherwise the next link is tried |
+| invented findings | every extracted claim carries a quote that must match the paper text (fuzzy, ≥ 0.85), and every number the claim states must appear in the paper |
+| fake gaps | gaps rest on evidence: planned sub-topics with at most one paper, a method left out of a dataset that at least two papers test alongside the method's own datasets, dated topics; outlier papers are not "thin topics"; a digest written from part of a paper may not say the paper "does not state" something |
+| unnoticed problems | the literature checkpoint shows quality checks (screening spread, full text, quotes found, invented numbers, named methods, sub-topic coverage, citation following); `python -m research_tool.agents.literature.measure <run>` measures any run |
 | invented citations | hypotheses cite verified quotes; reports may only cite corpus keys |
 | invented numbers | reports write results as placeholders (`{{mean:acc:new}}`) filled from the results; any other number must appear in the material the section was written from |
-| wrong statistics | all statistics are computed deterministically (t-tests, exact rank tests, CIs, corrections) |
+| wrong statistics | all statistics are computed deterministically (t-tests, exact rank tests, CIs, Holm's correction whenever there are several comparisons); results that do not vary across seeds get no p-value; tests the plan names that rtool does not run (e.g. ANOVA) are said to be translated |
+| wrong direction | the plan must say for each metric whether higher is better; names like `collision_frequency` marked "higher is better" are sent back |
 | broken code | static checks, CPU smoke tests, a failure playbook, bounded LLM repairs, then a human |
+| fake experiments | the code may not invent results; warnings at the GPU-runs checkpoint and in the results when experiment.py calls itself a mock, sets values it never uses, gives the same metrics for two seeds, or its runs take no time; manual resources are never "verified"; the Reviewer fails a check on any such warning |
+| unchecked numbers | a number nobody could check is left out of an aside or shown as `[?]`, a major finding the Reviewer rewrites and checks |
 | runaway cost | a human approves every GPU spend; budgets for GPU-hours, jobs and LLM calls |
 | overconfident review | three independent reviews; scores are medians; an issue counts only if most raise it |
 

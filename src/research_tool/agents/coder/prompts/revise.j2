@@ -6,7 +6,8 @@ Hypothesis: {{ plan.hypothesis }}
 Conditions: {{ conditions | join(", ") }}.
 Metrics (run() returns a float for each): {{ metrics | join(", ") }}.
 Local data and models: {{ resources }}.
-Installed: {{ packages | join(", ") }}; anything else goes on the `# requirements:` line.
+{% if missing %}Not available (nobody provided them; build a real version in code instead of reading them): {{ missing | map(attribute="name") | join(", ") }}.
+{% endif %}Installed: {{ packages | join(", ") }}; anything else goes on the `# requirements:` line.
 
 ## Current experiment.py
 ```python
@@ -14,4 +15,5 @@ Installed: {{ packages | join(", ") }}; anything else goes on the `# requirement
 ```
 
 Keep the signature `run(condition, seed, resources, smoke, workdir) -> dict[str, float]` and the smoke behaviour.
+Every metric must be measured by really running the procedure: no hard-coded, mock or placeholder results.
 Reply with the complete revised file in one ```python code block and nothing after it.
