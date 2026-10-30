@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
       - name: Build the wheel
         run: uv build --wheel --out-dir dist
       - name: Start the demo and check it
@@ -36,6 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
       - name: Build the pack
         shell: pwsh
         run: |
