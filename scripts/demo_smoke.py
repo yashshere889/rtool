@@ -46,6 +46,16 @@ def main() -> int:
         except urllib.error.HTTPError as error:
             return error.code, "", error.read().decode("utf-8", "replace")
 
+    def fetch_status(path: str) -> int:
+        token = args.token_file.read_text(encoding="utf-8").strip()
+        req = urllib.request.Request(base + path, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as response:
+                response.read()
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
+
     deadline = time.monotonic() + args.wait
     while True:
         try:
@@ -100,6 +110,53 @@ def main() -> int:
         if outcome != "done":
             stages = [(s["id"], s["status"]) for s in detail.get("stages", [])]
             problems.append(f"new run ended as {outcome}: {detail.get('worker')} {stages}")
+
+    # Files the pages open or download.
+    _, _, text = request("/api/runs/sleep-demo/6-done/report")
+    figures = json.loads(text).get("figures") or []
+    for path in [f"/api/runs/sleep-demo/6-done/files/{f}" for f in figures[:1]] + [
+        "/api/runs/sleep-demo/6-done/report/bundle",
+        "/api/runs/sleep-demo/6-done/code/archive",
+        "/api/runs/sleep-demo/6-done/literature/search?q=sleep",
+    ]:
+        status = fetch_status(path)
+        print(f"{path.rsplit('/', 1)[-1]}: {status}")
+        if status != 200:
+            problems.append(f"{path} answered {status}")
+
+    # The decisions a researcher makes, one on each run stopped at a checkpoint.
+    for run_id in ("1-literature", "2-hypotheses", "3-plan", "4-gpu-runs", "5-final-report"):
+        path = f"/api/runs/sleep-demo/{run_id}"
+        _, _, text = request(path)
+        gate = json.loads(text)["open_gates"][0]
+        kind = "select" if gate["kind"] == "select" else "approve"
+        status, _, text = request(
+            path + "/actions",
+            {
+                "kind": kind,
+                "stage": gate["stage"],
+                "gate": gate["gate"],
+                "payload": {"index": 0} if kind == "select" else {},
+            },
+        )
+        if status >= 300:
+            problems.append(f"{run_id}: {kind} answered {status}: {text[:200]}")
+            continue
+        deadline = time.monotonic() + args.wait
+        detail: dict = {}
+        while time.monotonic() < deadline:
+            _, _, text = request(path)
+            detail = json.loads(text)
+            gates = [g["gate"] for g in detail.get("open_gates", [])]
+            settled = not detail.get("queued_actions") and not (detail.get("worker") or {}).get("active")
+            if settled and gate["gate"] not in gates:
+                break
+            time.sleep(1)
+        print(f"{run_id}: {kind} -> {detail.get('last_outcome')} {[g['gate'] for g in detail.get('open_gates', [])]}")
+        failed = [s["id"] for s in detail.get("stages", []) if s["status"] == "failed"]
+        error = (detail.get("worker") or {}).get("last_error")
+        if failed or error or gate["gate"] in [g["gate"] for g in detail.get("open_gates", [])]:
+            problems.append(f"{run_id}: after {kind}: failed stages {failed}, error {error}")
 
     for problem in problems:
         print("FAILED:", problem)

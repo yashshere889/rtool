@@ -209,7 +209,7 @@ def _report_view(run: RunHandle, which: Which, version: int | None) -> ReportVie
         figures=report.figures,
         markdown_path=report.markdown_path,
         bibtex_path=report.bibtex_path,
-        base_dir=str(Path(report.markdown_path).parent),
+        base_dir=Path(report.markdown_path).parent.as_posix(),
         placeholders=[
             PlaceholderInfo(key=k, text=v.text, meaning=v.meaning) for k, v in sorted(material.values.items())
         ],

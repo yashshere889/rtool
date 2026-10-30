@@ -23,8 +23,47 @@ jobs:
           $server = Start-Process uvx -PassThru -NoNewWindow `
             -RedirectStandardOutput ui.out -RedirectStandardError ui.err `
             -ArgumentList "--python","3.12","--from","`"./dist/$wheel[web]`"","rtool","ui","--mode","local","--demo","--port","8765","--token-file","token.txt"
-          python scripts/demo_smoke.py --port 8765 --token-file token.txt --wait 300
+          py -3 scripts/demo_smoke.py --port 8765 --token-file token.txt --wait 300
           $code = $LASTEXITCODE
           Write-Host "--- server output"; Get-Content ui.out, ui.err
           Stop-Process -Id $server.Id -Force
+          exit $code
+
+  launcher:
+    # What the supervisor double-clicks: no uv on the PATH, and a folder with spaces in its name.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build the pack
+        shell: pwsh
+        run: |
+          uv build --wheel --out-dir dist
+          New-Item -ItemType Directory "my downloads\rtool demo" | Out-Null
+          Copy-Item dist/*.whl, scripts/start-windows.bat "my downloads\rtool demo"
+      - name: Run start-windows.bat and check the demo
+        shell: pwsh
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'uv' }) -join ';'
+          Remove-Item Env:UV_TOOL_BIN_DIR, Env:UV_TOOL_DIR -ErrorAction SilentlyContinue
+          if (Get-Command uvx -ErrorAction SilentlyContinue) { Write-Host "uvx is still on the PATH" }
+          Start-Process cmd.exe -ArgumentList '/c', '"my downloads\rtool demo\start-windows.bat" > bat.out 2>&1 < NUL' -NoNewWindow
+          $deadline = (Get-Date).AddMinutes(8)
+          $token = $null
+          while (-not $token -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 3
+            if (Test-Path bat.out) {
+              $match = Select-String -Path bat.out -Pattern '#token=(\S+)' | Select-Object -First 1
+              if ($match) { $token = $match.Matches[0].Groups[1].Value }
+            }
+          }
+          if (-not $token) { Write-Host "--- launcher output"; Get-Content bat.out; exit 1 }
+          Set-Content -Path token.txt -Value $token -NoNewline -Encoding ascii
+          py -3 scripts/demo_smoke.py --port 8765 --token-file token.txt --wait 300
+          $code = $LASTEXITCODE
+          Write-Host "--- launcher output"
+          Get-Content bat.out | ForEach-Object { $_ -replace '#token=\S+', '#token=<hidden>' }
           exit $code
