@@ -62,7 +62,8 @@ echo
 echo "Keep this window open while you use it. Closing it does not stop your runs."
 misses=0
 while kill -0 "$tunnel" 2>/dev/null; do
-  sleep 30
+  sleep 30 & # in the background so a hangup ends this at once, not after the sleep
+  wait $! || true
   if answers; then misses=0; else misses=$((misses + 1)); fi
   if [ "$misses" -ge 2 ]; then
     echo "The UI stopped answering (the job ended, or the connection dropped). Start this again to reconnect." >&2
