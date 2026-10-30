@@ -45,6 +45,18 @@ def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def replace_file(source: str | Path, target: str | Path) -> None:
+    """``os.replace``, waiting out readers on Windows, which cannot replace a file someone has open."""
+    if os.name == "nt":
+        for delay in (0.05, 0.1, 0.2, 0.4, 0.8, 1.6):
+            try:
+                os.replace(source, target)
+                return
+            except PermissionError:
+                time.sleep(delay)
+    os.replace(source, target)
+
+
 def atomic_write_text(path: Path, text: str) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,7 +66,7 @@ def atomic_write_text(path: Path, text: str) -> None:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        replace_file(tmp, path)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)

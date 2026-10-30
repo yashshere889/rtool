@@ -516,4 +516,4 @@ async def upload(
     temp = inbox / f".{stem}{suffix}.upload"  # the agent skips dot-files, so it never sees a half-written copy
     temp.write_bytes(bytes(body))
     temp.replace(target)
-    return Uploaded(file=str(target.relative_to(run.root)), paper_id=paper_id, title=title)
+    return Uploaded(file=target.relative_to(run.root).as_posix(), paper_id=paper_id, title=title)

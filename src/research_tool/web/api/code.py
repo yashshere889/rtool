@@ -232,7 +232,7 @@ def _files(code: _Code) -> list[CodeFileView]:
         rel = path.relative_to(root)
         if not _inside(path, root) or HIDDEN & set(rel.parts) or rel.name.startswith("."):
             continue
-        name = str(rel)
+        name = rel.as_posix()
         role = "experiment" if name == "experiment.py" else ROLES.get(name, "other")
         size = path.stat().st_size
         lines = path.read_text(encoding="utf-8", errors="replace").count("\n") if size <= MAX_TEXT else 0
@@ -333,7 +333,7 @@ def code_view(project: str, run_id: str, request: Request) -> CodeView:
         stage=code.sid,
         status=st.status,
         phase=phase,
-        code_root=f"{code.run.work_dir(code.sid).relative_to(code.run.root)}/code",
+        code_root=f"{code.run.work_dir(code.sid).relative_to(code.run.root).as_posix()}/code",
         files=_files(code),
         editable=refusal is None and experiment is not None,
         why_not_editable=refusal or ("" if experiment is not None else "the code has not been written yet"),

@@ -1020,7 +1020,7 @@ class CoderSession:
             text = path.read_text(encoding="utf-8", errors="replace")
             sha = sha256_text(text)
             origin = "harness" if rel.name != "experiment.py" else ("llm" if sha == marker.get("sha") else "human")
-            files.append(CodeFile(path=str(rel), sha256=sha, lines=text.count("\n"), origin=origin))
+            files.append(CodeFile(path=rel.as_posix(), sha256=sha, lines=text.count("\n"), origin=origin))
         fingerprint = sha256_text("\n".join(f"{f.path}:{f.sha256}" for f in files))
         readme = self.code / "README.md"
         atomic_write_text(readme, self.readme(files))

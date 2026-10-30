@@ -134,7 +134,7 @@ class AgentContext:
     # -- files shared with later stages --------------------------------------
     def relative(self, path: Path) -> str:
         """Run-relative form of ``path`` for storing in artifacts (stays valid if the run moves)."""
-        return str(Path(path).resolve().relative_to(self.run_root.resolve()))
+        return Path(path).resolve().relative_to(self.run_root.resolve()).as_posix()
 
     def absolute(self, relative: str) -> Path:
         """Resolve a run-relative path from an artifact, refusing anything outside the run."""

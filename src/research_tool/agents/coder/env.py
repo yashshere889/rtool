@@ -48,6 +48,11 @@ def _import_name(requirement: str) -> str:
     return reverse.get(name.lower(), name.replace("-", "_"))
 
 
+def windows_job_command(code_dir: Path, interpreter: str, batch_file: str) -> str:
+    """The array task's command for cmd.exe: no cluster on Windows, so only the local demo's fake Slurm runs it."""
+    return f'cd /d "{code_dir}" && "{interpreter}" launch.py --batch "{batch_file}" --task %SLURM_ARRAY_TASK_ID%'
+
+
 def shell_word(arg: str) -> str:
     """Quote for bash, but leave a leading $VAR to be expanded by the job (after `module load`)."""
     if arg.startswith("$") and " " not in arg:
@@ -164,7 +169,10 @@ class ExperimentEnv:
                 code: int | None = process.wait(timeout=timeout_s)
                 timed_out = False
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
+                if hasattr(os, "killpg"):
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:  # Windows
+                    process.kill()
                 process.wait()
                 code, timed_out = None, True
         return CommandResult(code, round(time.monotonic() - started, 2), log_path, timed_out)
@@ -216,6 +224,8 @@ class ExperimentEnv:
             ["launch.py", "--batch", batch_file, "--task", "$SLURM_ARRAY_TASK_ID"], gpu=bool(gpus), for_job=True
         )
         command = f"cd {shlex.quote(str(self.code_dir))} && " + " ".join(shell_word(a) for a in python)
+        if os.name == "nt" and not self.containerized:
+            command = windows_job_command(self.code_dir, self.interpreter(), batch_file)
         throttle = min(self.config.max_parallel_runs, tasks)
         return JobSpec(
             name=name,

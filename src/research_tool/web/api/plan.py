@@ -232,7 +232,7 @@ def downloads(project: str, run_id: str, request: Request) -> DownloadsView:
 def _shown(run: RunHandle, path: str) -> str:
     """Paths inside the run relative to it (also if the runs folder was moved); shared folders as they are."""
     try:
-        return str(Path(path).relative_to(run.root))
+        return Path(path).relative_to(run.root).as_posix()
     except ValueError:
         pass
     marker = f"/{run.spec.project}/{run.run_id}/"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,6 +14,11 @@ from .api import router
 from .runner import ClusterRunner, LocalRunner, Runner
 from .security import SecurityMiddleware
 from .settings import UISettings
+
+# Windows takes these from its registry, where .js is often text/plain, and browsers then refuse the scripts.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 # The app shell may load only its own scripts and styles; papers are shown in same-origin frames.
 APP_CSP = (

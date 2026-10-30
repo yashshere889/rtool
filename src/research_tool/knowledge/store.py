@@ -22,7 +22,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
-from ..core.fs import sha256_file
+from ..core.fs import replace_file, sha256_file
 from ..schemas.literature import PaperRecord
 from ..tools.documents.sections import Chunk, Section
 
@@ -50,7 +50,7 @@ class KnowledgeStore:
     def __init__(self, path: Path, *, readonly: bool = False) -> None:
         self.path = Path(path)
         if readonly:
-            self.db = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
+            self.db = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True)
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.db = sqlite3.connect(self.path)
@@ -77,7 +77,7 @@ class KnowledgeStore:
         tmp = dest.with_name(f".{dest.name}.tmp")
         with contextlib.closing(sqlite3.connect(tmp)) as target:
             self.db.backup(target)
-        os.replace(tmp, dest)
+        replace_file(tmp, dest)
         return sha256_file(dest)
 
     @classmethod

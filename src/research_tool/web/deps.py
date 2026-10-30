@@ -41,17 +41,17 @@ def run_relative(run: RunHandle, path: str | Path) -> str | None:
     if not candidate.is_absolute():
         candidate = run.root / candidate
     try:
-        return str(candidate.resolve().relative_to(run.root))
+        return candidate.resolve().relative_to(run.root).as_posix()
     except (ValueError, OSError):
         pass
     marker = f"/{run.spec.project}/{run.run_id}/"
-    text = str(path)
+    text = str(path).replace("\\", "/")
     if marker in text:
         rel = text.split(marker, 1)[1]
         try:
             inside = (run.root / rel).resolve()
             if run.root in inside.parents and inside.is_file():
-                return str(inside.relative_to(run.root))
+                return inside.relative_to(run.root).as_posix()
         except OSError:
             return None
     return None
