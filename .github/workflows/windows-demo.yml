@@ -31,6 +31,51 @@ jobs:
           Stop-Process -Id $server.Id -Force
           exit $code
 
+  barkla-launcher:
+    # 2-open-rtool.bat with Windows' own ssh, against a stand-in for Barkla: sshd in WSL, whose
+    # session script serves the tunnel's Unix socket. Real Barkla is tested by hand from the VPN.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Vampire/setup-wsl@v5
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: openssh-server python3
+      - name: Make the login key
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:USERPROFILE\.ssh" | Out-Null
+          ssh-keygen -q -t ed25519 -N '""' -f "$env:USERPROFILE\.ssh\id_ed25519"
+          Copy-Item "$env:USERPROFILE\.ssh\id_ed25519.pub" wsl_key.pub
+          Set-Content "$env:USERPROFILE\.ssh\config" -Encoding ascii -Value "Host standin`n  HostName 127.0.0.1`n  Port 2222`n  StrictHostKeyChecking no`n  UserKnownHostsFile NUL`n"
+      - name: Set up the stand-in for Barkla
+        shell: wsl-bash {0}
+        run: bash .github/barkla_standin/setup.sh
+      - name: Run 2-open-rtool.bat and go through its tunnel
+        shell: pwsh
+        env:
+          RTOOL_HOST: standin
+          RTOOL_PORT: "8780"
+        run: |
+          $sshd = Start-Process wsl -PassThru -NoNewWindow -RedirectStandardOutput sshd.out -RedirectStandardError sshd.err -ArgumentList '-d','Ubuntu-24.04','-u','root','-e','/usr/sbin/sshd','-D','-e','-p','2222','-o','PermitRootLogin=yes','-o','AllowStreamLocalForwarding=yes','-o','UseDNS=no'
+          Start-Sleep -Seconds 5
+          New-Item -ItemType Directory "my downloads\rtool real" | Out-Null
+          Copy-Item scripts\windows-real\*.bat "my downloads\rtool real"
+          Set-Content "my downloads\rtool real\barkla-user.txt" -Value root -Encoding ascii
+          Start-Process cmd.exe -ArgumentList '/c', '"my downloads\rtool real\2-open-rtool.bat" > bat.out 2>&1 < NUL' -NoNewWindow
+          $answer = $null
+          foreach ($i in 1..40) {
+            Start-Sleep -Seconds 3
+            try { $answer = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 http://127.0.0.1:8780/).Content } catch { }
+            if ($answer -match 'tunnel-ok') { break }
+          }
+          Write-Host "--- launcher output"; if (Test-Path bat.out) { Get-Content bat.out }
+          Write-Host "--- sshd output"; Get-Content sshd.out, sshd.err -ErrorAction SilentlyContinue
+          if ($answer -notmatch 'tunnel-ok') { Write-Host "no answer through the tunnel"; exit 1 }
+          if ((Get-Content bat.out -Raw) -notmatch 'port argument: 8780') { Write-Host "the session script did not run"; exit 1 }
+          Write-Host "OK: Windows ssh reached the Unix socket"
+
   launcher:
     # What the supervisor double-clicks: no uv on the PATH, and a folder with spaces in its name.
     runs-on: windows-latest

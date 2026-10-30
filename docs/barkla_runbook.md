@@ -146,6 +146,13 @@ ssh -N -L 8765:/mnt/scratch/users/$USER/rtool/ui/ui.sock -J barkla $USER@<node> 
 
 then open http://127.0.0.1:8765 and paste the token from `~/scratch/rtool/ui/token`.
 
+**From Windows**, ssh cannot share one login between connections, and Barkla's logins are
+interactive (keys are refused), so `scripts/windows-real/2-open-rtool.bat` makes one connection.
+`scripts/rtool_ui_session.sh` runs at its far end: it starts or finds the UI job and forwards a
+second socket, `tunnel.sock` in the same 0700 folder, from the login node to the job's. It lasts
+as long as the login and only forwards bytes. New accounts start with
+`scripts/windows-real/1-set-up-barkla.bat`, which runs `scripts/first_setup_barkla.sh`.
+
 **Which route works** was checked with `scripts/probe_ui_access.sh` (2026-10-10, job on
 node041): ssh from the Mac to the job's node through the login node works once the node's
 host key is known (the login node's ssh trusts nodes on first use, the Mac's did not);
