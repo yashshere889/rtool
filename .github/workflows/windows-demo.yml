@@ -46,9 +46,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "$env:USERPROFILE\.ssh" | Out-Null
-          ssh-keygen -q -t ed25519 -N '""' -f "$env:USERPROFILE\.ssh\id_ed25519"
+          ssh-keygen -q -t ed25519 -N "" -f "$env:USERPROFILE\.ssh\id_ed25519"
           Copy-Item "$env:USERPROFILE\.ssh\id_ed25519.pub" wsl_key.pub
-          Set-Content "$env:USERPROFILE\.ssh\config" -Encoding ascii -Value "Host standin`n  HostName 127.0.0.1`n  Port 2222`n  StrictHostKeyChecking no`n  UserKnownHostsFile NUL`n"
+          Set-Content "$env:USERPROFILE\.ssh\config" -Encoding ascii -Value "Host standin`n  HostName 127.0.0.1`n  Port 2222`n  StrictHostKeyChecking no`n  UserKnownHostsFile NUL`n  BatchMode yes`n  LogLevel VERBOSE`n"
       - name: Set up the stand-in for Barkla
         shell: wsl-bash {0}
         run: tr -d '\r' < .github/barkla_standin/setup.sh | bash -s .github/barkla_standin
@@ -58,7 +58,7 @@ jobs:
           RTOOL_HOST: standin
           RTOOL_PORT: "8780"
         run: |
-          $sshd = Start-Process wsl -PassThru -NoNewWindow -RedirectStandardOutput sshd.out -RedirectStandardError sshd.err -ArgumentList '-d','Ubuntu-24.04','-u','root','-e','/usr/sbin/sshd','-D','-e','-p','2222','-o','PermitRootLogin=yes','-o','AllowStreamLocalForwarding=yes','-o','UseDNS=no'
+          $sshd = Start-Process wsl -PassThru -NoNewWindow -RedirectStandardOutput sshd.out -RedirectStandardError sshd.err -ArgumentList '-d','Ubuntu-24.04','-u','root','-e','/usr/sbin/sshd','-D','-e','-p','2222','-o','PermitRootLogin=yes','-o','AllowStreamLocalForwarding=yes','-o','UseDNS=no','-o','LogLevel=VERBOSE'
           Start-Sleep -Seconds 5
           New-Item -ItemType Directory "my downloads\rtool real" | Out-Null
           Copy-Item scripts\windows-real\*.bat "my downloads\rtool real"
