@@ -9,8 +9,12 @@ import http.server, socketserver, sys
 class H(http.server.BaseHTTPRequestHandler):
     def address_string(self):
         return "unix"
+    def log_message(self, *args):
+        pass
     def do_GET(self):
         self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", "9")
         self.end_headers()
         self.wfile.write(b"tunnel-ok")
 socketserver.ThreadingUnixStreamServer(sys.argv[1], H).serve_forever()
