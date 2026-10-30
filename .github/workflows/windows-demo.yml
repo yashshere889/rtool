@@ -51,7 +51,7 @@ jobs:
           Set-Content "$env:USERPROFILE\.ssh\config" -Encoding ascii -Value "Host standin`n  HostName 127.0.0.1`n  Port 2222`n  StrictHostKeyChecking no`n  UserKnownHostsFile NUL`n"
       - name: Set up the stand-in for Barkla
         shell: wsl-bash {0}
-        run: bash .github/barkla_standin/setup.sh
+        run: tr -d '\r' < .github/barkla_standin/setup.sh | bash -s .github/barkla_standin
       - name: Run 2-open-rtool.bat and go through its tunnel
         shell: pwsh
         env:
