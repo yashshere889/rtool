@@ -56,6 +56,8 @@ _SEVERITY = [
     JobState.OUT_OF_MEMORY,
 ]
 SUBMIT_GRACE_S = 120  # a just-submitted job may not be visible to squeue yet
+QUERY_TRIES = 3  # squeue on a busy controller: one failure must not end an episode before it queues the next
+QUERY_RETRY_S = 5.0
 _TEST_ONLY = re.compile(r"to start at (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
 
 
@@ -102,15 +104,24 @@ class SubprocessSlurm:
 
     # ------------------------------------------------------------- plumbing
     def _run(self, args: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-        try:
-            result = self.runner(args, cwd, self.config.command_timeout_s)
-        except FileNotFoundError:
-            raise SlurmCommandError(f"{args[0]} not found; is this a Slurm login or compute node?") from None
-        except subprocess.TimeoutExpired:
-            raise SlurmCommandError(f"{args[0]} did not answer within {self.config.command_timeout_s:.0f}s") from None
-        if check and result.returncode != 0:
-            raise SlurmCommandError(f"{' '.join(args[:2])} failed ({result.returncode}): {result.stderr.strip()[:500]}")
-        return result
+        # shortcut: only squeue is retried (it only reads); a failed sbatch may still have submitted the job,
+        # so it runs once. Retry it too once a duplicate can be told apart (e.g. by looking for the job's name).
+        tries = QUERY_TRIES if args[0] == "squeue" else 1
+        while True:
+            tries -= 1
+            try:
+                result = self.runner(args, cwd, self.config.command_timeout_s)
+            except FileNotFoundError:
+                raise SlurmCommandError(f"{args[0]} not found; is this a Slurm login or compute node?") from None
+            except subprocess.TimeoutExpired:
+                error = f"{args[0]} did not answer within {self.config.command_timeout_s:.0f}s"
+            else:
+                if not check or result.returncode == 0:
+                    return result
+                error = f"{' '.join(args[:2])} failed ({result.returncode}): {result.stderr.strip()[:500]}"
+            if not tries:
+                raise SlurmCommandError(error)
+            time.sleep(QUERY_RETRY_S)
 
     def _registry(self, job_id: str) -> Path:
         return self.state_dir / "registry" / f"{_base_id(job_id)}.json"
