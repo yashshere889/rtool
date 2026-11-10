@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..core.artifacts import artifact_type, register_artifact_type
 
@@ -51,6 +51,9 @@ class Report(BaseModel):
     figures: list[str] = Field(default_factory=list)  # run-relative
     findings: list[Finding] = Field(default_factory=list)
     numbers: int = 0  # placeholders filled from the results
+    # the hypothesis's success criterion applied to the results ("" if there was no criterion to apply)
+    hypothesis_outcome: Literal["", "supported", "refuted", "inconclusive"] = ""
+    hypothesis_checks: list[str] = Field(default_factory=list)  # each condition of the criterion, measured
 
     def section(self, section_id: str) -> ReportSection | None:
         return next((s for s in self.sections if s.id == section_id), None)
@@ -108,6 +111,25 @@ class Review(BaseModel):
 class TitleAbstract(BaseModel):
     title: str = Field(description="Informative title, at most 15 words")
     abstract: str = Field(description="One paragraph; results only as {{placeholders}}")
+
+
+class HypothesisVerdict(BaseModel):
+    """The success criterion, condition by condition, against the computed results (reasons before the verdict)."""
+
+    checks: list[str] = Field(
+        min_length=1,
+        description="One per condition in the success criterion: the threshold, the measured value it applies to, "
+        "and whether it holds",
+    )
+    outcome: Literal["inconclusive", "supported", "refuted"]
+
+    @field_validator("checks")
+    @classmethod
+    def _sentences(cls, checks: list[str]) -> list[str]:
+        # seen on Barkla: checks == [":{"] after a reasoning pass; a check must say something
+        if any(len(c.split()) < 4 for c in checks):
+            raise ValueError("each check must be a sentence: the threshold, the measured value, whether it holds")
+        return checks
 
 
 class Contradiction(BaseModel):

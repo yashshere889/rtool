@@ -624,7 +624,13 @@ class _LiteratureRun:
         todo: list[tuple[PaperRecord, str, bool]] = []
         for paper in self.included():
             if paper.id in done:
-                continue
+                stored = self.kb.extraction(paper.id)
+                if paper.status != "parsed" or stored is None:
+                    continue
+                if not stored[1].get("abstract_only"):
+                    paper.status = "extracted"  # read in full by an earlier attempt, then dropped and kept again
+                    continue
+                # read from its abstract before its text arrived (e.g. a PDF uploaded since): read it in full now
             if paper.status == "parsed":
                 todo.append((paper, budgeted_text(self.kb.sections(paper.id), self.cfg.extract_chars), False))
             elif paper.status in ("unavailable", "failed", "included") and paper.abstract:

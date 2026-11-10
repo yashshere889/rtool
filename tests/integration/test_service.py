@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from research_tool.cli.main import app
+from research_tool.core import actions
 from research_tool.core.actions import Action, ActionInbox, ActionKind
 from research_tool.core.engine import AdvanceResult, Engine, Outcome
 from research_tool.core.errors import RToolError
@@ -83,6 +84,31 @@ def test_queued_decisions_are_applied_by_the_next_episode(runs_root: Path, mock_
     Engine(run, services).advance()
     assert run_status(run).queued_actions == []
     assert ActionInbox(run.actions_dir).processed()[0]["outcome"]["status"] == "applied"
+
+
+def test_status_reads_never_move_or_trip_over_actions(
+    runs_root: Path, mock_llm: MockLLM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = new_run(runs_root)
+    inbox = ActionInbox(run.actions_dir)
+    applied = inbox.submit(Action(kind=ActionKind.NOTE, stage="source", payload={"text": "applied meanwhile"}))
+    kept = Action(kind=ActionKind.NOTE, stage="source", payload={"text": "still queued"})
+    inbox.submit(kept)
+    newer = run.actions_dir / "00000000000000000000-0123456789ab.json"  # queued by a newer rtool than this one
+    newer.write_text('{"kind": "a_kind_this_version_does_not_know"}', encoding="utf-8")
+    read_json = actions.read_json
+
+    def applied_after_the_listing(path: Path) -> Any:
+        if path == applied:
+            path.unlink()  # an episode applied it between the folder listing and this read
+        return read_json(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(actions, "read_json", applied_after_the_listing)
+        assert [a.id for a in run_status(run).queued_actions] == [kept.id]
+    assert newer.exists()  # left for the engine
+    Engine(run, make_services(run, mock_llm)).advance()
+    assert (inbox.invalid_dir / newer.name).exists()
 
 
 def test_stop_cancels_the_episode_job(runs_root: Path) -> None:

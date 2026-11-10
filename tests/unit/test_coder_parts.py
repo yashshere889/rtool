@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import math
 import os
@@ -35,6 +36,7 @@ from research_tool.agents.coder.playbook import (
 from research_tool.agents.coder.results import (
     aggregate,
     analysis_notes,
+    collect,
     correction_used,
     render_figures,
     render_tables,
@@ -344,6 +346,18 @@ def test_aggregate_and_render(tmp_path: Path) -> None:
     assert wilcoxon.test == "Wilcoxon signed-rank" and wilcoxon.p_value == pytest.approx(0.25)
 
 
+def test_a_run_file_names_the_job_that_ran_it(tmp_path: Path) -> None:
+    """Seen on Barkla: runs resubmitted by hand were credited to rtool's failed job."""
+    p = plan()
+    for i, (condition, seed) in enumerate((c.name, s) for c in p.run_conditions() for s in p.seeds):
+        record = {"condition": condition, "seed": seed, "metrics": {"acc": 0.5 + i / 100, "loss": 0.5}}
+        if condition == "new":
+            record["job_id"] = "222"
+        (tmp_path / f"{condition}__{seed}.json").write_text(json.dumps(record))
+    runs = collect(p, tmp_path, job_of={f"{c.name}__{s}.json": "111" for c in p.run_conditions() for s in p.seeds})
+    assert {r.condition: r.job_id for r in runs} == {"base": "111", "new": "222"}
+
+
 def test_results_without_seed_variation_are_flagged() -> None:
     fixed = [
         RunRecord(condition=c, seed=s, status="ok", metrics={"acc": v, "loss": 1 - v})
@@ -460,6 +474,9 @@ def test_container_commands_and_variables(tmp_path: Path, monkeypatch: pytest.Mo
     assert command[3:5] == ["--home", "/scratch/home"] and command[-2:] == ["python3", "run.py"]
     variables = env.variables(gpu=False)
     assert variables["CUDA_VISIBLE_DEVICES"] == "" and variables["APPTAINERENV_PYTHONNOUSERSITE"] == "1"
+    gpu = env.variables(gpu=True)
+    assert "CUDA_VISIBLE_DEVICES" not in gpu and gpu["APPTAINERENV_VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"
+    assert gpu["APPTAINERENV_HF_HUB_OFFLINE"] == gpu["APPTAINERENV_TRANSFORMERS_OFFLINE"] == "1"
     compute = plan().compute
     spec = env.array_job(name="rtool-exp-code-1", workdir=tmp_path, batch_file="batches/full-1.json", tasks=6,
                          compute=compute)  # fmt: skip
@@ -486,6 +503,29 @@ def test_local_runs_and_timeouts(tmp_path: Path) -> None:
     assert slow.timed_out and not slow.ok and slow.seconds < 10
 
 
+def test_harness_seeding_leaves_cuda_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen on Barkla: seeding asked torch.cuda.is_available() first, and vLLM's forked engine then failed."""
+    harness = resources.files("research_tool.agents.coder").joinpath("harness")
+    (tmp_path / "run.py").write_text(harness.joinpath("run.py").read_text())
+
+    class Cuda:
+        def __getattr__(self, name: str) -> None:
+            raise AssertionError(f"torch.cuda.{name} was used before the experiment ran")
+
+    seeded = []
+    torch = type(sys)("torch")
+    torch.cuda = Cuda()  # type: ignore[attr-defined]
+    torch.manual_seed = seeded.append  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    spec = importlib.util.spec_from_file_location("harness_run", tmp_path / "run.py")
+    assert spec is not None and spec.loader is not None
+    run = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(run)
+
+    run.set_seed(7)
+    assert seeded == [7]
+
+
 def test_harness_contract(tmp_path: Path) -> None:
     harness = resources.files("research_tool.agents.coder").joinpath("harness")
     for name in ("run.py", "launch.py"):
@@ -503,7 +543,9 @@ def test_harness_contract(tmp_path: Path) -> None:
     assert subprocess.run(cmd, cwd=tmp_path, capture_output=True, text=True).returncode == 0
     first = json.loads(out.read_text())
     assert set(first["metrics"]) == {"acc"} and first["seed"] == 3  # seeded: deterministic
-    subprocess.run(cmd, cwd=tmp_path, check=True, capture_output=True)
+    env = {**os.environ, "SLURM_ARRAY_JOB_ID": "4242"}
+    subprocess.run(cmd, cwd=tmp_path, check=True, capture_output=True, env=env)
+    assert json.loads(out.read_text())["job_id"] == "4242"
     assert math.isclose(json.loads(out.read_text())["metrics"]["acc"], first["metrics"]["acc"])
     (tmp_path / "experiment.py").write_text("def run(condition, seed, resources, smoke, workdir):\n    return {}\n")
     broken = subprocess.run(cmd, cwd=tmp_path, capture_output=True, text=True)
@@ -529,6 +571,9 @@ def test_harness_moves_read_only_hf_caches_into_the_run(tmp_path: Path) -> None:
         "    keys = ('HF_HOME', 'HF_MODULES_CACHE', 'HF_DATASETS_CACHE')\n"
         "    with open(os.path.join(workdir, 'env.json'), 'w') as f:\n"
         "        json.dump({k: os.environ.get(k) for k in keys}, f)\n"
+        "    if os.environ.get('HF_DATASETS_CACHE'):\n"  # what `datasets` does: write its copy of the data there
+        "        os.makedirs(os.environ['HF_DATASETS_CACHE'])\n"
+        "        open(os.path.join(os.environ['HF_DATASETS_CACHE'], 'data.arrow'), 'w').close()\n"
         "    return {'acc': 1.0}\n"
     )
     image_cache = tmp_path / "opt" / "huggingface_cache"
@@ -551,6 +596,7 @@ def test_harness_moves_read_only_hf_caches_into_the_run(tmp_path: Path) -> None:
         "HF_MODULES_CACHE": str(work / "hf" / "modules"),
         "HF_DATASETS_CACHE": str(work / "hf" / "datasets"),
     }
+    assert not (work / "hf" / "datasets").exists()  # a copy per task: removed when the task ends
     assert seen(image_cache) == {"HF_HOME": str(image_cache), "HF_MODULES_CACHE": None, "HF_DATASETS_CACHE": None}
     chosen = tmp_path / "my_modules"
     assert seen(image_cache, HF_MODULES_CACHE=str(chosen))["HF_MODULES_CACHE"] == str(chosen)  # writable: kept

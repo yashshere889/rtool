@@ -184,6 +184,7 @@ class Engine:
         ran: list[str] = []
         time_up = False
         try:
+            lease.keep_alive()  # renewing only between stages would let it expire under a stage that runs for hours
             self._load()
             assert self.run_state is not None
             self.run_state.active_episode = self.episode_id
@@ -209,7 +210,7 @@ class Engine:
             self.events.emit("episode_finished", outcome=result.outcome.value, ran=ran)
             return result
         finally:
-            if self.run_state is not None:
+            if self.run_state is not None and lease.held:  # lost to another episode: its state is the truth
                 self.run_state.active_episode = None
                 self._save_run()
             lease.release()
@@ -745,7 +746,7 @@ class Engine:
     # ---------------------------------------------------------------- actions
     def _apply_actions(self) -> None:
         assert self.run_state is not None
-        for path, action in self.inbox.pending():
+        for path, action in self.inbox.pending(move_invalid=True):
             if action.id in self.run_state.processed_actions:
                 self.inbox.archive(path, action, {"status": "duplicate"})
                 continue

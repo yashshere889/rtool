@@ -6,7 +6,7 @@ The experiment itself is ``experiment.run(...)`` in experiment.py. This wrapper
 seeds every random generator, checks that the returned metrics match
 config.json, and writes PATH as JSON::
 
-    {"condition": ..., "seed": ..., "metrics": {...}, "seconds": ..., "smoke": ...}
+    {"condition": ..., "seed": ..., "metrics": {...}, "seconds": ..., "smoke": ..., "job_id": ...}
 
 Contract problems are printed as ``rtool-contract: ...`` and exit with code 3.
 Runs on Python 3.10 (the experiment image).
@@ -19,6 +19,7 @@ import json
 import math
 import os
 import random
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -37,9 +38,10 @@ def set_seed(seed: int) -> None:
     try:
         import torch
 
+        # seeds every GPU too. Never ask torch.cuda anything here: is_available() initialises CUDA in this
+        # process, and vLLM's engine, forked later, then fails with "Cannot re-initialize CUDA in forked
+        # subprocess" (all 16 tasks of a Barkla array, Oct 28)
         torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
     except ImportError:
         pass
 
@@ -116,13 +118,17 @@ def main() -> int:
     import experiment
 
     started = time.time()
-    metrics = experiment.run(
-        condition=args.condition,
-        seed=args.seed,
-        resources=config["resources"],
-        smoke=args.smoke,
-        workdir=str(workdir),
-    )
+    try:
+        metrics = experiment.run(
+            condition=args.condition,
+            seed=args.seed,
+            resources=config["resources"],
+            smoke=args.smoke,
+            workdir=str(workdir),
+        )
+    finally:
+        # the datasets cache moved here is one copy per task, and nothing else would ever delete it
+        shutil.rmtree(workdir / "hf" / "datasets", ignore_errors=True)
     problems = check(metrics, list(config["metrics"]))
     if problems:
         print("rtool-contract: " + "; ".join(problems))
@@ -133,6 +139,8 @@ def main() -> int:
         "metrics": {str(k): v for k, v in ((k, as_number(v)) for k, v in metrics.items()) if v is not None},
         "seconds": round(time.time() - started, 2),
         "smoke": args.smoke,
+        # the job that really ran it, also when the array was resubmitted by hand
+        "job_id": os.environ.get("SLURM_ARRAY_JOB_ID") or os.environ.get("SLURM_JOB_ID", ""),
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -167,10 +167,10 @@ def add_report_rules(llm: Any) -> None:
             "issues": [
                 {
                     "section": "results",
-                    "problem": "The text does not name the statistical test",
+                    "problem": "The text reports significance without naming the test, so it cannot be checked",
                     "suggestion": "Say that a paired t-test was used",
                     "target": "report",
-                    "severity": "minor",
+                    "severity": "major",
                 }
             ],
         },
