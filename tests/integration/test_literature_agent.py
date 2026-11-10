@@ -451,6 +451,28 @@ def test_papers_marked_to_keep_or_drop_are_applied_as_marked(setup) -> None:  # 
     assert papers[drop].status == "excluded" and papers[keep].status != "excluded"
 
 
+def test_papers_kept_again_or_given_their_text_later_count_as_read_in_full(setup) -> None:  # noqa: ANN001
+    from research_tool.testing.harness import queue
+
+    run, services, _, calls, _ = setup
+    Engine(run, services).advance()
+    by_title = {p.title: p for p in ArtifactStore(run.artifacts_dir).get("corpus").papers}
+    full, landing = by_title[HITS[0].title].id, by_title[HITS[3].title].id  # read in full / only its abstract
+    queue(run, ActionKind.REJECT, payload={"exclude": [full]})
+    Engine(run, services).advance()
+    inbox = run.work_dir("literature") / "inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "landing.pdf").write_bytes(b"%PDF-1.7 the paper itself, from the library")
+    (inbox / "landing.json").write_text(json.dumps({"paper_id": landing, "title": HITS[3].title}))
+    extractions = calls["extract"]
+    queue(run, ActionKind.REJECT, payload={"include": [full]})
+    Engine(run, services).advance()
+    papers = {p.id: p for p in ArtifactStore(run.artifacts_dir).get("corpus").papers}
+    assert papers[full].status == "extracted"  # its facts were kept: counted as read in full again, not re-read
+    assert papers[landing].status == "extracted"  # read from its abstract before: read in full now
+    assert calls["extract"] == extractions + 1
+
+
 def test_snowballing_runs_before_the_size_cap(runs_root: Path) -> None:
     """A search that alone fills the cap used to skip snowballing (2026-10-12: 100 of 100 papers from keywords)."""
     run, services, _, _, _ = build(runs_root, {"max_papers": 3, "min_papers": 0})
