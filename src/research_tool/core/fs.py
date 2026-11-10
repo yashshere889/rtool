@@ -13,6 +13,7 @@ import json
 import os
 import socket
 import tempfile
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -113,6 +114,7 @@ class FileLease:
         self.clock = clock
         self._held = False
         self._acquired_at = 0.0
+        self._keeper: tuple[threading.Event, threading.Thread] | None = None
 
     @property
     def held(self) -> bool:
@@ -156,7 +158,8 @@ class FileLease:
                 ours = info is not None and info.owner == self.owner
                 if not ours and not self._expired():
                     return False
-                # Move the stale lease aside; only one contender's rename can succeed.
+                # Move the stale lease aside. shortcut: two contenders that judge it stale at the same moment can
+                # both win (the second rename moves the first one's new lease); revisit if episodes start in parallel.
                 aside = self.path.with_name(f"{self.path.name}.stale-{uuid.uuid4().hex[:8]}")
                 try:
                     os.rename(self.path, aside)
@@ -183,7 +186,32 @@ class FileLease:
             raise LeaseHeld(f"lease {self.path} was taken over by {taker}")
         atomic_write_json(self.path, asdict(self._info()))
 
+    def keep_alive(self) -> None:
+        """Renew every ``ttl / 3`` seconds from a background thread until ``release()``: a stage can run for hours.
+
+        If the lease is lost the thread stops; the holder finds out at its own next ``renew()``.
+        """
+        stop = threading.Event()
+
+        def beat() -> None:
+            while not stop.wait(self.ttl / 3):
+                try:
+                    self.renew()
+                except LeaseHeld:
+                    return
+                except OSError:
+                    continue  # a storage hiccup: the lease is good for ttl, so try again next beat
+
+        thread = threading.Thread(target=beat, name=f"renew {self.path.name}", daemon=True)
+        thread.start()
+        self._keeper = (stop, thread)
+
     def release(self) -> None:
+        if self._keeper is not None:  # stop renewing first, or a last renewal could write the file back
+            stop, thread = self._keeper
+            stop.set()
+            thread.join()
+            self._keeper = None
         if not self._held:
             return
         info = self.holder()
