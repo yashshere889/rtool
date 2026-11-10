@@ -571,6 +571,9 @@ def test_harness_moves_read_only_hf_caches_into_the_run(tmp_path: Path) -> None:
         "    keys = ('HF_HOME', 'HF_MODULES_CACHE', 'HF_DATASETS_CACHE')\n"
         "    with open(os.path.join(workdir, 'env.json'), 'w') as f:\n"
         "        json.dump({k: os.environ.get(k) for k in keys}, f)\n"
+        "    if os.environ.get('HF_DATASETS_CACHE'):\n"  # what `datasets` does: write its copy of the data there
+        "        os.makedirs(os.environ['HF_DATASETS_CACHE'])\n"
+        "        open(os.path.join(os.environ['HF_DATASETS_CACHE'], 'data.arrow'), 'w').close()\n"
         "    return {'acc': 1.0}\n"
     )
     image_cache = tmp_path / "opt" / "huggingface_cache"
@@ -593,6 +596,7 @@ def test_harness_moves_read_only_hf_caches_into_the_run(tmp_path: Path) -> None:
         "HF_MODULES_CACHE": str(work / "hf" / "modules"),
         "HF_DATASETS_CACHE": str(work / "hf" / "datasets"),
     }
+    assert not (work / "hf" / "datasets").exists()  # a copy per task: removed when the task ends
     assert seen(image_cache) == {"HF_HOME": str(image_cache), "HF_MODULES_CACHE": None, "HF_DATASETS_CACHE": None}
     chosen = tmp_path / "my_modules"
     assert seen(image_cache, HF_MODULES_CACHE=str(chosen))["HF_MODULES_CACHE"] == str(chosen)  # writable: kept

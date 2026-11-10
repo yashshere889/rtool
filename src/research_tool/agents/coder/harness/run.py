@@ -19,6 +19,7 @@ import json
 import math
 import os
 import random
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -117,13 +118,17 @@ def main() -> int:
     import experiment
 
     started = time.time()
-    metrics = experiment.run(
-        condition=args.condition,
-        seed=args.seed,
-        resources=config["resources"],
-        smoke=args.smoke,
-        workdir=str(workdir),
-    )
+    try:
+        metrics = experiment.run(
+            condition=args.condition,
+            seed=args.seed,
+            resources=config["resources"],
+            smoke=args.smoke,
+            workdir=str(workdir),
+        )
+    finally:
+        # the datasets cache moved here is one copy per task, and nothing else would ever delete it
+        shutil.rmtree(workdir / "hf" / "datasets", ignore_errors=True)
     problems = check(metrics, list(config["metrics"]))
     if problems:
         print("rtool-contract: " + "; ".join(problems))
