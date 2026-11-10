@@ -999,7 +999,8 @@ class CoderSession:
                 results_path=ctx.relative(results_json),
                 tables_path=ctx.relative(tables),
                 figures=[ctx.relative(p) for p in figures.values()],
-                jobs=[j["id"] for j in jobs],
+                # what rtool submitted, and any job a run file names (an array resubmitted by hand)
+                jobs=list(dict.fromkeys([j["id"] for j in jobs] + [r.job_id for r in ok if r.job_id])),
                 gpu_hours_requested=round(sum(j.get("gpu_hours", 0) for j in jobs), 2),
                 code_fingerprint=bundle.fingerprint,
                 notes=notes,

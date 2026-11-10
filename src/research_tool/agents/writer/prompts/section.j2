@@ -5,6 +5,7 @@ Write the "{{ title }}" section of a research report.
 ## Rules
 - Markdown paragraphs only: no heading, no title, no bullet lists unless asked.
 - Cite prior work only with the keys listed in the material, as [@key] (several: [@a; @b]). Never invent a key.
+- Say of a paper only what the material says it found or states. Never write that a paper warns, suggests or shows something the material does not attribute to it.
 {% if values %}- Never type a number from our experiment. Write its placeholder instead, exactly as listed, e.g. "accuracy rose to {{ example }}".
 {% else %}- Only use numbers that appear in the material below.
 {% endif %}- Be precise and honest: say "not significant" when the material says so, and never overstate.
@@ -18,8 +19,12 @@ Write the "{{ title }}" section of a research report.
 {{ material }}
 {% if feedback %}
 
-## Requests from the researcher or reviewers — address them
+## Requests from the researcher or reviewers — address those that belong in this section; leave the others to the sections they are about
 {% for item in feedback %}- {{ item }}
+{% endfor %}{% endif %}{% if earlier %}
+
+## Earlier requests, from previous rounds — they still apply unless a request above says otherwise; again, only those that belong in this section
+{% for item in earlier %}- {{ item }}
 {% endfor %}{% endif %}
 
 Reply with the section text only.
