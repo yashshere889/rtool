@@ -1,0 +1,35 @@
+# Overlay for the model comparison (docs/model_comparison.md): serve Qwen3-Coder-Next-FP8 instead of
+# Nemotron. Layer it AFTER configs/barkla.yaml; everything else (prompts, profiles, thresholds) stays
+# identical, so the model is the only thing that changes.
+#
+#     rtool replay <run> --stage hypotheses --tag qwen --config "~/Research tool/configs/barkla-qwen3-coder-next.yaml"
+#
+# Facts are from the model card (checked 2026-11-13), not yet tried on Barkla:
+#   80B MoE, 3B active, FP8 weights ~80 GB, needs vLLM >= 0.15, non-thinking only,
+#   card serves it with --tensor-parallel-size 2.
+
+llm:
+  model: Qwen/Qwen3-Coder-Next-FP8
+  served_model: qwen3-coder-next
+  reasoning_control: none            # no /think or /no_think: the model has no thinking mode
+  # `reason`/`code`/`judge` profiles stay reasoning "on", so structured calls keep the same
+  # draft-then-format shape as for Nemotron (structured_with_reasoning stays false from barkla.yaml).
+  server:
+    container: /mnt/scratch/users/${USER}/rtool/containers/vllm-v0.15.0.sif   # scripts/build_vllm_sif.sh v0.15.0
+    modules: [apptainer/1.3.6]       # no nemotron module: its image has vLLM 0.11.0
+    hf_home: /mnt/scratch/users/${USER}/rtool/hf   # same cache as Nemotron; RTOOL_MODEL=Qwen/Qwen3-Coder-Next-FP8 scripts/fetch_model.sh
+    # Without Nemotron's --trust-remote-code / --mamba_ssm_cache_dtype. Kept from barkla.yaml: eager
+    # loading (Lustre) and no free whitespace in constrained JSON.
+    extra_args: [--tensor-parallel-size, "2", --safetensors-load-strategy, eager,
+                 --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}']
+    gpu_memory_utilization: 0.90
+
+slurm:
+  episode:
+    gpus: 2                          # tensor parallel 2 (80 GB of weights do not fit one GPU)
+    # 2x L40S = 96 GB leaves almost no KV cache after ~80 GB of weights, and the 40 GB A100/A40
+    # partitions are too small, so only the H100 nodes (4x 80 GB) are offered.
+    gpu_choices:
+      - {partition: gpu-h100, gpu_type: h100}
+    partition: gpu-h100
+    gpu_type: h100

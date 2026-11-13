@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -10,15 +12,24 @@ from pydantic import BaseModel, Field
 
 from ..core.actions import Action, ActionInbox
 from ..core.artifacts import ArtifactStore, Producer
-from ..core.config import AppConfig, deep_merge, default_config_files, load_config, parse_set_overrides
+from ..core.config import (
+    AppConfig,
+    deep_merge,
+    default_config_files,
+    interpolate_env,
+    load_config,
+    load_yaml_mapping,
+    parse_set_overrides,
+)
 from ..core.editing import edit_refusal, run_editor
 from ..core.engine import REVISION_LIMIT_GATE, load_status
 from ..core.errors import ActionError, RToolError
 from ..core.events import EventLog
+from ..core.fs import atomic_write_json
 from ..core.pipeline import ResolvedPipeline, find_pipeline, resolve_pipeline
-from ..core.run import RunHandle, is_valid_name
+from ..core.run import RunHandle, RunSpec, is_valid_name
 from ..core.services import build_slurm
-from ..core.state import GateStatus, RunState, StageState, StageStatus
+from ..core.state import GateStatus, RunState, StageState, StageStatus, StateStore
 from ..hpc.episode import EpisodeTracker, submit_episode
 from ..packs import load_pack
 from ..schemas.common import ResearchBrief
@@ -153,6 +164,54 @@ def create_run(
         domain_pack=pack,
     )
     ArtifactStore(run.artifacts_dir).put("research_brief", brief, producer=Producer(stage="user", agent=created_by))
+    return run
+
+
+def replay_run(source: RunHandle, stage: str, tag: str, overlays: Iterable[Path] = ()) -> RunHandle:
+    """Copy a run and make ``stage`` run again there, optionally under another config (e.g. another LLM).
+
+    The copy keeps every artifact, so the stage sees exactly the inputs it had the first time; it
+    stops at its own gate, before later stages are redone. ``overlays`` are config files merged into
+    the copy's config and also passed to its episode jobs (which re-read ``slurm.episode.config_files``).
+    """
+    run_id = f"{source.run_id}-{stage}-{tag}"
+    if not is_valid_name(run_id):
+        raise RToolError(f"invalid run id {run_id!r}")
+    _, stages, pipeline = load_status(source)
+    if stage not in stages:
+        raise RToolError(f"no stage {stage!r} in this run")
+    busy = [sid for sid, st in stages.items() if st.status in (StageStatus.RUNNING, StageStatus.SUSPENDED)]
+    if busy:
+        raise RToolError(f"stages {busy} are running or waiting for jobs; replay a run that is at rest")
+    if any(stages[a].status is not StageStatus.DONE for a in pipeline.ancestors(stage)):
+        raise RToolError(f"the stages before {stage!r} are not all done, so it has no complete inputs")
+    root = source.root.parent / run_id
+    if root.exists():
+        raise RToolError(f"run directory already exists: {root}")
+    shutil.copytree(source.root, root)
+    # fresh events (so `rtool stats` counts only the replay), no queued actions, no lease, no Slurm jobs
+    (root / "events.jsonl").unlink(missing_ok=True)
+    (root / "state" / "episode.lease").unlink(missing_ok=True)
+    for sub in ("actions", "jobs"):
+        shutil.rmtree(root / sub, ignore_errors=True)
+        (root / sub).mkdir()
+    config = source.config.model_dump(mode="json")
+    paths = [Path(p).expanduser().resolve() for p in overlays]
+    for path in paths:
+        config = deep_merge(config, interpolate_env(load_yaml_mapping(path), os.environ))
+    episode = config["slurm"]["episode"]
+    episode["config_files"] = [*episode.get("config_files", []), *map(str, paths)]
+    spec = RunSpec.model_validate({**source.spec.model_dump(mode="json"), "run_id": run_id, "config": config})
+    atomic_write_json(root / "run.json", spec.model_dump(mode="json"))
+    run = RunHandle(root)
+    store = StateStore(run.state_dir)
+    store.run_path.unlink(missing_ok=True)  # the engine starts a fresh run state (new nonce, no episodes)
+    target = stages[stage]
+    target.status, target.stale_reason = StageStatus.STALE, f"replay ({tag})"
+    target.resume, target.agent_state, target.waiting_on = False, {}, []
+    target.gate, target.commit_pending, target.token = None, False, ""
+    target.failures, target.last_error, target.usage = 0, None, {}
+    store.save_stage(target)
     return run
 
 

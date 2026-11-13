@@ -49,7 +49,7 @@ from ..hpc.episode import SAFETY_MARGIN_S, llm_needed, run_episode, schedule_nex
 from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
 from ..llm.server import VLLMServer
-from ..service import check_edit, create_run, kick, load_app_config, queue_action, run_status, stop_run
+from ..service import check_edit, create_run, kick, load_app_config, queue_action, replay_run, run_status, stop_run
 from ..service import list_runs as list_all_runs
 from .stats import print_stats
 
@@ -249,6 +249,21 @@ def new(
         )
         console.print(f"created run [bold]{run.run_id}[/bold] at {run.root}")
         console.print(f"next: rtool run {_ref(run)}")
+
+
+@app.command()
+def replay(
+    run_ref: str = typer.Argument(..., help="A run at rest (nothing running or waiting for jobs)."),
+    stage: str = typer.Option(..., "--stage", help="The finished stage to run again, e.g. hypotheses."),
+    tag: str = typer.Option(..., "--tag", help="Names the copy: <run>-<stage>-<tag>, e.g. qwen."),
+    config: list[Path] = typer.Option([], "--config", "-c", help="Config overlay for the copy, e.g. another LLM."),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Copy a run and redo one stage in the copy (same inputs, possibly another LLM)."""
+    with _guard():
+        copy = replay_run(_open_run(run_ref, runs_root), stage, tag, config)
+        console.print(f"created run [bold]{copy.run_id}[/bold] at {copy.root}; {stage} will run again")
+        console.print(f"next: rtool run {_ref(copy)}")
 
 
 @app.command("run")
