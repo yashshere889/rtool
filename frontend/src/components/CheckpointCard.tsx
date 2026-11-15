@@ -7,6 +7,7 @@ import { useDecide, useUndo } from "@/api/hooks";
 import type { ActionRequest, OpenGate, RunDetail } from "@/api/types";
 import { cn } from "@/lib/cn";
 import { humanize } from "@/lib/format";
+import { usePaperMarks } from "@/lib/paperMarks";
 import { gateInfo, stageTitle } from "@/lib/stages";
 
 import { Button } from "./ui/button";
@@ -131,6 +132,8 @@ export function CheckpointCard({
   const current = (summary.current as { index: number } | undefined)?.index;
   const canKeep = gate.kind === "select" && gate.actions.includes("approve");
   const showOptions = gate.kind === "select" && options.length > 0 && !choiceElsewhere;
+  const { marks, clear: clearMarks } = usePaperMarks(run.project, run.run_id, gate.nonce);
+  const unsentMarks = gate.kind === "approve" ? Object.keys(marks).length : 0; // approving would ignore them
 
   const approve = () =>
     gate.kind === "select"
@@ -263,8 +266,24 @@ export function CheckpointCard({
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap gap-2">
+          {unsentMarks > 0 && (
+            <div role="note" className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-warn/40 bg-surface/70 px-3 py-2 text-sm">
+              <span className="flex-1">
+                You marked {unsentMarks} paper{unsentMarks === 1 ? "" : "s"} Keep or Drop but have not sent{" "}
+                {unsentMarks === 1 ? "it" : "them"}. Approving would ignore your marks: send them from the{" "}
+                {stageTitle(gate.stage)} page, or discard them to approve.
+              </span>
+              <Button variant="ghost" size="sm" onClick={clearMarks}>
+                Discard marks
+              </Button>
+            </div>
+          )}
           {(gate.kind !== "select" || showOptions) && (
-            <Button onClick={approve} busy={decide.isPending} disabled={gate.kind === "select" && choice === null}>
+            <Button
+              onClick={approve}
+              busy={decide.isPending}
+              disabled={(gate.kind === "select" && choice === null) || unsentMarks > 0}
+            >
               {info.approve}
             </Button>
           )}
