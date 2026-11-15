@@ -2,21 +2,13 @@ import { AlertTriangle, FileText } from "lucide-react";
 
 import { ApiError, fileUrl } from "@/api/client";
 import { useResults } from "@/api/hooks";
-import type { ExperimentResults, RunDetail } from "@/api/types";
+import type { RunDetail } from "@/api/types";
+import { ComparisonVerdict, untested } from "@/components/ComparisonVerdict";
 import { Badge } from "@/components/ui/badge";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { num, pValue } from "@/lib/code";
 
 import { Section } from "../plan/PlanRead";
-
-type Comparison = ExperimentResults["comparisons"][number];
-
-/** Why a comparison has no p-value (mirrors Comparison.verdict on the server). */
-function untested(c: Comparison): string {
-  if (c.n < 2) return "Too few runs to test.";
-  if (c.constant_difference) return "The difference was identical for every seed: it may be a fixed offset, not a measured effect.";
-  return "The results did not vary across seeds, so there is nothing to test against.";
-}
 
 /** The analysed results: each condition against the baseline, per metric, with the figures. */
 export function ResultsTab({ run }: { run: RunDetail }) {
@@ -111,17 +103,7 @@ export function ResultsTab({ run }: { run: RunDetail }) {
                         <td className="py-2 pr-3 tabular-nums">{pValue(c.p_adjusted)}</td>
                         <td className="py-2 pr-3 tabular-nums">{num(c.effect_size)}</td>
                         <td className="py-2">
-                          {c.p_value === null || c.p_value === undefined ? (
-                            <span title={untested(c)}>
-                              <Badge tone="warn">No test possible</Badge>
-                            </span>
-                          ) : !c.significant ? (
-                            <Badge>No clear difference</Badge>
-                          ) : c.better ? (
-                            <Badge tone="ok">Better than baseline</Badge>
-                          ) : (
-                            <Badge tone="bad">Worse than baseline</Badge>
-                          )}
+                          <ComparisonVerdict c={c} />
                         </td>
                       </tr>
                     ))}

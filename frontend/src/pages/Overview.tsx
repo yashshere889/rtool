@@ -1,10 +1,11 @@
-import { CheckCircle2, CirclePause, Loader, Play, Square } from "lucide-react";
+import { CirclePause, Loader, Play, Square } from "lucide-react";
 
 import { useResume, useSettings, useStop } from "@/api/hooks";
 import type { RunDetail } from "@/api/types";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { CheckpointCard } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
+import { FinishedSummary } from "@/components/FinishedSummary";
 import { useRunContext } from "@/components/layout/RunLayout";
 import { QueuedActions } from "@/components/QueuedActions";
 import { StageStepper } from "@/components/StageStepper";
@@ -38,31 +39,29 @@ function RightNow({ run }: { run: RunDetail }) {
       </div>
     );
   }
-  const finished = headline.tone === "ok";
+  if (headline.tone === "ok") return <FinishedSummary run={run} />;
   const working = run.worker.active || headline.tone === "info";
-  const Icon = finished ? CheckCircle2 : working ? Loader : CirclePause;
+  const Icon = working ? Loader : CirclePause;
   return (
     <Card>
       <CardBody className="flex flex-wrap items-center gap-4 py-5">
-        <Icon className={`size-6 ${finished ? "text-ok" : working ? "animate-spin text-info [animation-duration:2.5s]" : "text-ink-soft"}`} />
+        <Icon className={`size-6 ${working ? "animate-spin text-info [animation-duration:2.5s]" : "text-ink-soft"}`} />
         <div className="min-w-0 flex-1">
           <p className="font-semibold">{headline.text}</p>
           <p className="text-sm text-ink-soft">
-            {finished
-              ? "Every stage is done. The final report and the review are on the Review page."
-              : run.worker.detail ||
-                (working
-                  ? "Nothing needs you right now; you will see a decision card here when it does."
-                  : "Nothing is advancing this run at the moment.")}
+            {run.worker.detail ||
+              (working
+                ? "Nothing needs you right now; you will see a decision card here when it does."
+                : "Nothing is advancing this run at the moment.")}
           </p>
           {run.worker.last_error && <p className="mt-1 text-sm text-bad">{run.worker.last_error}</p>}
         </div>
-        {!finished && !run.worker.active && (
+        {!run.worker.active && (
           <Button variant="secondary" onClick={() => resume.mutate()} busy={resume.isPending}>
             <Play /> Resume
           </Button>
         )}
-        {!finished && run.worker.active && settings.data && !settings.data.runs_locally && (
+        {run.worker.active && settings.data && !settings.data.runs_locally && (
           <Button variant="secondary" onClick={() => stop.mutate(false)} busy={stop.isPending}>
             <Square /> Pause
           </Button>
