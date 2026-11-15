@@ -1,7 +1,9 @@
 /** Turning the run's event log into an activity feed a researcher can read. */
 import type { RunEvent } from "@/api/types";
 
+import { STEPS as CODE_STEPS, stepStates, type StepState } from "./code";
 import { count, humanize } from "./format";
+import { LITERATURE_STEPS } from "./literature";
 import { gateInfo, stageTitle, type Tone } from "./stages";
 
 export interface Described {
@@ -119,4 +121,40 @@ export function lastFailure(events: RunEvent[], stage: string): Failure | null {
     }
   }
   return failure;
+}
+
+export interface StageProgress {
+  since: string | null; // when this attempt started (a resumed attempt keeps its start)
+  steps: { label: string; state: StepState }[] | null; // null: this stage does not report steps
+  latest: (Described & { ts: string }) | null; // the stage's newest activity
+  queued: { since: string; job: string; expectedStart: string } | null; // a worker job waiting in the queue
+}
+
+/** How far a running stage has got, from the event log. */
+export function stageProgress(events: RunEvent[], stage: string, agent: string): StageProgress {
+  const start = events.findLastIndex((e) => e.kind === "stage_started" && e.stage === stage && !e.data?.resumed);
+  const mine = events.slice(Math.max(start, 0)).filter((e) => e.stage === stage);
+  let steps: StageProgress["steps"] = null;
+  if (agent === "literature") {
+    const done = mine.filter((e) => e.kind === "literature_phase_done").map((e) => str(e.data?.phase));
+    const reached = Math.max(-1, ...done.map((id) => LITERATURE_STEPS.findIndex((s) => s.id === id)));
+    steps = LITERATURE_STEPS.map((s, i) => ({ label: s.label, state: i <= reached ? "done" : i === reached + 1 ? "current" : "waiting" }));
+  } else if (agent === "coder") {
+    const phase = mine.filter((e) => e.kind === "phase_changed").map((e) => str(e.data?.phase)).pop();
+    const states = stepStates({ status: "running", phase: phase ?? "write" });
+    steps = CODE_STEPS.map((s, i) => ({ label: s.label, state: states[i] }));
+  }
+  const latest = mine
+    .map((e) => ({ e, d: describeEvent(e) }))
+    .filter((x) => x.d !== null)
+    .pop();
+  const submitted = events.findLastIndex((e) => e.kind === "episode_submitted");
+  const started = events.findLastIndex((e) => e.kind === "episode_started");
+  const waiting = submitted > started ? events[submitted] : null;
+  return {
+    since: start >= 0 ? events[start].ts : null,
+    steps,
+    latest: latest ? { ...latest.d!, ts: latest.e.ts } : null,
+    queued: waiting && { since: waiting.ts, job: str(waiting.data?.job), expectedStart: str(waiting.data?.expected_start) },
+  };
 }

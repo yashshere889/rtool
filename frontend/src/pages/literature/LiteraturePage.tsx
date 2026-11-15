@@ -9,6 +9,7 @@ import { CheckpointCard, useGateDecision } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
 import { ReopenButton } from "@/components/ReopenDialog";
 import { RoundBanner } from "@/components/RoundBanner";
+import { StageProgress } from "@/components/StageProgress";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
@@ -187,6 +188,7 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
       <div className="space-y-6">
         {header}
         {stage.status === "failed" && <FailureCard run={run} stage={stage} />}
+        {missing && stage.status === "running" && <StageProgress run={run} stage={stage} />}
         {missing ? (
           <Empty title="No papers yet">The literature stage has not finished its first search. This page fills in when it has.</Empty>
         ) : (
