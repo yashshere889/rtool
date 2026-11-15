@@ -8,6 +8,7 @@ import { FailureCard } from "@/components/FailureCard";
 import { FinishedSummary } from "@/components/FinishedSummary";
 import { useRunContext } from "@/components/layout/RunLayout";
 import { QueuedActions } from "@/components/QueuedActions";
+import { StageProgress } from "@/components/StageProgress";
 import { StageStepper } from "@/components/StageStepper";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -41,6 +42,7 @@ function RightNow({ run }: { run: RunDetail }) {
   }
   if (headline.tone === "ok") return <FinishedSummary run={run} />;
   const working = run.worker.active || headline.tone === "info";
+  const running = run.stages.find((s) => s.id === headline.stage);
   const Icon = working ? Loader : CirclePause;
   return (
     <Card>
@@ -65,6 +67,11 @@ function RightNow({ run }: { run: RunDetail }) {
           <Button variant="secondary" onClick={() => stop.mutate(false)} busy={stop.isPending}>
             <Square /> Pause
           </Button>
+        )}
+        {working && running && (
+          <div className="w-full border-t border-line pt-4">
+            <StageProgress run={run} stage={running} />
+          </div>
         )}
       </CardBody>
     </Card>
