@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeEvent, fold, lastFailure, stageProgress, stageWarnings } from "./events";
+import { describeEvent, fold, lastFailure, stageProgress, stageSuggestions, stageWarnings } from "./events";
 
 const event = (kind: string, data: Record<string, unknown> = {}, stage?: string) => ({
   ts: "2026-10-09T10:00:00+00:00",
@@ -121,6 +121,23 @@ describe("feed tidying and warnings", () => {
     expect(stageWarnings(events, "literature")).toEqual([
       "A search on arxiv failed: timeout (2 times)",
       "Only 9 relevant papers found (aimed for 30)",
+    ]);
+  });
+});
+
+describe("stageSuggestions", () => {
+  it("turns the current attempt's shortfalls into requests, once each", () => {
+    const failed = { source: "arxiv", error: "timeout" };
+    const events = [
+      event("literature_search_failed", { source: "openalex" }, "literature"), // an earlier attempt
+      event("stage_started", {}, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_small_corpus", { included: 9, wanted: 30 }, "literature"),
+    ];
+    expect(stageSuggestions(events, "literature")).toEqual([
+      "Search arxiv again: it failed last time.",
+      "Broaden the search: only 9 relevant papers were found and the aim is 30.",
     ]);
   });
 });

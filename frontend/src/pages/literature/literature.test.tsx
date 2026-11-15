@@ -122,7 +122,8 @@ describe("paper panels", () => {
 
 describe("keeping and dropping papers", () => {
   it("sends the marked papers with an optional comment, bound to the checkpoint", async () => {
-    const fetch = vi.fn().mockResolvedValue(json({ action: { id: "b".repeat(32) }, kick: { submitted: false, detail: "ok" } }, 202));
+    // a fresh response per request: the dialog also loads the run's events for its suggestions
+    const fetch = vi.fn(() => Promise.resolve(json({ action: { id: "b".repeat(32) }, kick: { submitted: false, detail: "ok" } }, 202)));
     vi.stubGlobal("fetch", fetch);
     const sent = vi.fn();
     const titles = new Map([["doi:1", "Kept paper"], ["doi:2", "Dropped paper"]]);
@@ -133,7 +134,8 @@ describe("keeping and dropping papers", () => {
     await userEvent.type(screen.getByLabelText(/Anything else/), "More on older adults");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sent).toHaveBeenCalled());
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+    const action = (fetch.mock.calls as unknown as [string, RequestInit][]).find(([url]) => url.endsWith("/actions"))!;
+    expect(JSON.parse(String(action[1].body))).toEqual({
       kind: "reject",
       stage: "literature",
       gate: "literature_review",

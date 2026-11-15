@@ -171,12 +171,19 @@ export function ReviewPage({ run, stage }: { run: RunDetail; stage: StageSummary
       <p className="mt-2 max-w-3xl text-sm text-ink-soft">{STAGES.review.description}</p>
     </header>
   );
+  // what the reviewer raised that neither its edits nor a revision request dealt with: offered as requests
+  const openIssues = review.data
+    ? review.data.review.issues
+        .filter((issue) => issueState(issue, review.data).tone === "warn")
+        .map((issue) => `${issue.suggestion || issue.problem} (${issue.section})`)
+    : [];
   const checkpoint = stage.gate && (
     <CheckpointCard
       run={run}
       gate={stage.gate}
       showStageLink={false}
       rejectHint="Your comments go to the writer; sections you wrote are kept. The new report is then reviewed again."
+      suggestions={openIssues}
     />
   );
 

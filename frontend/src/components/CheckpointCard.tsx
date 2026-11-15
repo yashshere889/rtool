@@ -13,6 +13,7 @@ import { gateInfo, stageTitle } from "@/lib/stages";
 
 import { Button } from "./ui/button";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
+import { Suggestions } from "./Suggestions";
 import { Textarea } from "./ui/field";
 
 type Summary = Record<string, unknown>;
@@ -108,12 +109,14 @@ export function CheckpointCard({
   showStageLink = true,
   choiceElsewhere = false,
   rejectHint,
+  suggestions,
 }: {
   run: RunDetail;
   gate: OpenGate;
   showStageLink?: boolean;
   choiceElsewhere?: boolean;
   rejectHint?: string; // said in the "request changes" dialog, e.g. that hand edits are not kept
+  suggestions?: string[]; // requests the page can offer in that dialog (the stage's own warnings add more)
 }) {
   const info = gateInfo(gate.gate);
   const summary = gate.summary as Summary;
@@ -308,7 +311,7 @@ export function CheckpointCard({
       <Dialog open={asking} onOpenChange={setAsking}>
         <DialogContent
           title={info.reject}
-          description={`The stage runs again with your comments. Be specific.${rejectHint ? ` ${rejectHint}` : ""}`}
+          description={`${info.redo ?? "The stage runs again with your comments."} Be specific.${rejectHint ? ` ${rejectHint}` : ""}`}
         >
           <form
             onSubmit={(event) => {
@@ -329,6 +332,7 @@ export function CheckpointCard({
               placeholder="For example: focus on studies in older adults, and drop the modelling papers."
               autoFocus
             />
+            <Suggestions run={run} stage={gate.stage} extra={suggestions} value={feedback} onChange={setFeedback} />
             <div className="mt-4 flex justify-end gap-2">
               <DialogClose asChild>
                 <Button variant="ghost">Cancel</Button>

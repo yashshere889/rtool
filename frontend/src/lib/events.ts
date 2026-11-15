@@ -216,3 +216,15 @@ export function stageProgress(events: RunEvent[], stage: string, agent: string):
     queued: waiting && { since: waiting.ts, job: str(waiting.data?.job), expectedStart: str(waiting.data?.expected_start) },
   };
 }
+
+/** Requests worth making at a stage's checkpoint, from what its current attempt reported. */
+export function stageSuggestions(events: RunEvent[], stage: string): string[] {
+  const out = new Set<string>();
+  for (const e of events.slice(Math.max(attemptStart(events, stage), 0))) {
+    if (e.stage !== stage) continue;
+    if (e.kind === "literature_small_corpus")
+      out.add(`Broaden the search: only ${num(e.data?.included)} relevant papers were found and the aim is ${str(e.data?.wanted)}.`);
+    if (e.kind === "literature_search_failed") out.add(`Search ${str(e.data?.source)} again: it failed last time.`);
+  }
+  return [...out];
+}
