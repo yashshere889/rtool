@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("fastapi")
 
 from research_tool.core.artifacts import ArtifactStore  # noqa: E402
+from research_tool.core.state import FeedbackItem, FeedbackKind, StateStore  # noqa: E402
 from research_tool.service import open_run, run_status  # noqa: E402
 from research_tool.testing.web import WRITE, web_client  # noqa: E402
 from research_tool.web.runner import LocalRunner  # noqa: E402
@@ -99,14 +100,20 @@ def test_a_quote_is_found_in_the_paper(runs_root: Path) -> None:
 
 
 def test_new_hypotheses_that_come_back_the_same_say_so(runs_root: Path) -> None:
-    runner = LocalRunner()
-    c = web_client(runs_root, runner)
-    body = {"kind": "reject", **GATE, "payload": {"feedback": "Include one about older adults."}}
-    assert c.post(f"{CHOOSING}/actions", json=body, headers=WRITE).status_code == 202
-    runner.join(open_run(runs_root, "sleep-demo", "2-hypotheses"), timeout=120)
+    # the stage acted on a comment in a later attempt, but its output was identical, so the store kept version 1
+    # (written directly: the demo drafts in parallel, so whether a rerun repeats itself depends on timing)
+    run = open_run(runs_root, "sleep-demo", "2-hypotheses")
+    states = StateStore(run.state_dir)
+    st = states.load_stage("hypotheses")
+    assert st is not None
+    comment = FeedbackItem(
+        kind=FeedbackKind.HUMAN_REJECTION, text="Include one about older adults.", consumed_by_attempt=2
+    )
+    st.feedback.append(comment)
+    states.save_stage(st)
 
-    view = c.get(f"{CHOOSING}/hypotheses").json()
-    assert view["versions"] == [1]  # the demo drafts the same set again: the store keeps version 1
+    view = web_client(runs_root).get(f"{CHOOSING}/hypotheses").json()
+    assert view["versions"] == [1]
     previous = view["previous"]
     assert previous["unchanged"] and previous["previous_version"] == 1
     assert [f["text"] for f in previous["feedback"]] == ["Include one about older adults."]

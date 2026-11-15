@@ -3,9 +3,10 @@ import { useId, useState } from "react";
 import { Link } from "react-router";
 
 import { fileUrl, runPath } from "@/api/client";
-import { useDecide, useUndo } from "@/api/hooks";
+import { useDecide, useEvents, useUndo } from "@/api/hooks";
 import type { ActionRequest, OpenGate, RunDetail } from "@/api/types";
 import { cn } from "@/lib/cn";
+import { stageWarnings } from "@/lib/events";
 import { humanize } from "@/lib/format";
 import { usePaperMarks } from "@/lib/paperMarks";
 import { gateInfo, stageTitle } from "@/lib/stages";
@@ -127,7 +128,9 @@ export function CheckpointCard({
   const files = (summary.review_files as string[] | undefined) ?? [];
   const text = String(summary.prompt ?? summary.message ?? "");
   const details = Object.entries(summary).filter(([key, value]) => !SHOWN_ELSEWHERE.has(key) && shown(value));
-  const warnings = textList(summary.warnings); // signs that nothing real was measured: for the researcher to check
+  const events = useEvents(run.project, run.run_id);
+  // signs that nothing real was measured, and what the stage itself warned about: for the researcher to check
+  const warnings = [...textList(summary.warnings), ...stageWarnings(events.data?.events ?? [], gate.stage)];
   const reopened = Boolean(summary.reopened);
   const current = (summary.current as { index: number } | undefined)?.index;
   const canKeep = gate.kind === "select" && gate.actions.includes("approve");

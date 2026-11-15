@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeEvent, lastFailure, stageProgress } from "./events";
+import { describeEvent, fold, lastFailure, stageProgress, stageWarnings } from "./events";
 
 const event = (kind: string, data: Record<string, unknown> = {}, stage?: string) => ({
   ts: "2026-10-09T10:00:00+00:00",
@@ -86,5 +86,41 @@ describe("stageProgress", () => {
     expect(stageProgress(events, "code", "coder").steps?.map((s) => s.state)).toEqual(["done", "current", "waiting", "waiting", "waiting"]);
     expect(stageProgress(events, "code", "coder").queued).toBeNull();
     expect(stageProgress([at("stage_started", {}, "plan")], "plan", "planner").steps).toBeNull();
+  });
+});
+
+describe("feed tidying and warnings", () => {
+  it("drops step lines the progress strip shows, and words the coding steps and CPU tests", () => {
+    expect(describeEvent(event("literature_phase_done", { phase: "parse" }, "literature"))).toBeNull();
+    expect(describeEvent(event("phase_changed", { phase: "smoke" }, "code"))?.text).toBe("Code & runs: testing the code on a CPU");
+    expect(describeEvent(event("phase_changed", { phase: "approve" }, "code"))).toBeNull();
+    expect(describeEvent(event("smoke_result", { condition: "sham", seed: 1, ok: false, error: "boom" }, "code"))?.text).toBe(
+      "CPU test of sham (seed 1): failed (boom)",
+    );
+  });
+
+  it("folds equal neighbours only", () => {
+    expect(fold(["a", "a", "b", "a"], (x) => x)).toEqual([
+      { item: "a", n: 2 },
+      { item: "b", n: 1 },
+      { item: "a", n: 1 },
+    ]);
+  });
+
+  it("collects the current attempt's warnings for the checkpoint, repeats counted", () => {
+    const failed = { source: "arxiv", error: "timeout" };
+    const events = [
+      event("literature_small_corpus", { included: 3, wanted: 30 }, "literature"), // an earlier attempt
+      event("stage_started", {}, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_screened", { included: 9 }, "literature"), // not a warning
+      event("literature_small_corpus", { included: 9, wanted: 30 }, "literature"),
+      event("hypothesis_draft_failed", {}, "hypotheses"), // another stage
+    ];
+    expect(stageWarnings(events, "literature")).toEqual([
+      "A search on arxiv failed: timeout (2 times)",
+      "Only 9 relevant papers found (aimed for 30)",
+    ]);
   });
 });
