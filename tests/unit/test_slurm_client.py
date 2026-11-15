@@ -12,7 +12,7 @@ from research_tool.core.config import PartitionSpec, SlurmConfig
 from research_tool.hpc.jobspec import GPURequest, JobSpec
 from research_tool.hpc.sbatch import JobSpecError
 from research_tool.hpc.slurm import JobState
-from research_tool.hpc.slurm_client import SlurmCommandError, SubprocessSlurm, parse_sacct_state
+from research_tool.hpc.slurm_client import SlurmCommandError, SubprocessSlurm, default_runner, parse_sacct_state
 
 CONFIG = SlurmConfig(
     backend="real",
@@ -177,3 +177,43 @@ def test_preempted_jobs(tmp_path: Path, cluster: FakeCluster) -> None:
     cluster.accounting = [f"{job_id}|PREEMPTED|0:0"]  # left the queue: over, and not a success
     state = slurm.status(job_id).state
     assert state is JobState.PREEMPTED and state.is_terminal and not state.succeeded
+
+
+def test_squeue_is_retried_but_sbatch_is_not(
+    tmp_path: Path, cluster: FakeCluster, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One failed squeue must not end an episode; a failed sbatch may have submitted, so it is not repeated."""
+    monkeypatch.setattr("research_tool.hpc.slurm_client.QUERY_RETRY_S", 0)
+    failures = {"squeue": 2, "sbatch": 0}
+
+    def flaky(args: list[str], cwd: Path | None, timeout: float) -> subprocess.CompletedProcess[str]:
+        if failures[args[0]] > 0:
+            failures[args[0]] -= 1
+            cluster.calls.append(args)
+            if args[0] == "squeue" and failures["squeue"] == 1:
+                raise subprocess.TimeoutExpired(args, timeout)  # the first failure is a timeout, the second an error
+            return subprocess.CompletedProcess(args, 1, "", "slurm_load_jobs error: Socket timed out")
+        return cluster(args, cwd, timeout)
+
+    slurm = SubprocessSlurm(CONFIG, state_dir=tmp_path / "jobs", runner=flaky, user="me", clock=lambda: 1_000_000.0)
+    job_id = slurm.submit(job(tmp_path))  # its queue-size check gets through on the third squeue
+    assert [c[0] for c in cluster.calls] == ["squeue", "squeue", "squeue", "sbatch"]
+
+    failures["squeue"] = 3
+    with pytest.raises(SlurmCommandError, match="Socket timed out"):
+        slurm.status(job_id)
+    assert failures["squeue"] == 0  # gave up after three tries
+
+    failures["sbatch"], before = 1, len(cluster.calls)
+    with pytest.raises(SlurmCommandError, match="sbatch"):
+        slurm.submit(job(tmp_path))
+    assert [c[0] for c in cluster.calls[before:]] == ["squeue", "sbatch"]
+
+
+def test_jobs_do_not_inherit_the_submitters_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A CPU episode submitted from a GPU episode saw CUDA_VISIBLE_DEVICES=0, took itself for a GPU node and
+    tried to start vLLM there (Barkla, 2026-11-13: node006, "Failed to infer device type")."""
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("RTOOL_PROBE", "kept")
+    done = default_runner(["env"], None, 30)
+    assert "CUDA_VISIBLE_DEVICES" not in done.stdout and "RTOOL_PROBE=kept" in done.stdout

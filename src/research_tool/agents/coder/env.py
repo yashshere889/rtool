@@ -127,9 +127,12 @@ class ExperimentEnv:
             "MPLBACKEND": "Agg",
             "HF_HUB_OFFLINE": "1",  # data and models come from the fetched resources, not the internet
             "HF_DATASETS_OFFLINE": "1",
+            "TRANSFORMERS_OFFLINE": "1",  # older transformers only read this one
             "TOKENIZERS_PARALLELISM": "false",
         }
-        if not gpu:
+        if gpu:  # vLLM's engine in this process: a forked one cannot use CUDA once the experiment has touched it
+            inner["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+        else:
             inner["CUDA_VISIBLE_DEVICES"] = ""
         if self.containerized:
             inner.update({f"APPTAINERENV_{key}": value for key, value in list(inner.items())})

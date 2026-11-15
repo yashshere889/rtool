@@ -68,6 +68,7 @@ from ...tools.report.render import (
     bib_keys,
     bibtex_subset,
     citation_keys,
+    movement,
     plan_numbers,
     problems,
     reference_list,
@@ -101,6 +102,16 @@ def unresolved_check(sections: list[ReportSection]) -> Check:
 
 def similar(a: str, b: str) -> bool:
     return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.45
+
+
+def pasted(text: str, points: list[ReviewIssue]) -> bool:
+    """The rewrite quotes a review point instead of acting on it (seen on Barkla: the problem, verbatim)."""
+    flat = " ".join(text.lower().split())
+    return any(
+        len(part.split()) >= 6 and " ".join(part.lower().split()).rstrip(".") in flat
+        for p in points
+        for part in (p.problem, p.suggestion)
+    )
 
 
 def audit_label(aspect: str, subject: str) -> str:
@@ -222,7 +233,10 @@ class Reviewing:
     # ------------------------------------------------------------ material
     def plan_text(self) -> str:
         p = self.plan
-        return "\n".join([p.hypothesis, p.null_hypothesis, p.design, p.expected_results, *self.results.notes])
+        return "\n".join(
+            [p.hypothesis, p.null_hypothesis, p.design, p.expected_results, *self.results.notes]
+            + self.report.hypothesis_checks  # the Writer's verdict: its thresholds may be quoted
+        )
 
     def claims_text(self) -> str:
         return "\n".join(f"{c.text} {c.quote}" for c in self.km.claims if c.verified)
@@ -248,10 +262,22 @@ class Reviewing:
             p = self.values[f"p:{key}"].text
             if c.p_adjusted is not None:
                 p += f", {c.correction.capitalize()}-corrected {self.values[f'p_adj:{key}'].text}"
+            moved = movement(c.difference)
+            size = "".join(
+                f", {kind} {moved} {self.values[k].text}"
+                for kind, k in (("relative", f"rel:{key}"), ("absolute", f"pts:{key}"))
+                if k in self.values
+            )
             lines.append(
                 f"- {c.analysis.capitalize()}: {c.condition} vs {c.baseline} on {c.metric}: difference "
-                f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}), {p} ({c.test}) "
+                f"{self.values[f'diff:{key}'].text} ({self.values[f'diff_ci:{key}'].text}){size}, {p} ({c.test}) "
                 f"— {c.verdict()}"
+            )
+        if self.report.hypothesis_outcome:
+            lines.append(
+                f"- Verdict on the hypothesis, from its success criterion: {self.report.hypothesis_outcome.upper()}. "
+                + " ".join(f"{check.rstrip('.')}." for check in self.report.hypothesis_checks)
+                + " A report that calls the hypothesis supported when this verdict says otherwise is a major issue"
             )
         ok = sum(1 for r in self.results.runs if r.status == "ok")
         lines.append(f"- {ok} of {len(self.results.runs)} planned runs produced results")
@@ -477,7 +503,7 @@ class Reviewing:
             text = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith(("#", "```"))).strip()
             unchanged = " ".join(text.split()) == " ".join(section.template.split())
             clean = not unresolved_count(text) and not self.section_problems(section, text, original=section.template)
-            if text and not unchanged and clean:
+            if text and not unchanged and clean and not pasted(text, points):
                 return text
         return None  # no acceptable rewrite: the issue stays open for the human
 
@@ -509,24 +535,27 @@ class Reviewing:
             if unresolved_count(s.template) and s.origin != "rtool"
         ]
         textual = [i for i in issues if i.target == "report"]
-        # sections the researcher wrote are not rewritten: their issues stay open for them
+        # only major points are rewritten. Minor ones mostly ask for detail or analysis the material does not
+        # hold, and rewrites made it up (seen on Barkla: an invented commit hash and a claim pinned on a
+        # citation); they stay open for the researcher, as do points on sections the researcher wrote
+        fixable = [i for i in textual if i.severity == "major"]
         to_edit = sorted(
             {
                 i.section
-                for i in textual
+                for i in fixable
                 if i.section in EDITABLE and i.section in sections and sections[i.section].origin != "human"
             }
         )
         rewrites = ctx.llm.parallel(
-            lambda sid: self.edit(sections[sid], [i for i in textual if i.section == sid]), to_edit
+            lambda sid: self.edit(sections[sid], [i for i in fixable if i.section == sid]), to_edit
         )
-        edited, open_issues = [], [i for i in textual if i.section not in to_edit]
+        edited, open_issues = [], [i for i in textual if i.severity != "major" or i.section not in to_edit]
         for sid, new in zip(to_edit, rewrites, strict=True):
             if isinstance(new, str):
                 sections[sid] = sections[sid].model_copy(update={"template": new, "origin": "reviewer"})
                 edited.append(sid)
             else:
-                open_issues += [i for i in textual if i.section == sid]
+                open_issues += [i for i in fixable if i.section == sid]
 
         requests = []
         for issue in issues:
@@ -644,7 +673,7 @@ class Reviewing:
         if review.issues:
             lines += ["", "## Issues raised by most reviews", ""]
             for issue in review.issues:
-                if issue.section in review.edited_sections and issue.target == "report":
+                if issue.target == "report" and issue.section in review.edited_sections and issue not in open_issues:
                     state = "edited"
                 elif any(issue.problem in r for r in review.change_requests):
                     state = f"sent back to {issue.target}"
