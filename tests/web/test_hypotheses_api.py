@@ -21,6 +21,7 @@ GATE = {"stage": "hypotheses", "gate": "hypothesis_selection"}
 def test_three_hypotheses_with_their_papers(runs_root: Path) -> None:
     view = web_client(runs_root).get(f"{CHOOSING}/hypotheses").json()
     assert view["stage"] == "hypotheses" and view["versions"] == [1] and view["selection"] is None
+    assert view["previous"] is None  # the first set: nothing to compare with
     assert [c["index"] for c in view["shortlist"]] == [0, 1, 2]
     assert sum(view["weights"].values()) == pytest.approx(1.0) and view["markdown"].endswith("hypotheses.md")
     for card in view["shortlist"]:
@@ -95,3 +96,17 @@ def test_a_quote_is_found_in_the_paper(runs_root: Path) -> None:
     span = text["sections"][focus["section"]]["text"][focus["start"] : focus["end"]]
     assert focus["claim"] == -1 and " ".join(span.split()) == " ".join(evidence["quote"].split())
     assert c.get(url, params={"id": evidence["paper_id"], "quote": "nothing like this at all"}).json()["focus"] is None
+
+
+def test_new_hypotheses_that_come_back_the_same_say_so(runs_root: Path) -> None:
+    runner = LocalRunner()
+    c = web_client(runs_root, runner)
+    body = {"kind": "reject", **GATE, "payload": {"feedback": "Include one about older adults."}}
+    assert c.post(f"{CHOOSING}/actions", json=body, headers=WRITE).status_code == 202
+    runner.join(open_run(runs_root, "sleep-demo", "2-hypotheses"), timeout=120)
+
+    view = c.get(f"{CHOOSING}/hypotheses").json()
+    assert view["versions"] == [1]  # the demo drafts the same set again: the store keeps version 1
+    previous = view["previous"]
+    assert previous["unchanged"] and previous["previous_version"] == 1
+    assert [f["text"] for f in previous["feedback"]] == ["Include one about older adults."]

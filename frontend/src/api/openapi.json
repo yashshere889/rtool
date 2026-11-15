@@ -1832,6 +1832,16 @@
       "title": "Others",
       "type": "array"
      },
+     "previous": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Round"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "selection": {
       "anyOf": [
        {
@@ -1880,6 +1890,7 @@
      "budget_gpu_hours",
      "markdown",
      "others",
+     "previous",
      "selection",
      "shortlist",
      "stage",
@@ -2245,6 +2256,30 @@
       "title": "Papers",
       "type": "array"
      },
+     "papers_added": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Papers Added",
+      "type": "array"
+     },
+     "papers_removed": {
+      "items": {
+       "$ref": "#/components/schemas/RoundPaper"
+      },
+      "title": "Papers Removed",
+      "type": "array"
+     },
+     "previous": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Round"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "quality": {
       "items": {
        "$ref": "#/components/schemas/QualityCheck"
@@ -2316,6 +2351,9 @@
      "open_problems",
      "overview",
      "papers",
+     "papers_added",
+     "papers_removed",
+     "previous",
      "quality",
      "queries",
      "scope",
@@ -4051,6 +4089,116 @@
      "version"
     ],
     "title": "ReviewView",
+    "type": "object"
+   },
+   "Round": {
+    "description": "The version shown against the one before it.",
+    "properties": {
+     "feedback": {
+      "items": {
+       "$ref": "#/components/schemas/RoundFeedback"
+      },
+      "title": "Feedback",
+      "type": "array"
+     },
+     "inputs_changed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Inputs Changed",
+      "type": "array"
+     },
+     "previous_at": {
+      "title": "Previous At",
+      "type": "string"
+     },
+     "previous_version": {
+      "title": "Previous Version",
+      "type": "integer"
+     },
+     "unchanged": {
+      "default": false,
+      "title": "Unchanged",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "feedback",
+     "inputs_changed",
+     "previous_at",
+     "previous_version",
+     "unchanged"
+    ],
+    "title": "Round",
+    "type": "object"
+   },
+   "RoundFeedback": {
+    "properties": {
+     "by": {
+      "enum": [
+       "you",
+       "stage"
+      ],
+      "title": "By",
+      "type": "string"
+     },
+     "dropped": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Dropped",
+      "type": "array"
+     },
+     "from_stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Stage"
+     },
+     "kept": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Kept",
+      "type": "array"
+     },
+     "text": {
+      "default": "",
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "by",
+     "dropped",
+     "from_stage",
+     "kept",
+     "text"
+    ],
+    "title": "RoundFeedback",
+    "type": "object"
+   },
+   "RoundPaper": {
+    "properties": {
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "title"
+    ],
+    "title": "RoundPaper",
     "type": "object"
    },
    "RunCell": {
