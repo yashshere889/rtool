@@ -21,6 +21,21 @@ def slug(name: str) -> str:
 format_time = format_time_limit  # whole minutes, Slurm syntax
 
 
+def requested_gpu_hours(runs: int, gpus_per_run: int, time_limit: str) -> float:
+    """What the Coder charges the budget when it submits: every run's time limit, not its estimate."""
+    return round(runs * gpus_per_run * parse_time_limit(time_limit) / 3600, 2)
+
+
+def budget_issue(total: float, requested: float, time_limit: str, config: AppConfig) -> str | None:
+    """The plan's GPU-hours against the run's budget. The estimate alone is not enough: the time limit carries a
+    safety margin, and a plan that fits the budget only as an estimate is refused when the jobs are submitted."""
+    budget = config.budgets.run.max_gpu_hours
+    if budget is None or max(total, requested) <= budget:
+        return None
+    asked = f", and its jobs ask for {requested:g} with their time limit of {time_limit}" if requested > total else ""
+    return f"the plan needs about {total:g} GPU-hours{asked}; the budget is {budget:g}"
+
+
 def fit_compute(estimate: ComputeEstimate, runs: int, config: AppConfig) -> tuple[ComputeRequest, list[str]]:
     """Pick the first allowed partition (in configured preference order) that fits one run.
 
@@ -66,14 +81,15 @@ def fit_compute(estimate: ComputeEstimate, runs: int, config: AppConfig) -> tupl
         )
         wanted = parse_time_limit(spec.max_time)
     total = round(runs * estimate.gpus_per_run * estimate.hours_per_run, 2)
-    budget = config.budgets.run.max_gpu_hours
-    if budget is not None and total > budget:
-        issues.append(f"the plan needs about {total:g} GPU-hours; the budget is {budget:g}")
+    time_limit = format_time(max(wanted, 600))
+    over = budget_issue(total, requested_gpu_hours(runs, estimate.gpus_per_run, time_limit), time_limit, config)
+    if over:
+        issues.append(over)
     request = ComputeRequest(
         partition=partition,
         gpu_type=gpu_type,
         gpus_per_run=estimate.gpus_per_run,
-        time_limit=format_time(max(wanted, 600)),
+        time_limit=time_limit,
         runs=runs,
         hours_per_run=estimate.hours_per_run,
         gpu_hours_total=total,
@@ -255,9 +271,10 @@ def compute_issues(request: ComputeRequest, config: AppConfig) -> list[str]:
         issues.append(
             f"runs are expected to take {request.hours_per_run:g} h but the time limit is {request.time_limit}"
         )
-    budget = config.budgets.run.max_gpu_hours
-    if budget is not None and request.gpu_hours_total > budget:
-        issues.append(f"the plan needs about {request.gpu_hours_total:g} GPU-hours; the budget is {budget:g}")
+    requested = requested_gpu_hours(request.runs, request.gpus_per_run, request.time_limit)
+    over = budget_issue(request.gpu_hours_total, requested, request.time_limit, config)
+    if over:
+        issues.append(over)
     return issues
 
 

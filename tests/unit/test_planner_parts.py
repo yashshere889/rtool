@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from research_tool.agents.planner.checks import (
+    compute_issues,
     design_issues,
     fit_compute,
     format_time,
@@ -73,6 +74,20 @@ def test_compute_problems_are_reported(config) -> None:  # noqa: ANN001
         ComputeEstimate(gpu_memory_gb=10, gpus_per_run=1, hours_per_run=60, justification=""), runs=1, config=config
     )
     assert any("allows 3-00:00:00" in i for i in issues) and any("budget is 50" in i for i in issues)
+
+
+def test_a_plan_must_fit_the_budget_as_the_coder_will_charge_it(config) -> None:  # noqa: ANN001
+    """Barkla, 2026-11-12: 6 runs at 2 h under a 12 h cap passed the plan check (12.0), but the jobs ask for their
+    time limit (2 h x 1.3 = 2.6 h each, 15.6 in all) and the Coder refused to submit them."""
+    tight = load_config(BARKLA, overrides={"budgets": {"run": {"max_gpu_hours": 12}}}, env={"USER": "me"})
+    estimate = ComputeEstimate(gpu_memory_gb=5, gpus_per_run=1, hours_per_run=2, justification="")
+    request, issues = fit_compute(estimate, runs=6, config=tight)
+    assert request.gpu_hours_total == 12 and request.time_limit == "02:36:00"
+    assert len(issues) == 1 and "15.6" in issues[0] and issues[0].endswith("the budget is 12")
+    assert compute_issues(request, tight) == issues  # a hand edit and the page's live check say the same
+    shorter = request.model_copy(update={"hours_per_run": 0.25, "time_limit": "00:20:00", "gpu_hours_total": 1.5})
+    assert compute_issues(shorter, tight) == []  # 6 x 20 min = 2 GPU-hours
+    assert fit_compute(estimate, runs=6, config=config)[1] == []  # 15.6 fits a 50 h budget
 
 
 def core_with(metrics: list[dict]) -> PlanCore:
