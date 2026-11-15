@@ -66,10 +66,11 @@ class SlurmCommandError(RToolError):
 
 
 def default_runner(args: list[str], cwd: Path | None, timeout: float) -> subprocess.CompletedProcess[str]:
-    # sbatch exports this environment into the job; jobs that need API keys (episodes) load them themselves
-    return subprocess.run(
-        args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False, env=without_secrets()
-    )
+    # sbatch exports this environment into the job; jobs that need API keys (episodes) load them themselves.
+    # CUDA_VISIBLE_DEVICES is dropped too: Slurm sets it for jobs that have GPUs, but a CPU job submitted from a
+    # GPU job would keep the submitter's, and an episode there would try to start vLLM (Barkla, 2026-11-13).
+    env = {k: v for k, v in without_secrets().items() if k != "CUDA_VISIBLE_DEVICES"}
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False, env=env)
 
 
 def parse_sacct_state(text: str) -> JobState:

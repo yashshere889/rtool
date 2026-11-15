@@ -12,7 +12,7 @@ from research_tool.core.config import PartitionSpec, SlurmConfig
 from research_tool.hpc.jobspec import GPURequest, JobSpec
 from research_tool.hpc.sbatch import JobSpecError
 from research_tool.hpc.slurm import JobState
-from research_tool.hpc.slurm_client import SlurmCommandError, SubprocessSlurm, parse_sacct_state
+from research_tool.hpc.slurm_client import SlurmCommandError, SubprocessSlurm, default_runner, parse_sacct_state
 
 CONFIG = SlurmConfig(
     backend="real",
@@ -208,3 +208,12 @@ def test_squeue_is_retried_but_sbatch_is_not(
     with pytest.raises(SlurmCommandError, match="sbatch"):
         slurm.submit(job(tmp_path))
     assert [c[0] for c in cluster.calls[before:]] == ["squeue", "sbatch"]
+
+
+def test_jobs_do_not_inherit_the_submitters_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A CPU episode submitted from a GPU episode saw CUDA_VISIBLE_DEVICES=0, took itself for a GPU node and
+    tried to start vLLM there (Barkla, 2026-11-13: node006, "Failed to infer device type")."""
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("RTOOL_PROBE", "kept")
+    done = default_runner(["env"], None, 30)
+    assert "CUDA_VISIBLE_DEVICES" not in done.stdout and "RTOOL_PROBE=kept" in done.stdout
