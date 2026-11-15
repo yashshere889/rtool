@@ -5,7 +5,8 @@ import { ApiError, runPath } from "@/api/client";
 import { useRun, useRunStream } from "@/api/hooks";
 import type { RunDetail } from "@/api/types";
 import { cn } from "@/lib/cn";
-import { stageState, stageTitle } from "@/lib/stages";
+import { runHeadline, stageState, stageTitle } from "@/lib/stages";
+import { useTitle } from "@/lib/useTitle";
 
 import { StageIcon } from "../StageStepper";
 import { Empty, ErrorNote, Loading } from "../ui/states";
@@ -65,6 +66,9 @@ export function RunLayout() {
   const { project = "", runId = "" } = useParams();
   const run = useRun(project, runId);
   useRunStream(project, runId);
+  const headline = run.data ? runHeadline(run.data) : null;
+  // status first, so a tab that needs you is recognisable even when the title is cut short
+  useTitle(headline && `${headline.tone === "warn" || headline.tone === "bad" ? "● " : ""}${headline.text} · ${run.data?.topic || runId}`);
 
   if (run.isPending) return <Loading label="Loading the run" />;
   if (run.isError) {

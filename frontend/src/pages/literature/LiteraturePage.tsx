@@ -14,6 +14,7 @@ import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/field";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePaperMarks } from "@/lib/paperMarks";
 import { STAGES } from "@/lib/stages";
 
 import { GapsTab } from "./GapsTab";
@@ -138,16 +139,10 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
   const [text, setText] = useState("");
   const [filter, setFilter] = useState<PaperFilter | null>(null);
   const [adding, setAdding] = useState(false);
-  const [choices, setChoices] = useState<Record<string, Choice>>({});
   const gate = stage.gate && !stage.gate.in_stage && stage.gate.kind === "approve" ? stage.gate : null;
+  const { marks: choices, mark, clear } = usePaperMarks(run.project, run.run_id, gate?.nonce);
   const queuedDecision = gate && run.queued_actions.some((a) => a.stage === gate.stage && a.gate === gate.gate);
-  const choose = (id: string) => (choice: Choice | null) =>
-    setChoices((prev) => {
-      const next = { ...prev };
-      if (choice === null) delete next[id];
-      else next[id] = choice;
-      return next;
-    });
+  const choose = (id: string) => (choice: Choice | null) => mark(id, choice);
 
   const papers = useMemo(() => {
     const data = literature.data?.papers ?? [];
@@ -303,7 +298,7 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
               gate={gate}
               choices={choices}
               titles={new Map(view.papers.map((p) => [p.id, p.title]))}
-              onSent={() => setChoices({})}
+              onSent={clear}
             />
           )}
         </TabsContent>

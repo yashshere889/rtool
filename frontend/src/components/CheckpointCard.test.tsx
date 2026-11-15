@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { OpenGate, RunDetail } from "@/api/types";
+import { usePaperMarks } from "@/lib/paperMarks";
 
 import { CheckpointCard } from "./CheckpointCard";
 
@@ -105,6 +106,25 @@ describe("CheckpointCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Keep my current choice" }));
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ kind: "approve", gate: "hypothesis_selection" });
+  });
+
+  it("will not approve over unsent Keep/Drop marks, which outlive the page that made them", async () => {
+    const litGate: OpenGate = { ...gate, stage: "literature", kind: "approve", gate: "literature_review", nonce: "lit1", actions: ["approve", "reject"] };
+    function Marker() {
+      const { mark } = usePaperMarks("sleep", "r1", "lit1");
+      return <button onClick={() => mark("doi:1", "exclude")}>mark</button>;
+    }
+    const first = render(wrap(<Marker />));
+    await userEvent.click(screen.getByRole("button", { name: "mark" }));
+    first.unmount(); // e.g. opening a paper in the reader
+
+    render(wrap(<CheckpointCard run={run} gate={litGate} />));
+    const approve = screen.getByRole("button", { name: /Approve/ });
+    expect(approve).toBeDisabled();
+    expect(screen.getByRole("note")).toHaveTextContent("You marked 1 paper Keep or Drop");
+    await userEvent.click(screen.getByRole("button", { name: "Discard marks" }));
+    expect(approve).toBeEnabled();
+    expect(sessionStorage.length).toBe(0);
   });
 
   it("offers undo instead of buttons while a decision is queued", () => {
