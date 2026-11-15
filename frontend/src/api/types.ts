@@ -51,6 +51,7 @@ export type HypothesisCardData = Schemas["HypothesisCard"];
 export type Hypothesis = Schemas["Hypothesis"];
 export type PaperUse = Schemas["PaperUse"];
 export type Selection = Schemas["Selection"];
+export type Round = Schemas["Round"];
 export type Affected = Schemas["Affected"];
 
 export type PlanView = Schemas["PlanView"];

@@ -9,7 +9,9 @@ import pytest
 pytest.importorskip("fastapi")
 
 from research_tool.core.run import RunHandle  # noqa: E402
+from research_tool.service import open_run  # noqa: E402
 from research_tool.testing.web import WRITE, web_client  # noqa: E402
+from research_tool.web.runner import LocalRunner  # noqa: E402
 
 BASE_URL = "/api/runs/sleep-demo/1-literature/literature"
 MORGAN = "doi:10.5555/demo.2019.001"
@@ -100,3 +102,25 @@ def test_rejecting_with_papers_to_keep_or_drop(runs_root: Path) -> None:
     assert c.post(url, json=bad, headers=WRITE).status_code == 422
     chosen = {**body, "payload": {"exclude": [MORGAN], "include": []}}
     assert c.post(url, json=chosen, headers=WRITE).status_code == 202
+
+
+def test_a_second_round_says_what_changed_and_why(runs_root: Path) -> None:
+    assert web_client(runs_root).get(BASE_URL).json()["previous"] is None  # the first corpus
+    runner = LocalRunner()
+    c = web_client(runs_root, runner)
+    body = {"exclude": [MORGAN], "include": [], "feedback": "Focus on older adults."}
+    queued = c.post(
+        "/api/runs/sleep-demo/1-literature/actions",
+        json={"kind": "reject", "stage": "literature", "gate": "literature_review", "payload": body},
+        headers=WRITE,
+    )
+    assert queued.status_code == 202
+    runner.join(open_run(runs_root, "sleep-demo", "1-literature"), timeout=120)
+
+    view = c.get(BASE_URL).json()
+    assert view["corpus_version"] == 2 and view["previous"]["previous_version"] == 1
+    [feedback] = view["previous"]["feedback"]
+    assert feedback["by"] == "you" and feedback["text"] == "Focus on older adults."
+    assert feedback["dropped"] == ["Phase-locked auditory stimulation enhances slow oscillations and overnight recall"]
+    assert [p["id"] for p in view["papers_removed"]] == [MORGAN]  # dropped by hand, so no longer included
+    assert MORGAN not in view["papers_added"]

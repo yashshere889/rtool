@@ -8,6 +8,7 @@ import type { OpenGate, PaperCardData, RunDetail, StageSummary } from "@/api/typ
 import { CheckpointCard, useGateDecision } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
 import { ReopenButton } from "@/components/ReopenDialog";
+import { RoundBanner } from "@/components/RoundBanner";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
@@ -202,6 +203,31 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
       {header}
       {stage.gate && <CheckpointCard run={run} gate={stage.gate} showStageLink={false} />}
       {stage.status === "failed" && <FailureCard run={run} stage={stage} />}
+      {view.previous && (
+        <RoundBanner round={view.previous} what="set of papers">
+          {view.papers_added.length === 0 && view.papers_removed.length === 0 ? (
+            <p className="text-ink-soft">The included papers are the same as before.</p>
+          ) : (
+            <p>
+              {view.papers_added.length > 0 && (
+                <button
+                  type="button"
+                  className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                  onClick={() => {
+                    setFilter({ label: "this round's additions", ids: view.papers_added });
+                    setTab("papers");
+                  }}
+                >
+                  {view.papers_added.length} new paper{view.papers_added.length === 1 ? "" : "s"}
+                </button>
+              )}
+              {view.papers_added.length > 0 && view.papers_removed.length > 0 && " · "}
+              {view.papers_removed.length > 0 &&
+                `No longer included: ${view.papers_removed.map((p) => `“${p.title}”`).join(", ")}`}
+            </p>
+          )}
+        </RoundBanner>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat value={stats.full_text ?? 0} label="papers read in full" />

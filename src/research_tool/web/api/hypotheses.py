@@ -22,6 +22,7 @@ from ...schemas.hypothesis import COMPUTE_HOURS, Hypothesis, HypothesisSet
 from ...tools.report.render import bibtex_subset
 from ..deps import get_run
 from .literature import PaperCard, _Literature
+from .rounds import Round, previous_round
 
 router = APIRouter(tags=["hypotheses"])
 
@@ -72,6 +73,7 @@ class HypothesesView(BaseModel):
     weights: dict[str, float]  # how the rubric scores were combined into the total
     budget_gpu_hours: float | None
     markdown: str  # run-relative path of the agent's own write-up
+    previous: Round | None = None  # this set against the one before it (None: the first)
 
 
 def _selection_artifact(run: RunHandle) -> str | None:
@@ -174,6 +176,7 @@ def hypotheses(project: str, run_id: str, request: Request, version: int | None 
         shortlist = [papers.view(h, i) for i, h in enumerate(hs.hypotheses)]
         others = [papers.view(h, None) for h in hs.candidates if h.id not in offered]
     others.sort(key=lambda c: (c.hypothesis.rejected_reason is not None, -c.hypothesis.total_score))
+    found = previous_round(run, store, envelope)
     return HypothesesView(
         stage=sid,
         version=envelope.version,
@@ -185,4 +188,5 @@ def hypotheses(project: str, run_id: str, request: Request, version: int | None 
         weights=dict(getattr(config, "weights", None) or {}),
         budget_gpu_hours=run.config.budgets.run.max_gpu_hours,
         markdown=hs.markdown_path,
+        previous=found[0] if found else None,
     )
