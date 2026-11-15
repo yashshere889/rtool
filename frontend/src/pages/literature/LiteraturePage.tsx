@@ -10,6 +10,7 @@ import { FailureCard } from "@/components/FailureCard";
 import { ReopenButton } from "@/components/ReopenDialog";
 import { RoundBanner } from "@/components/RoundBanner";
 import { StageProgress } from "@/components/StageProgress";
+import { Suggestions } from "@/components/Suggestions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
@@ -51,12 +52,14 @@ export function ChoicesBar({
   gate,
   choices,
   titles,
+  suggestions = [],
   onSent,
 }: {
   run: RunDetail;
   gate: OpenGate;
   choices: Record<string, Choice>;
   titles: Map<string, string>;
+  suggestions?: string[];
   onSent: () => void;
 }) {
   const { send, decide } = useGateDecision(run, gate);
@@ -98,6 +101,7 @@ export function ChoicesBar({
               Anything else? (optional: with a comment the papers are also screened again)
             </label>
             <Textarea id={commentId} rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="For example: also cover studies in older adults." />
+            <Suggestions run={run} stage={gate.stage} extra={suggestions} value={comment} onChange={setComment} />
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <DialogClose asChild>
@@ -199,11 +203,13 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
   }
   const view = literature.data;
   const stats = view.stats;
+  // the sub-topics the search plan meant to cover that have fewer than two papers (as the quality check counts)
+  const thin = view.subtopics.filter((s) => s.paper_ids.length < 2).map((s) => `Find more papers on ${s.name}.`);
 
   return (
     <div className="space-y-6">
       {header}
-      {stage.gate && <CheckpointCard run={run} gate={stage.gate} showStageLink={false} />}
+      {stage.gate && <CheckpointCard run={run} gate={stage.gate} showStageLink={false} suggestions={thin} />}
       {stage.status === "failed" && <FailureCard run={run} stage={stage} />}
       {view.previous && (
         <RoundBanner round={view.previous} what="set of papers">
@@ -326,6 +332,7 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
               gate={gate}
               choices={choices}
               titles={new Map(view.papers.map((p) => [p.id, p.title]))}
+              suggestions={thin}
               onSent={clear}
             />
           )}

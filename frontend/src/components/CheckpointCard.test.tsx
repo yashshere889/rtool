@@ -144,6 +144,21 @@ describe("CheckpointCard", () => {
     expect(await screen.findByRole("note", { name: "Warnings" })).toHaveTextContent("Only 9 relevant papers found (aimed for 30)");
   });
 
+  it("offers the page's suggestions in the request dialog and adds a clicked one to the comment", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    const litGate: OpenGate = { ...gate, stage: "literature", kind: "approve", gate: "literature_review", nonce: "lit3", actions: ["approve", "reject"] };
+    render(wrap(<CheckpointCard run={run} gate={litGate} suggestions={["Find more papers on stimulation at home."]} />));
+    await userEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    expect(screen.getByText(/searched and screened again with your comments/)).toBeInTheDocument();
+    const box = screen.getByLabelText("What should change?");
+    await userEvent.type(box, "Focus on older adults.");
+    const suggestion = screen.getByRole("button", { name: /Find more papers on stimulation at home/ });
+    await userEvent.click(suggestion);
+    expect(box).toHaveValue("Focus on older adults.\nFind more papers on stimulation at home.");
+    expect(suggestion).toBeDisabled();
+  });
+
   it("offers undo instead of buttons while a decision is queued", () => {
     const queued = { ...run, queued_actions: [{ id: "q1", kind: "approve", stage: "hypotheses", gate: "hypothesis_selection" }] };
     render(wrap(<CheckpointCard run={queued as unknown as RunDetail} gate={gate} />));
