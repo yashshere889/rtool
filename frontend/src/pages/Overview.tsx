@@ -1,4 +1,5 @@
 import { CirclePause, Loader, Play, Square } from "lucide-react";
+import { useState } from "react";
 
 import { useResume, useSettings, useStop } from "@/api/hooks";
 import type { RunDetail } from "@/api/types";
@@ -101,6 +102,7 @@ function Usage({ run }: { run: RunDetail }) {
 
 export function Overview() {
   const { run } = useRunContext();
+  const [feedStage, setFeedStage] = useState("");
   const otherQueued = { ...run, queued_actions: run.queued_actions.filter((a) => !a.gate) };
   return (
     <div className="space-y-6">
@@ -126,9 +128,27 @@ export function Overview() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <Card>
-          <CardHeader title="Activity" description="What the agents did, newest first. Updates live." />
+          <CardHeader
+            title="Activity"
+            description="What the agents did, newest first. Updates live."
+            action={
+              <select
+                aria-label="Show activity of"
+                className="h-8 rounded-md border border-line bg-surface px-2 text-sm"
+                value={feedStage}
+                onChange={(e) => setFeedStage(e.target.value)}
+              >
+                <option value="">Every stage</option>
+                {run.stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {stageTitle(s.id)}
+                  </option>
+                ))}
+              </select>
+            }
+          />
           <CardBody>
-            <ActivityFeed project={run.project} runId={run.run_id} />
+            <ActivityFeed project={run.project} runId={run.run_id} stage={feedStage || undefined} />
           </CardBody>
         </Card>
         <div className="space-y-6">
