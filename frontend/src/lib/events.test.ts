@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeEvent } from "./events";
+import { describeEvent, lastFailure } from "./events";
 
 const event = (kind: string, data: Record<string, unknown> = {}, stage?: string) => ({
   ts: "2026-10-09T10:00:00+00:00",
@@ -32,5 +32,25 @@ describe("activity feed wording", () => {
   it("hides bookkeeping and still shows unknown events", () => {
     expect(describeEvent(event("artifact_committed"))).toBeNull();
     expect(describeEvent(event("novelty_checked", {}, "novelty"))?.text).toBe("Novelty: Novelty checked");
+  });
+});
+
+describe("lastFailure", () => {
+  it("returns the latest failure with only the automatic retries that led to it", () => {
+    const events = [
+      { ...event("stage_retrying", {}, "code") },
+      { ...event("stage_failed", { attempt: 1, traceback: "old" }, "code") },
+      { ...event("stage_retrying", {}, "code") },
+      { ...event("stage_retrying", {}, "plan") }, // another stage
+      { ...event("stage_retrying", {}, "code") },
+      { ...event("stage_failed", { attempt: 2, traceback: "KeyError: 'sections'" }, "code"), ts: "2026-10-21T03:31:00+00:00" },
+    ];
+    expect(lastFailure(events, "code")).toEqual({
+      ts: "2026-10-21T03:31:00+00:00",
+      attempt: 2,
+      traceback: "KeyError: 'sections'",
+      retries: 2,
+    });
+    expect(lastFailure(events, "report")).toBeNull();
   });
 });
