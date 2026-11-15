@@ -98,3 +98,25 @@ export function describeEvent(event: RunEvent): Described | null {
   if (handler) return handler(event.data ?? {}, stage);
   return { text: `${stage ? `${stage}: ` : ""}${humanize(event.kind)}`, tone: "neutral" };
 }
+
+export interface Failure {
+  ts: string;
+  attempt: number;
+  traceback: string;
+  retries: number; // times the tool tried again by itself before giving up
+}
+
+/** A stage's latest failure, from the event log (null: none recorded). */
+export function lastFailure(events: RunEvent[], stage: string): Failure | null {
+  let failure: Failure | null = null;
+  let retries = 0;
+  for (const e of events) {
+    if (e.stage !== stage) continue;
+    if (e.kind === "stage_retrying") retries += 1;
+    if (e.kind === "stage_failed") {
+      failure = { ts: e.ts, attempt: num(e.data?.attempt), traceback: str(e.data?.traceback), retries };
+      retries = 0;
+    }
+  }
+  return failure;
+}
