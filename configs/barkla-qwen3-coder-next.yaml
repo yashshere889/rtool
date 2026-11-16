@@ -23,6 +23,10 @@ llm:
     extra_args: [--tensor-parallel-size, "2", --safetensors-load-strategy, eager,
                  --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}']
     gpu_memory_utilization: 0.90
+    # vLLM 0.15 picks FlashInfer's CUTLASS kernel for FP8 MoE, which JIT-compiles into the read-only image
+    # (first try, 2026-11-14: "Read-only file system: .../flashinfer/data/csrc"). Setting these to 0 makes
+    # vLLM drop the FlashInfer and DeepGEMM kernels (both JIT) and use its precompiled CUTLASS or Triton.
+    env: {VLLM_USE_FLASHINFER_MOE_FP8: "0", VLLM_USE_DEEP_GEMM: "0"}
 
 slurm:
   episode:

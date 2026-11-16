@@ -183,7 +183,9 @@ def replay_run(source: RunHandle, stage: str, tag: str, overlays: Iterable[Path]
     busy = [sid for sid, st in stages.items() if st.status in (StageStatus.RUNNING, StageStatus.SUSPENDED)]
     if busy:
         raise RToolError(f"stages {busy} are running or waiting for jobs; replay a run that is at rest")
-    if any(stages[a].status is not StageStatus.DONE for a in pipeline.ancestors(stage)):
+    # a stage waiting at its gate has committed its outputs: the copy treats its gate as approved
+    settled = (StageStatus.DONE, StageStatus.AWAITING_GATE)
+    if any(stages[a].status not in settled for a in pipeline.ancestors(stage)):
         raise RToolError(f"the stages before {stage!r} are not all done, so it has no complete inputs")
     root = source.root.parent / run_id
     if root.exists():
@@ -206,6 +208,14 @@ def replay_run(source: RunHandle, stage: str, tag: str, overlays: Iterable[Path]
     run = RunHandle(root)
     store = StateStore(run.state_dir)
     store.run_path.unlink(missing_ok=True)  # the engine starts a fresh run state (new nonce, no episodes)
+    for sid in pipeline.ancestors(stage):
+        st = stages[sid]
+        if st.status is StageStatus.AWAITING_GATE:
+            st.status = StageStatus.DONE
+            if st.gate is not None:
+                st.gate.status = GateStatus.APPROVED
+                st.gate.resolution = {"by": "replay"}
+            store.save_stage(st)
     target = stages[stage]
     target.status, target.stale_reason = StageStatus.STALE, f"replay ({tag})"
     target.resume, target.agent_state, target.waiting_on = False, {}, []

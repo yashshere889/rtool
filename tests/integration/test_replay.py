@@ -39,11 +39,14 @@ def test_replay_redoes_one_stage_under_an_overlay(runs_root: Path, mock_llm: Moc
 
 def test_replay_refuses_unfinished_inputs_and_unknown_stages(runs_root: Path, mock_llm: MockLLM) -> None:
     source = make_run(runs_root, "toy")
-    drive(source, make_services(source, mock_llm))
     with pytest.raises(RToolError, match="not all done"):
-        replay_run(source, "analyze", "x")
+        replay_run(source, "analyze", "x")  # nothing has run yet: no inputs
+    drive(source, make_services(source, mock_llm))
     with pytest.raises(RToolError, match="no stage"):
         replay_run(source, "nope", "x")
+    copy = replay_run(source, "analyze", "gate")  # `source` waits at its gate: approved in the copy only
+    assert StateStore(copy.state_dir).load_stage("source").status is StageStatus.DONE
+    assert StateStore(source.state_dir).load_stage("source").status is StageStatus.AWAITING_GATE
     replay_run(source, "source", "x")
     with pytest.raises(RToolError, match="already exists"):
         replay_run(source, "source", "x")
