@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from research_tool.agents.planner.checks import (
+    compute_issues,
     design_issues,
     fit_compute,
     format_time,
@@ -19,7 +20,8 @@ from research_tool.agents.planner.checks import (
     results_schema,
     slug,
 )
-from research_tool.core.config import load_config
+from research_tool.agents.tasks.fetch_resources import torchvision_downloader
+from research_tool.core.config import ExperimentsConfig, load_config
 from research_tool.schemas.plan import ComputeEstimate, Condition, Metric, PlanCore, ResourceChoice, ResourceSpec
 from research_tool.tools.http import PoliteHttp
 from research_tool.tools.resources.checks import HubChecker
@@ -75,6 +77,20 @@ def test_compute_problems_are_reported(config) -> None:  # noqa: ANN001
     assert any("allows 3-00:00:00" in i for i in issues) and any("budget is 50" in i for i in issues)
 
 
+def test_a_plan_must_fit_the_budget_as_the_coder_will_charge_it(config) -> None:  # noqa: ANN001
+    """Barkla, 2026-11-12: 6 runs at 2 h under a 12 h cap passed the plan check (12.0), but the jobs ask for their
+    time limit (2 h x 1.3 = 2.6 h each, 15.6 in all) and the Coder refused to submit them."""
+    tight = load_config(BARKLA, overrides={"budgets": {"run": {"max_gpu_hours": 12}}}, env={"USER": "me"})
+    estimate = ComputeEstimate(gpu_memory_gb=5, gpus_per_run=1, hours_per_run=2, justification="")
+    request, issues = fit_compute(estimate, runs=6, config=tight)
+    assert request.gpu_hours_total == 12 and request.time_limit == "02:36:00"
+    assert len(issues) == 1 and "15.6" in issues[0] and issues[0].endswith("the budget is 12")
+    assert compute_issues(request, tight) == issues  # a hand edit and the page's live check say the same
+    shorter = request.model_copy(update={"hours_per_run": 0.25, "time_limit": "00:20:00", "gpu_hours_total": 1.5})
+    assert compute_issues(shorter, tight) == []  # 6 x 20 min = 2 GPU-hours
+    assert fit_compute(estimate, runs=6, config=config)[1] == []  # 15.6 fits a 50 h budget
+
+
 def core_with(metrics: list[dict]) -> PlanCore:
     return PlanCore(
         objective="o",
@@ -95,6 +111,8 @@ def test_design_rules() -> None:
     issues = " ".join(design_issues(core, min_seeds=3))
     assert "baseline" in issues and "unique" in issues and "at least 3 seeds" in issues
     assert "primary" not in issues
+    twice = normalise_core(core_with([{"name": "Accuracy", "definition": "a"}, {"name": "accuracy", "definition": ""}]))
+    assert "metric names must be unique: ['accuracy']" in design_issues(twice, min_seeds=1)
     with pytest.raises(ValidationError, match="higher_is_better"):  # the model may not leave the direction out
         PlanCore.model_validate(core.model_dump() | {"metrics": [{"name": "acc", "definition": "accuracy"}]})
 
@@ -221,3 +239,53 @@ def test_fetcher(tmp_path: Path) -> None:
     no_hub = Fetcher(tmp_path, snapshot=None)
     no_hub.snapshot = None
     assert "huggingface_hub is not installed" in no_hub.fetch(spec(source="huggingface", identifier="a/b")).note
+
+
+def test_torchvision_datasets_are_fetched_once_for_every_run(tmp_path: Path) -> None:
+    """Barkla, 2026-11-12: CIFAR-10 was "deferred", nothing downloaded it, and the Coder's smoke test found no data
+    in four repair rounds. Now the fetch stage downloads it with torchvision and the Coder gets its folder."""
+
+    def downloaded(identifier: str, target: Path) -> str:
+        target.mkdir(parents=True)
+        (target / "data_batch_1").write_bytes(b"x" * 10)
+        return "CIFAR10"
+
+    def unknown(identifier: str, target: Path) -> str:
+        raise RuntimeError(f"torchvision download failed: torchvision has no dataset {identifier!r}")
+
+    resource = ResourceSpec(kind="dataset", name="CIFAR-10", source="torchvision", identifier="cifar-10", purpose="")
+    ready = Fetcher(tmp_path, snapshot=None, torchvision=downloaded).fetch(resource)
+    assert ready.status == "ready" and ready.path == str(tmp_path / "torchvision" / "cifar-10") and ready.files == 1
+    assert ready.note == "torchvision.datasets.CIFAR10"
+    failed = Fetcher(tmp_path, snapshot=None, torchvision=unknown).fetch(
+        resource.model_copy(update={"identifier": "x"})
+    )
+    assert failed.status == "failed" and "has no dataset 'x'" in failed.note
+    assert Fetcher(tmp_path, snapshot=None).fetch(resource).status == "deferred"  # nothing here to download with
+
+
+def test_the_torchvision_downloader_runs_torchvision_itself(tmp_path: Path) -> None:
+    logs = tmp_path / "logs"  # the downloader's working folder: a stand-in torchvision is imported from it
+    (logs / "torchvision").mkdir(parents=True)
+    (logs / "torchvision" / "__init__.py").write_text("")
+    (logs / "torchvision" / "datasets.py").write_text(
+        "import os\n"
+        "class CIFAR10:\n"
+        "    def __init__(self, root, train=True, transform=None, download=False):\n"
+        "        open(os.path.join(root, 'train' if train else 'test'), 'w').close()\n"
+        "class SVHN:\n"
+        "    def __init__(self, root, split='train', download=False):\n"
+        "        open(os.path.join(root, split + '.mat'), 'w').close()\n"
+        "class ImageNet:\n"
+        "    def __init__(self, root, split='train'):\n"
+        "        pass\n"
+    )
+    download = torchvision_downloader(ExperimentsConfig(), tmp_path / "data", logs)
+    assert download("cifar-10", tmp_path / "data" / "a") == "CIFAR10"  # matched however the planner spells it
+    assert sorted(p.name for p in (tmp_path / "data" / "a").iterdir()) == ["test", "train"]
+    assert download("svhn", tmp_path / "data" / "b") == "SVHN"
+    assert sorted(p.name for p in (tmp_path / "data" / "b").iterdir()) == ["test.mat", "train.mat"]
+    with pytest.raises(RuntimeError, match="cannot download ImageNet itself"):
+        download("ImageNet", tmp_path / "data" / "c")
+    with pytest.raises(RuntimeError, match="has no dataset 'ImageNet100'"):
+        download("ImageNet100", tmp_path / "data" / "d")

@@ -60,16 +60,24 @@ class ActionInbox:
         atomic_write_json(path, action.model_dump(mode="json"))
         return path
 
-    def pending(self) -> list[tuple[Path, Action]]:
+    def pending(self, *, move_invalid: bool = False) -> list[tuple[Path, Action]]:
+        """Queued actions, oldest first.
+
+        Only the engine (``move_invalid``, under the run lease) moves unreadable ones aside: a status page
+        may run another rtool version, which cannot read every action a newer one queued.
+        """
         if not self.root.is_dir():
             return []
         out: list[tuple[Path, Action]] = []
         for path in sorted(self.root.glob("*.json")):
             try:
                 out.append((path, Action.model_validate(read_json(path))))
+            except FileNotFoundError:
+                continue  # applied or withdrawn since the listing
             except (json.JSONDecodeError, ValidationError, OSError):
-                self.invalid_dir.mkdir(parents=True, exist_ok=True)
-                path.replace(self.invalid_dir / path.name)
+                if move_invalid:
+                    self.invalid_dir.mkdir(parents=True, exist_ok=True)
+                    path.replace(self.invalid_dir / path.name)
         return out
 
     def archive(self, path: Path, action: Action, outcome: dict[str, Any]) -> None:

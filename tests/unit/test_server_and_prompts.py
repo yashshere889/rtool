@@ -62,6 +62,8 @@ def test_container_gets_its_own_home_and_clean_python(monkeypatch: pytest.Monkey
     assert cmd[3:6] == ["--home", str(tmp_path / "vhome"), "/images/vllm.sif"]
     env = server.environment("tok")
     assert "PYTHONPATH" not in env and env["PYTHONNOUSERSITE"] == "1" and env["VLLM_NO_USAGE_STATS"] == "1"
+    extra = VLLMServer(config(container="/i.sif", env={"VLLM_USE_FLASHINFER_MOE_FP8": "0"}), tmp_path).environment("t")
+    assert extra["VLLM_USE_FLASHINFER_MOE_FP8"] == extra["APPTAINERENV_VLLM_USE_FLASHINFER_MOE_FP8"] == "0"
 
 
 def test_container_must_be_configured(tmp_path: Path) -> None:

@@ -39,7 +39,7 @@ def read_output(path: Path, metrics: list[str]) -> tuple[dict[str, Any] | None, 
     missing = [m for m in metrics if m not in values or not math.isfinite(values[m])]
     if missing:
         return None, f"missing or non-finite metrics {missing}"
-    return {"metrics": values, "seconds": data.get("seconds")}, ""
+    return {"metrics": values, "seconds": data.get("seconds"), "job_id": str(data.get("job_id") or "")}, ""
 
 
 def collect(
@@ -56,8 +56,9 @@ def collect(
         key = output_name(condition, seed)
         data, problem = read_output(runs_dir / key, names)
         job = (job_of or {}).get(key, "")
-        if data is not None:
-            records.append(RunRecord(condition=condition, seed=seed, status="ok", job_id=job, **data))
+        if data is not None:  # the job the run file names beats the one rtool submitted
+            data["job_id"] = data["job_id"] or job
+            records.append(RunRecord(condition=condition, seed=seed, status="ok", **data))
             continue
         status = "missing" if problem == "no output file" and not job else "failed"
         error = (failure_of(condition, seed) if failure_of else "") or problem
