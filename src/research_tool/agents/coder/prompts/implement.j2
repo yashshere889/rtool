@@ -17,7 +17,7 @@ Null hypothesis: {{ plan.null_hypothesis }}
 {% for step in plan.procedure %}{{ loop.index }}. {{ step }}
 {% endfor %}
 ## Data and models — already downloaded; use these local paths and never download
-{% for r in resources %}- resources["{{ r.name }}"]: {{ r.kind }} from {{ r.source }}:{{ r.identifier }}{% if r.files %}; files: {{ r.files }}{% endif %}
+{% for r in resources %}- resources["{{ r.name }}"]: {{ r.kind }} from {{ r.source }}:{{ r.identifier }}{% if r.source == "torchvision" %} (a torchvision dataset folder: pass it as `root=` with `download=False`){% endif %}{% if r.files %}; files: {{ r.files }}{% endif %}
 {% else %}- (none downloaded{% if not deferred and not missing %}: generate or simulate the data in code{% endif %})
 {% endfor %}
 {% for r in missing %}- `{{ r.name }}` ({{ r.kind }}{% if r.purpose %}: {{ r.purpose }}{% endif %}) is NOT available: nobody provided it, so never read resources["{{ r.name }}"]. Build a real, working version of it in code (e.g. write the environment or model yourself, or use a pip package on the `# requirements:` line).

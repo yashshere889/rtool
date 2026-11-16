@@ -82,6 +82,8 @@ class HubChecker:
                     licence if isinstance(licence, str) and len(licence) <= 40 else "",
                     note="on PyPI; installed with the experiment code",
                 )
-            return ResourceCheck(True, note=f"{resource.source} resources are installed with the experiment code")
+            return ResourceCheck(
+                True, note="a torchvision dataset: downloaded with torchvision when the plan is approved"
+            )
         except HttpError as exc:
             return ResourceCheck(False, note=str(exc)[:200])
