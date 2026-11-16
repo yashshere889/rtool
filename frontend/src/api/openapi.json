@@ -3735,6 +3735,23 @@
       "title": "Head",
       "type": "integer"
      },
+     "hypothesis_checks": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Hypothesis Checks",
+      "type": "array"
+     },
+     "hypothesis_outcome": {
+      "enum": [
+       "",
+       "supported",
+       "refuted",
+       "inconclusive"
+      ],
+      "title": "Hypothesis Outcome",
+      "type": "string"
+     },
      "markdown_path": {
       "title": "Markdown Path",
       "type": "string"
@@ -3808,6 +3825,8 @@
      "figures",
      "findings",
      "head",
+     "hypothesis_checks",
+     "hypothesis_outcome",
      "markdown_path",
      "papers",
      "placeholders",

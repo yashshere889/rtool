@@ -35,6 +35,7 @@ def test_the_report_as_sections(runs_root: Path) -> None:
     assert view["placeholders"] and all(p["meaning"] for p in view["placeholders"])
     assert view["references"] and {r["key"] for r in view["references"]} <= {p["key"] for p in view["papers"]}
     assert view["base_dir"] == str(Path(view["markdown_path"]).parent)
+    assert view["hypothesis_outcome"] == "supported" and view["hypothesis_checks"]  # the demo's verdict
     final = c.get(f"{AT_GATE}/report", params={"which": "final_report"}).json()
     assert final["stage"] == "review" and final["editable"]  # while the final checkpoint is open
     assert c.get("/api/runs/sleep-demo/4-gpu-runs/report").status_code == 404

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -43,6 +43,10 @@ const responses: Record<string, unknown> = {
       ],
     },
   },
+  "/report?": {
+    hypothesis_outcome: "supported",
+    hypothesis_checks: ["Phase-locked recall gain 2.1 is above sham, as the criterion asks"],
+  },
   "/review": { review: { verdict: "accept", summary: "A careful simulation study." } },
 };
 
@@ -82,7 +86,10 @@ describe("FinishedSummary", () => {
     );
     expect(await screen.findByText("Better than baseline")).toBeInTheDocument();
     expect(screen.getByText("No clear difference")).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2); // only the primary outcome's comparisons
+    expect(await screen.findByText("Supported")).toBeInTheDocument();
+    const checks = screen.getByRole("list", { name: "How the criterion was applied" });
+    expect(within(checks).getByText(/above sham, as the criterion asks/)).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(3); // 1 check + only the primary outcome's 2 comparisons
     expect(screen.getByText(/1 warning about these results/)).toBeInTheDocument();
     expect(await screen.findByText(/recommended accepting the report, and you approved it/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Read the final report" })).toHaveAttribute("href", "/runs/sleep/r1/review?tab=final");
