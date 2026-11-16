@@ -8,7 +8,7 @@ import type { OpenGate, PaperCardData, RunDetail, StageSummary } from "@/api/typ
 import { CheckpointCard, useGateDecision } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
 import { ReopenButton } from "@/components/ReopenDialog";
-import { RoundBanner } from "@/components/RoundBanner";
+import { RoundBanner, TitleList } from "@/components/RoundBanner";
 import { StageProgress } from "@/components/StageProgress";
 import { Suggestions } from "@/components/Suggestions";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -230,8 +230,11 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
                 </button>
               )}
               {view.papers_added.length > 0 && view.papers_removed.length > 0 && " · "}
-              {view.papers_removed.length > 0 &&
-                `No longer included: ${view.papers_removed.map((p) => `“${p.title}”`).join(", ")}`}
+              {view.papers_removed.length > 0 && (
+                <>
+                  {view.papers_removed.length} no longer included: <TitleList titles={view.papers_removed.map((p) => p.title)} />
+                </>
+              )}
             </p>
           )}
         </RoundBanner>

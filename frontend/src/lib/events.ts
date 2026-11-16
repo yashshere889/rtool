@@ -209,6 +209,8 @@ export function stageProgress(events: RunEvent[], stage: string, agent: string):
   const submitted = events.findLastIndex((e) => e.kind === "episode_submitted");
   const started = events.findLastIndex((e) => e.kind === "episode_started");
   const waiting = submitted > started ? events[submitted] : null;
+  // Nothing is running while the worker waits in the queue, so no step is "current" yet.
+  if (waiting && steps) steps = steps.map((s) => (s.state === "current" ? { ...s, state: "waiting" } : s));
   return {
     since: start >= 0 ? events[start].ts : null,
     steps,

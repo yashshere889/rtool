@@ -76,7 +76,7 @@ describe("stageProgress", () => {
     ];
     const progress = stageProgress(events, "literature", "literature");
     expect(progress.since).toBe("2026-10-09T11:00:00+00:00");
-    expect(progress.steps?.slice(0, 4).map((s) => s.state)).toEqual(["done", "done", "current", "waiting"]);
+    expect(progress.steps?.slice(0, 4).map((s) => s.state)).toEqual(["done", "done", "waiting", "waiting"]); // queued: nothing runs yet
     expect(progress.latest?.text).toBe("Literature started (continuing)");
     expect(progress.queued).toEqual({ since: "2026-10-09T11:10:00+00:00", job: "123", expectedStart: "2026-10-09T12:00:00" });
   });
@@ -85,6 +85,8 @@ describe("stageProgress", () => {
     const events = [at("stage_started", {}, "code"), at("phase_changed", { phase: "smoke" }, "code"), at("episode_started")];
     expect(stageProgress(events, "code", "coder").steps?.map((s) => s.state)).toEqual(["done", "current", "waiting", "waiting", "waiting"]);
     expect(stageProgress(events, "code", "coder").queued).toBeNull();
+    const queued = [...events, at("episode_submitted", { job: "7" })];
+    expect(stageProgress(queued, "code", "coder").steps?.map((s) => s.state)).toEqual(["done", "waiting", "waiting", "waiting", "waiting"]);
     expect(stageProgress([at("stage_started", {}, "plan")], "plan", "planner").steps).toBeNull();
   });
 });
