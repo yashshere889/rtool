@@ -4,7 +4,9 @@
   on Barkla via the ``[barkla]`` extra), into a cache shared across runs so a
   model is downloaded once.
 * URLs: streamed with a size cap.
-* torchvision / pip: deferred — the Coder's environment installs them.
+* torchvision datasets: downloaded once by torchvision itself (``torchvision``, a callable that runs it in
+  the experiment environment), so smoke tests and every run read the same local folder.
+* pip (and torchvision when no such callable is given): deferred — the Coder's environment handles them.
 * manual: the human provides them (the manifest says where to put them).
 """
 
@@ -22,6 +24,7 @@ from ..http import HttpError, PoliteHttp
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 Snapshot = Callable[..., str]
+Torchvision = Callable[[str, Path], str]  # (identifier, target folder) -> the torchvision class it resolved to
 
 
 def default_snapshot() -> Snapshot | None:
@@ -51,12 +54,14 @@ class Fetcher:
         snapshot: Snapshot | None = None,
         hf_token: str | None = None,
         max_url_bytes: int = 50 * 1024**3,
+        torchvision: Torchvision | None = None,
     ) -> None:
         self.root = Path(root)
         self.http = http
         self.snapshot = snapshot if snapshot is not None else default_snapshot()
         self.hf_token = hf_token
         self.max_url_bytes = max_url_bytes
+        self.torchvision = torchvision
 
     def fetch(self, resource: ResourceSpec) -> FetchedResource:
         base: dict[str, Any] = {
@@ -65,7 +70,7 @@ class Fetcher:
             "source": resource.source,
             "identifier": resource.identifier,
         }
-        if resource.source in ("torchvision", "pip"):
+        if resource.source == "pip" or (resource.source == "torchvision" and self.torchvision is None):
             return FetchedResource(**base, status="deferred", note="installed with the experiment environment")
         if resource.source == "manual":
             target = self.root / "manual" / _SAFE.sub("_", resource.name)
@@ -76,6 +81,8 @@ class Fetcher:
         try:
             if resource.source == "huggingface":
                 return self._huggingface(resource, base)
+            if resource.source == "torchvision":
+                return self._torchvision(resource, base)
             return self._url(resource, base)
         except (HttpError, OSError, RuntimeError, ValueError) as exc:
             return FetchedResource(**base, status="failed", note=str(exc)[:300])
@@ -92,6 +99,18 @@ class Fetcher:
         )
         size, files = tree_size(Path(path))
         return FetchedResource(**base, status="ready", path=str(path), bytes=size, files=files)
+
+    def _torchvision(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
+        assert self.torchvision is not None
+        # shortcut: two runs fetching the same dataset at the same moment write the same files (as two Hugging
+        # Face snapshots would); lock the folder if fetches ever run in parallel. A later fetch is safe: torchvision
+        # checks what is there and downloads nothing twice.
+        target = self.root / "torchvision" / _SAFE.sub("_", resource.identifier)
+        name = self.torchvision(resource.identifier, target)
+        size, files = tree_size(target)
+        return FetchedResource(
+            **base, status="ready", path=str(target), bytes=size, files=files, note=f"torchvision.datasets.{name}"
+        )
 
     def _url(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
         if self.http is None:

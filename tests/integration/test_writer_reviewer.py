@@ -8,8 +8,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from research_tool.agents.coder.results import aggregate
-from research_tool.agents.reviewer.agent import ReviewerConfig, Reviewing, shown_code
+from research_tool.agents.reviewer.agent import ReviewerConfig, Reviewing, pasted, shown_code
 from research_tool.core.actions import ActionKind
 from research_tool.core.artifacts import ArtifactStore, Producer
 from research_tool.core.engine import Engine, Outcome
@@ -19,9 +21,17 @@ from research_tool.core.services import Services
 from research_tool.llm.client import LLMClient
 from research_tool.llm.mock_backend import MockLLM
 from research_tool.llm.types import ChatRequest
-from research_tool.schemas.code import CodeBundle, ExperimentResults, FixRecord
+from research_tool.schemas.code import CodeBundle, CodeFile, ExperimentResults, FixRecord
 from research_tool.schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord, Topic
-from research_tool.schemas.report import AuditAnswer, CodeAuditDraft, ReviewDraft, ReviewIssueDraft, Rubric
+from research_tool.schemas.report import (
+    AuditAnswer,
+    CodeAuditDraft,
+    HypothesisVerdict,
+    ReviewDraft,
+    ReviewIssue,
+    ReviewIssueDraft,
+    Rubric,
+)
 from research_tool.testing.harness import make_run, queue
 from research_tool.testing.samples import sample_plan as plan
 from research_tool.testing.samples import sample_records as records
@@ -66,6 +76,7 @@ def seed(
     stages: list[dict] | None = None,
     fixes: list | None = None,
     primary: str = "acc",
+    files: list | None = None,
 ) -> RunHandle:
     run = make_run(
         runs_root,
@@ -116,7 +127,7 @@ def seed(
         complete=all(r.status == "ok" for r in runs),
         results_path="results.json",
     )
-    bundle = CodeBundle(root="code", files=[], pack="generic", readme_path="README.md", fixes=fixes or [])
+    bundle = CodeBundle(root="code", files=files or [], pack="generic", readme_path="README.md", fixes=fixes or [])
     store = ArtifactStore(run.artifacts_dir)
     for name, value in [
         ("corpus", corpus),
@@ -139,8 +150,18 @@ def honest(request: ChatRequest) -> str:
     return text
 
 
+VERDICT = {
+    "checks": ["The criterion asks for a gain of at least 20%; the gain was +10.3%: not met"],
+    "outcome": "refuted",
+}
+
+
 def writer_llm(
-    section: Any = honest, fix: Any = honest, issues: list[dict] | None = None, audit: Any = None
+    section: Any = honest,
+    fix: Any = honest,
+    issues: list[dict] | None = None,
+    audit: Any = None,
+    verdict: dict = VERDICT,
 ) -> MockLLM:
     review = {
         "scores": {"soundness": 4, "evidence": 4, "clarity": 4, "reproducibility": 4, "limitations": 4},
@@ -156,6 +177,7 @@ def writer_llm(
             lambda r: "Write the title and the abstract" in r.messages[-1].content,
             {"title": "New beats base", "abstract": "Across {{runs_ok}} runs the new method won."},
         )
+        .add(lambda r: r.messages[-1].content.startswith("Decide what the experiment says"), verdict)
         .add(lambda r: "Check the report sections below" in r.messages[-1].content, {"items": []})
         .add(lambda r: "Review this research report" in r.messages[-1].content, review)
         .add(is_audit, audit or auditor())
@@ -179,6 +201,62 @@ def test_writer_repairs_typed_numbers_and_unknown_citations(runs_root: Path) -> 
     text = (run.root / report.markdown_path).read_text()
     assert "nobody2024" not in text and "reached 0.713 (p = 0.010)" in text  # the number came from the results
     assert report.citations == ["smith2020"] and "r = 0.41" not in text  # nothing invented
+
+
+def test_the_verdict_comes_from_the_success_criterion_not_from_significance(runs_root: Path) -> None:
+    """Seen on Barkla: a significant 7.5% cut was written up as supporting a hypothesis that asked for 30%."""
+    run = seed(runs_root)
+    llm = writer_llm()
+    Engine(run, services(run, llm)).advance()
+    store = ArtifactStore(run.artifacts_dir)
+    report = store.get("report")
+    assert report.hypothesis_outcome == "refuted" and report.hypothesis_checks == VERDICT["checks"]
+    prompts = [r.messages[-1].content for r in llm.calls]
+    judge = next(t for t in prompts if t.startswith("Decide what the experiment says"))
+    # the criterion and the size of the change, with numbers: significance alone cannot decide it
+    assert "## Success criterion" in judge and "`acc` rose" in judge
+    assert "relative rise (share of the baseline mean) 10.3%" in judge
+    assert "absolute rise 6.7 percentage points" in judge and "i.e." not in judge
+    assert prompts.index(judge) == 0  # before any prose, so every section states the same verdict
+    for title in ("Results", "Discussion", "Conclusion"):  # each can state the verdict and the size of the change
+        prompt = next(t for t in prompts if t.startswith(f'Write the "{title}" section'))
+        assert ("{{std:acc:new}}" in prompt) is (title != "Results")  # the tables show them
+        assert "Verdict on the hypothesis, from its success criterion: REFUTED" in prompt
+        assert "{{rel:acc:new}}" in prompt and "Success criterion (fixed before the experiment ran)" in prompt
+    review = next(t for t in prompts if t.startswith("Review this research report"))
+    assert "Verdict on the hypothesis, from its success criterion: REFUTED" in review
+
+
+def test_a_verdict_needs_real_checks() -> None:
+    """Seen on Barkla: checks == [":{"] after a reasoning pass."""
+    with pytest.raises(ValueError):
+        HypothesisVerdict.model_validate({"checks": [":{"], "outcome": "refuted"})
+    assert HypothesisVerdict.model_validate(VERDICT).outcome == "refuted"
+
+
+def test_a_rewrite_that_pastes_the_review_point_is_not_an_edit() -> None:
+    point = ReviewIssue(
+        section="discussion",
+        problem="The discussion mentions limitations but does not quantify the impact of the model size",
+        suggestion="Quantify it",
+    )
+    seen = "Limitations. The discussion mentions limitations but does not quantify the impact of the model size."
+    assert pasted(seen, [point])
+    assert not pasted("Limitations. The model is small, which may limit what it detects.", [point])
+
+
+def test_code_written_by_the_researcher_is_disclosed(runs_root: Path) -> None:
+    hand = CodeFile(path="experiment.py", sha256="x", lines=9, origin="human")
+    fixes = [FixRecord(round=1, phase="smoke", signature="traceback", action="rewrote experiment.py (LLM)")]
+    run = seed(runs_root, stages=[{"id": "report", "agent": "writer"}], files=[hand], fixes=fixes)
+    llm = writer_llm()
+    Engine(run, services(run, llm)).advance()
+    report = ArtifactStore(run.artifacts_dir).get("report")
+    repro = report.section("reproducibility").template
+    assert "Written or edited by the researcher: `experiment.py`" in repro
+    assert "Automatic repairs before the researcher's edits: 1" in repro
+    discussion = next(r.messages[-1].content for r in llm.calls if '"Discussion"' in r.messages[-1].content)
+    assert "The researcher wrote or edited the experiment code by hand (experiment.py)" in discussion
 
 
 def test_writer_strips_what_repairs_cannot_fix(runs_root: Path) -> None:
@@ -225,7 +303,7 @@ def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
         "problem": "Name the test",
         "suggestion": "say paired t-test",
         "target": "report",
-        "severity": "minor",
+        "severity": "major",
     }
     llm = writer_llm(issues=[issue])
     result = Engine(run, services(run, llm)).advance()
@@ -255,6 +333,28 @@ def test_review_accepts_edits_and_waits_for_the_human(runs_root: Path) -> None:
     assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.DONE
 
 
+def test_minor_issues_stay_open_instead_of_being_edited(runs_root: Path) -> None:
+    run = seed(runs_root)
+    minor = {
+        "section": "discussion",
+        "problem": "Does not say what changed in the code",
+        "suggestion": "describe the changes",
+        "target": "report",
+        "severity": "minor",
+    }
+    major = minor | {"section": "results", "problem": "Name the test", "suggestion": "say paired t-test"}
+    llm = writer_llm(issues=[minor, major | {"severity": "major"}])
+    Engine(run, services(run, llm)).advance()
+    store = ArtifactStore(run.artifacts_dir)
+    review = store.get("review")
+    assert review.verdict == "accept" and review.edited_sections == ["results"]  # a minor issue does not block
+    edits = [r.messages[-1].content for r in llm.calls if "You are editing the" in r.messages[-1].content]
+    assert len(edits) == 1 and "Name the test" in edits[0] and "what changed in the code" not in edits[0]
+    markdown = (run.root / review.review_path).read_text()
+    assert "- [minor] discussion: Does not say what changed in the code — describe the changes (open)" in markdown
+    assert "- [major] results: Name the test — say paired t-test (edited)" in markdown
+
+
 def test_rejecting_the_final_report_sends_it_back_to_the_writer(runs_root: Path) -> None:
     run = seed(runs_root)
     assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
@@ -273,6 +373,21 @@ def test_rejecting_the_final_report_sends_it_back_to_the_writer(runs_root: Path)
     review = ArtifactStore(run.artifacts_dir).get("review")
     assert review.verdict == "accept" and not review.summary.startswith("Sent back")
     assert "review_returned_to_writer" in [e["kind"] for e in EventLog(run.events_path, run.run_id)]
+
+
+def test_a_later_round_still_hears_the_earlier_comments(runs_root: Path) -> None:
+    """Seen on Barkla: round 3 would have lost round 2's requests had the comment not repeated them."""
+    run = seed(runs_root)
+    assert Engine(run, services(run, writer_llm())).advance().outcome is Outcome.WAITING_GATE
+    for comment in ("Disclose the hand-written code", "Shorten the discussion"):
+        queue(run, ActionKind.REJECT, payload={"feedback": comment})
+        llm = writer_llm()
+        assert Engine(run, services(run, llm)).advance().outcome is Outcome.WAITING_GATE
+    drafts = [r.messages[-1].content for r in llm.calls if "section of a research report" in r.messages[-1].content]
+    assert drafts
+    for prompt in drafts:
+        new, earlier = prompt.split("## Earlier requests")
+        assert "Shorten the discussion" in new and "Disclose the hand-written code" in earlier
 
 
 def test_major_experiment_problems_go_back_upstream(runs_root: Path) -> None:

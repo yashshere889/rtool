@@ -455,6 +455,10 @@ def demo_llm() -> MockLLM:
                 "predicted recall gain. Timing appears to matter for stimulation aimed at memory."
             ),
         },
+        "HypothesisVerdict": {
+            "checks": ["Phase-locked stimulation gave a larger predicted recall gain than sham, as the criterion asks"],
+            "outcome": "supported",
+        },
         "Contradictions": {"items": []},
         "CodeAuditDraft": _code_audit,
         "ReviewDraft": {
@@ -463,10 +467,10 @@ def demo_llm() -> MockLLM:
             "issues": [
                 {
                     "section": "results",
-                    "problem": "The text does not name the statistical test",
+                    "problem": "The text reports significance without naming the test, so it cannot be checked",
                     "suggestion": "Say that paired t-tests compared each condition with sham",
                     "target": "report",
-                    "severity": "minor",
+                    "severity": "major",
                 }
             ],
         },
