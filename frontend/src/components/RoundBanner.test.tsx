@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { Round } from "@/api/types";
@@ -23,8 +23,17 @@ describe("RoundBanner", () => {
       </RoundBanner>,
     );
     expect(screen.getByText("You asked: “Focus on older adults.”")).toBeInTheDocument();
-    expect(screen.getByText("You dropped “Paper A”")).toBeInTheDocument();
+    expect(screen.getByText("You dropped 1 paper: “Paper A”")).toBeInTheDocument();
     expect(screen.getByText("1 new paper")).toBeInTheDocument();
+  });
+
+  it("shortens a long list of titles behind 'and N more'", () => {
+    const kept = ["A", "B", "C", "D", "E", "F"];
+    render(<RoundBanner round={round({ feedback: [{ ...you, kept }] })} what="set of papers" />);
+    expect(screen.getByText(/You kept 6 papers: “A”, “B”, “C”/)).toBeInTheDocument();
+    expect(screen.queryByText(/“D”/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "and 3 more" }));
+    expect(screen.getByText("You kept 6 papers: “A”, “B”, “C”, “D”, “E”, “F”")).toBeInTheDocument();
   });
 
   it("says when a request came back with the same result, without a comparison", () => {

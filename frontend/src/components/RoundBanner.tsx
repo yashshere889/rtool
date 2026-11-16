@@ -1,11 +1,26 @@
 import { History } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { Round } from "@/api/types";
 import { humanize, timeAgo } from "@/lib/format";
 import { stageTitle } from "@/lib/stages";
 
-const list = (titles: string[]) => titles.map((t) => `“${t}”`).join(", ");
+const SHOWN = 3;
+const quote = (titles: string[]) => titles.map((t) => `“${t}”`).join(", ");
+
+/** The first few titles, the rest behind "and N more" (a real keep/drop round can name dozens). */
+export function TitleList({ titles }: { titles: string[] }) {
+  const [all, setAll] = useState(false);
+  if (all || titles.length <= SHOWN + 1) return <>{quote(titles)}</>;
+  return (
+    <>
+      {quote(titles.slice(0, SHOWN))}{" "}
+      <button type="button" className="text-info underline underline-offset-2 hover:no-underline" onClick={() => setAll(true)}>
+        and {titles.length - SHOWN} more
+      </button>
+    </>
+  );
+}
 
 /** Why this version replaced the previous one: the comments it acted on (or that earlier results changed).
  * ``unchanged``: the stage acted on the comments and produced the same version, so there is nothing to compare. */
@@ -14,8 +29,18 @@ export function RoundBanner({ round, what, children }: { round: Round; what: str
     const who = f.by === "you" ? "You" : stageTitle(f.from_stage ?? "") || "A later stage";
     const out: ReactNode[] = [];
     if (f.text) out.push(<li key={`${i}-t`}>{who} asked: “{f.text}”</li>);
-    if (f.dropped.length) out.push(<li key={`${i}-d`}>{who} dropped {list(f.dropped)}</li>);
-    if (f.kept.length) out.push(<li key={`${i}-k`}>{who} kept {list(f.kept)}</li>);
+    if (f.dropped.length)
+      out.push(
+        <li key={`${i}-d`}>
+          {who} dropped {f.dropped.length} {f.dropped.length === 1 ? "paper" : "papers"}: <TitleList titles={f.dropped} />
+        </li>,
+      );
+    if (f.kept.length)
+      out.push(
+        <li key={`${i}-k`}>
+          {who} kept {f.kept.length} {f.kept.length === 1 ? "paper" : "papers"}: <TitleList titles={f.kept} />
+        </li>,
+      );
     if (!out.length) out.push(<li key={`${i}-n`}>{who} asked for changes without a comment</li>);
     return out;
   });
