@@ -123,6 +123,9 @@ class LLMServerConfig(_Section):
     home: str | None = None
     offline: bool = True  # HF_HUB_OFFLINE=1: never download during an episode
     startup_timeout_s: float = Field(default=1200, gt=0)
+    env: dict[str, str] = Field(
+        default_factory=dict
+    )  # extra variables for the server, e.g. VLLM_USE_FLASHINFER_MOE_FP8
 
 
 class LLMConfig(_Section):

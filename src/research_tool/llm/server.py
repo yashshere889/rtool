@@ -168,6 +168,7 @@ class VLLMServer:
             inner["HF_HOME"] = expand_path(self.settings.hf_home)
         if self.settings.offline:
             inner["HF_HUB_OFFLINE"] = "1"
+        inner.update(self.settings.env)
         env = {k: v for k, v in without_secrets().items() if k not in ("PYTHONPATH", "PYTHONHOME")}
         env.update(inner)
         # Images may set these themselves (the Nemotron image sets HF_HOME), and an image's

@@ -226,3 +226,26 @@ def test_repeated_server_failures_stop_for_a_human_and_are_forgotten_after_a_day
     later = time.time() + (BAD_NODE_HOURS + 1) * 3600
     assert bad_nodes(run, now=later) == {}
     assert sorted(note_bad_node(run, "gpu44", "x", now=later)) == ["gpu44"]
+
+
+def test_continuation_episodes_keep_every_config_file_they_were_launched_with(
+    runs_root: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A site config that sets slurm.episode.config_files itself must not drop an overlay layered after it."""
+    from typer.testing import CliRunner
+
+    from research_tool.cli import main as cli
+
+    site, overlay = tmp_path / "site.yaml", tmp_path / "overlay.yaml"
+    site.write_text(f"slurm: {{episode: {{config_files: ['{site}']}}}}\n")  # like configs/barkla.yaml
+    overlay.write_text("llm: {served_model: other}\n")
+    run = make_run(runs_root, JOB)
+    seen: list[list[str]] = []
+    monkeypatch.setattr(cli, "run_episode", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "_print_result", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "schedule_next", lambda r, *a, **k: seen.append(r.config.slurm.episode.config_files))
+
+    result = CliRunner().invoke(cli.app, ["episode", str(run.root), "--config", str(site), "--config", str(overlay)])
+
+    assert result.exit_code == 0, result.output
+    assert seen == [[str(site), str(overlay)]]

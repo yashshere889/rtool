@@ -22,6 +22,7 @@ from .runs import (
     load_app_config,
     open_run,
     queue_action,
+    replay_run,
     run_status,
     stop_run,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "load_app_config",
     "open_run",
     "queue_action",
+    "replay_run",
     "run_status",
     "stop_run",
 ]
