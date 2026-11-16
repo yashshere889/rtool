@@ -74,6 +74,8 @@ class ReportView(BaseModel):
     title_origin: str
     sections: list[SectionView]
     findings: list[Finding]
+    hypothesis_outcome: Literal["", "supported", "refuted", "inconclusive"]  # "" if there was no criterion to apply
+    hypothesis_checks: list[str]  # each condition of the success criterion, measured
     citations: list[str]
     references: list[PaperInfo]  # the cited papers, in order of first citation
     figures: list[str]  # run-relative
@@ -204,6 +206,8 @@ def _report_view(run: RunHandle, which: Which, version: int | None) -> ReportVie
         title_origin=report.title_origin,
         sections=[material.section_view(s) for s in report.sections],
         findings=report.findings,
+        hypothesis_outcome=report.hypothesis_outcome,
+        hypothesis_checks=report.hypothesis_checks,
         citations=report.citations,
         references=[papers[k] for k in report.citations if k in papers],
         figures=report.figures,

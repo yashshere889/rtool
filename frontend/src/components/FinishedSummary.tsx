@@ -3,12 +3,19 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { runPath } from "@/api/client";
-import { useHypotheses, useResults, useReview } from "@/api/hooks";
+import { useHypotheses, useReport, useResults, useReview } from "@/api/hooks";
 import type { RunDetail } from "@/api/types";
 import { num, pValue } from "@/lib/code";
 
 import { ComparisonVerdict } from "./ComparisonVerdict";
+import { Badge } from "./ui/badge";
 import { buttonStyles } from "./ui/button";
+
+const OUTCOME = {
+  supported: { label: "Supported", tone: "ok" },
+  refuted: { label: "Refuted", tone: "bad" },
+  inconclusive: { label: "Inconclusive", tone: "warn" },
+} as const;
 
 const linkStyle = "text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent";
 
@@ -27,6 +34,7 @@ export function FinishedSummary({ run }: { run: RunDetail }) {
   const hypotheses = useHypotheses(run.project, run.run_id);
   const results = useResults(run.project, run.run_id);
   const review = useReview(run.project, run.run_id);
+  const report = useReport(run.project, run.run_id, "report"); // the Writer applied the success criterion
   const base = runPath(run.project, run.run_id);
   const stageOf = (agent: string) => run.stages.find((s) => s.agent === agent)?.id;
 
@@ -35,6 +43,7 @@ export function FinishedSummary({ run }: { run: RunDetail }) {
   const primary = r?.metrics.find((m) => m.primary);
   const comparisons = primary ? (r?.results.comparisons ?? []).filter((c) => c.metric === primary.name) : [];
   const accepted = review.data?.review.verdict === "accept";
+  const outcome = report.data?.hypothesis_outcome ? OUTCOME[report.data.hypothesis_outcome] : null;
 
   return (
     <section aria-labelledby="finished-heading" className="rounded-xl border border-ok/30 bg-ok-soft/30 p-5">
@@ -56,6 +65,21 @@ export function FinishedSummary({ run }: { run: RunDetail }) {
               selection.title
             )}
             {selection.edited && <span className="text-ink-soft"> (edited by you)</span>}
+            {outcome && (
+              <div className="mt-2">
+                <p className="flex flex-wrap items-center gap-2">
+                  <Badge tone={outcome.tone}>{outcome.label}</Badge>
+                  <span className="text-ink-soft">judged against its success criterion</span>
+                </p>
+                {report.data!.hypothesis_checks.length > 0 && (
+                  <ul aria-label="How the criterion was applied" className="mt-1.5 list-disc space-y-0.5 pl-5 text-ink-soft">
+                    {report.data!.hypothesis_checks.map((c) => (
+                      <li key={c}>{c}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </Row>
         )}
 

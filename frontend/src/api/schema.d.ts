@@ -2046,6 +2046,13 @@ export interface components {
             findings: components["schemas"]["Finding"][];
             /** Head */
             head: number;
+            /** Hypothesis Checks */
+            hypothesis_checks: string[];
+            /**
+             * Hypothesis Outcome
+             * @enum {string}
+             */
+            hypothesis_outcome: "" | "supported" | "refuted" | "inconclusive";
             /** Markdown Path */
             markdown_path: string;
             /** Papers */
