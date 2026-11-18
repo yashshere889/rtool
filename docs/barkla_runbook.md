@@ -142,6 +142,40 @@ ssh -N -L 8765:/mnt/scratch/users/$USER/rtool/ui/ui.sock -J barkla $USER@<node> 
 
 then open http://127.0.0.1:8765 and paste the token from `~/scratch/rtool/ui/token`.
 
+**From another computer** (an office PC, a lab machine): there is one UI job per person, and
+any computer that can ssh to Barkla can connect to it, several at once. Once per computer:
+give it the name `barkla` in `~/.ssh/config` (Windows: `%USERPROFILE%\.ssh\config`) and its
+own SSH key (never copy your Mac's private key to a shared machine):
+
+```text
+Host barkla
+  HostName barklalogin1.liv.ac.uk
+  User <your username>
+```
+
+```text
+ssh-keygen -t ed25519
+ssh-copy-id barkla        # Windows: type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh barkla "cat >> ~/.ssh/authorized_keys"
+```
+
+Then fetch the launcher from Barkla (the synced copy) and run it:
+
+```text
+# macOS / Linux (bash, ssh, curl, python3)
+ssh barkla 'cat ~/"Research tool"/scripts/rtool-ui' > rtool-ui && chmod +x rtool-ui
+./rtool-ui
+
+# Windows 10 / 11 (PowerShell and the built-in OpenSSH client)
+ssh barkla "cat ~/Research\ tool/scripts/rtool-ui.ps1" | Set-Content -Encoding ascii rtool-ui.ps1
+powershell -ExecutionPolicy Bypass -File .\rtool-ui.ps1
+```
+
+Both take `status` and `stop` too. On a shared machine, other people logged in to it could
+reach the tunnel's port while it is open (they would still need the token, which the launchers
+keep off command lines and the screen); close the tunnel when you leave. If the Windows client
+cannot reach the node (an old OpenSSH without `-J`, or PuTTY), stop the job and start it with
+`-Bind cluster`, which tunnels through the login node only.
+
 **Which route works** was checked with `scripts/probe_ui_access.sh` (2026-10-10, job on
 node041): ssh from the Mac to the job's node through the login node works once the node's
 host key is known (the login node's ssh trusts nodes on first use, the Mac's did not);

@@ -107,7 +107,8 @@ else
   ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L "127.0.0.1:$PORT:$node:$rport" "$HOST" &
 fi
 tunnel=$!
-trap 'kill "$tunnel" 2>/dev/null || true' EXIT
+page=""
+trap 'kill "$tunnel" 2>/dev/null || true; [ -z "$page" ] || rm -f "$page"' EXIT
 trap 'echo; echo "tunnel closed; UI job $job_id keeps running (scripts/rtool-ui stop ends it)"; exit 0' INT TERM
 
 for _ in $(seq 30); do
@@ -118,18 +119,23 @@ done
 curl -sf --max-time 3 "http://127.0.0.1:$PORT/api/health" >/dev/null || { echo "the UI did not answer" >&2; exit 1; }
 
 url="http://127.0.0.1:$PORT/"
-opener=""
+opened=no
 if [ "$BROWSER" = 1 ]; then
   case "$(uname -s)" in
-    Darwin) opener=open ;;
-    Linux) command -v xdg-open >/dev/null && opener=xdg-open ;; # Linux's `open` is openvt
+    Darwin) # Launch Services hands the address to the browser in an Apple Event, not on its command line
+      open "${url}#token=${token}" && opened=yes ;;
+    Linux) # other users of a shared Linux machine can read command lines (ps), so the token goes
+      # through a page only you can read, deleted a minute later (in home: snap browsers read only there)
+      if command -v xdg-open >/dev/null && page="$(mktemp "$HOME/rtool-ui-XXXXXX")" && mv "$page" "$page.html"; then
+        page="$page.html"
+        printf '<!doctype html><meta charset="utf-8"><title>Research Tool</title><script>location.replace("%s#token=%s")</script>\n' \
+          "$url" "$token" >"$page"
+        xdg-open "$page" >/dev/null 2>&1 && opened=yes
+        (sleep 60 && rm -f "$page") &
+      fi ;;
   esac
 fi
-if [ -n "$opener" ] && "$opener" "${url}#token=${token}" >/dev/null 2>&1; then
-  :
-else
-  echo "open $url and sign in with the token: ssh $HOST cat $dir/token"
-fi
+[ "$opened" = yes ] || echo "open $url and sign in with the token: ssh $HOST cat $dir/token"
 echo "Research Tool UI: $url (job $job_id on $node). Ctrl-C closes the tunnel; the job keeps running."
 misses=0
 while kill -0 "$tunnel" 2>/dev/null; do # until the tunnel breaks or the job ends

@@ -33,7 +33,12 @@ llm:
     gpu_memory_utilization: 0.90
     # Model-card flags, plus eager loading: on Lustre, whole-file reads run at ~1.6 GB/s while
     # vLLM's default memory-mapped loading managed ~0.12 GB/s (3.5 min per cold start).
-    extra_args: [--trust-remote-code, --mamba_ssm_cache_dtype, float32, --safetensors-load-strategy, eager]
+    # No free whitespace in constrained JSON: with it, the model sometimes finishes the object's
+    # content and then emits only newlines until max_tokens (the planner's ResourcePlan, 2026-10-12:
+    # 32 lines of JSON, then 8192 tokens, three tries). xgrammar reads this only from the server
+    # config, and only with the backend named explicitly.
+    extra_args: [--trust-remote-code, --mamba_ssm_cache_dtype, float32, --safetensors-load-strategy, eager,
+                 --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}']
     # vLLM's deepseek_r1 parser needs <think>/</think> as single tokens, which this tokenizer lacks
     # (it refused to start). rtool splits the reasoning from the answer itself instead.
     reasoning_parser: null

@@ -93,7 +93,8 @@ scripts/rtool-ui                         # Ctrl-C closes the tunnel; the job kee
 scripts/rtool-ui stop                    # end the UI job (runs keep going without it)
 ```
 
-Details, and the by-hand route, in the [Barkla runbook](docs/barkla_runbook.md#the-web-ui).
+From another computer (Linux, or Windows with `scripts/rtool-ui.ps1`), and the by-hand route:
+the [Barkla runbook](docs/barkla_runbook.md#the-web-ui).
 
 How it works, security, development, tests (unit, API, end-to-end with accessibility checks)
 and how to add a page for a new agent: [docs/frontend.md](docs/frontend.md).
