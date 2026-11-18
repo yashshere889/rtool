@@ -33,6 +33,12 @@ describe("activity feed wording", () => {
     expect(describeEvent(event("artifact_committed"))).toBeNull();
     expect(describeEvent(event("novelty_checked", {}, "novelty"))?.text).toBe("Novelty: Novelty checked");
   });
+
+  it("words the AI model start-up", () => {
+    const ready = { seconds: 69.1, node: "gpu33", gpu: "NVIDIA H100 80GB HBM3, 81559 MiB" };
+    expect(describeEvent(event("llm_server_ready", ready, "literature"))?.text).toBe("AI model ready on H100 80GB HBM3 (gpu33) after 69 s");
+    expect(describeEvent(event("llm_server_ready", {}, "literature"))?.text).toBe("AI model ready");
+  });
 });
 
 describe("lastFailure", () => {

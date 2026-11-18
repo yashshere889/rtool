@@ -114,6 +114,12 @@ const DESCRIBE: Record<string, (data: Data, stage: string) => Described | null> 
   code_fix: (d) => ({ text: `Code: ${str(d.action)}`, tone: "neutral" }),
   review_returned_to_writer: () => ({ text: "Your comments went back to the writer", tone: "stale" }),
   episode_not_started: (d) => ({ text: `A worker could not start: ${str(d.error)}`, tone: "bad" }),
+  llm_server_ready: (d) => ({
+    // gpu is nvidia-smi's "NVIDIA H100 80GB HBM3, 81559 MiB"
+    text: `AI model ready${d.gpu ? ` on ${str(d.gpu).split(",")[0].replace(/^NVIDIA /, "")}` : ""}${d.node ? ` (${str(d.node)})` : ""}${num(d.seconds) ? ` after ${Math.round(num(d.seconds))} s` : ""}`,
+    tone: "neutral",
+  }),
+  llm_server_failed: (d) => ({ text: `The AI model could not start${d.node ? ` on ${str(d.node)}` : ""}: ${str(d.error)}`, tone: "warn" }),
 };
 
 export function describeEvent(event: RunEvent): Described | null {
