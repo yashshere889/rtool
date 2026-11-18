@@ -64,7 +64,7 @@ llm:
   profiles:                               # agents name a profile, never a model
     extract: {reasoning: "off", temperature: 0.0, max_tokens: 2048}
     reason:  {reasoning: "on", temperature: 0.6, top_p: 0.95, max_tokens: 8192, thinking_budget: 4096}
-    code:    {reasoning: "on", temperature: 0.6, top_p: 0.95, max_tokens: 8192, thinking_budget: 4096}
+    code:    {reasoning: "on", temperature: 0.6, top_p: 0.95, max_tokens: 16384, thinking_budget: 4096}
     write:   {reasoning: "off", temperature: 0.0, max_tokens: 4096}
     judge:   {reasoning: "on", temperature: 0.6, top_p: 0.95, max_tokens: 4096, thinking_budget: 2048, samples: 3}
     # each profile also takes presence_penalty / frequency_penalty (they count generated tokens only)

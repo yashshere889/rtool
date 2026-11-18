@@ -84,6 +84,8 @@ class CoderConfig(BaseModel):
 def extract_code(text: str) -> str | None:
     """The Python file in a reply: the longest fenced block (or the bare reply if it is code)."""
     blocks = _BLOCK.findall(text)
+    if not blocks and "```" in text:
+        return None  # a fence that never closes: the reply was cut off, so ask again
     code = max(blocks, key=len) if blocks else text.strip()
     return code.strip() + "\n" if re.search(r"^def run\(", code, re.M) else None
 
@@ -342,6 +344,7 @@ class CoderSession:
         self.plan: ExperimentPlan = ctx.inputs.get("experiment_plan")
         self.manifest: ResourceManifest = ctx.inputs.get("resource_manifest")
         brief: ResearchBrief = ctx.inputs.get("research_brief")
+        self.brief = brief
         try:
             self.pack: Pack = load_pack(brief.domain_pack)
         except ConfigError:
@@ -528,6 +531,8 @@ class CoderSession:
                     missing=self.missing_text(),
                     packages=self.packages(),
                     gpu=self.gpu_text(),
+                    budget=self.budget_text(),
+                    brief=self.brief,
                     pack=self.pack,
                     feedback=feedback,
                     skeleton=self.skeleton(),
@@ -547,6 +552,13 @@ class CoderSession:
     def gpu_text(self) -> str:
         c = self.plan.compute
         return f"{c.gpus_per_run}x {c.gpu_type or 'GPU'} on {c.partition}" if c.gpus_per_run else "no GPU (CPU only)"
+
+    def budget_text(self) -> str:
+        """The planned time per full run, so the code does real work in it (runs once trained for seconds)."""
+        c = self.plan.compute
+        minutes = c.hours_per_run * 60
+        planned = f"{minutes:.0f} minutes" if minutes < 120 else f"{c.hours_per_run:g} hours"
+        return f"{planned} (Slurm stops a run at {c.time_limit})"
 
     # ---------------------------------------------------------------- smoke
     def smoke(self) -> None:

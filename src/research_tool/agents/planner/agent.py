@@ -77,6 +77,7 @@ class PlannerAgent(Agent):
                         PlanCore,
                         render(
                             "plan_core.j2",
+                            brief=brief,
                             h=hypothesis,
                             snippets=snippets,
                             compute=compute,
@@ -94,6 +95,7 @@ class PlannerAgent(Agent):
                     ResourcePlan,
                     render(
                         "resources.j2",
+                        brief=brief,
                         h=hypothesis,
                         core=core,
                         known_datasets=known,
@@ -111,6 +113,7 @@ class PlannerAgent(Agent):
                     ComputeEstimate,
                     render(
                         "compute.j2",
+                        brief=brief,
                         core=core,
                         resources=resources,
                         compute=compute,

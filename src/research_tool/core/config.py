@@ -94,7 +94,8 @@ def _default_profiles() -> dict[str, LLMProfile]:
     return {
         "extract": LLMProfile(reasoning="off", temperature=0.0, max_tokens=2048),
         "reason": LLMProfile(reasoning="on", temperature=0.6, top_p=0.95, max_tokens=8192, thinking_budget=4096),
-        "code": LLMProfile(reasoning="on", temperature=0.6, top_p=0.95, max_tokens=8192, thinking_budget=4096),
+        # 16k: Nemotron's reasoning alone used ~7k of 8k on Barkla (2026-11-16), cutting experiment.py off
+        "code": LLMProfile(reasoning="on", temperature=0.6, top_p=0.95, max_tokens=16384, thinking_budget=4096),
         "write": LLMProfile(reasoning="off", temperature=0.0, max_tokens=4096),
         "judge": LLMProfile(
             reasoning="on", temperature=0.6, top_p=0.95, max_tokens=4096, thinking_budget=2048, samples=3

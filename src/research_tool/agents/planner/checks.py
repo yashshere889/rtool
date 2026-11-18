@@ -192,7 +192,12 @@ def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float) -> lis
     if not any(r.kind == "dataset" for r in resources):
         issues.append("no dataset is listed")
     for r in resources:
-        if r.source == "manual":
+        if r.source == "manual" and r.kind == "code":
+            issues.append(
+                f"{r.name} is code marked manual: leave the experiment's own code (pipelines, scripts, "
+                "analysis) out of the list, because rtool writes it; list only existing code, e.g. a pip package"
+            )
+        elif r.source == "manual":
             issues.append(
                 f"{r.name} is marked manual, so nothing will be downloaded for it: use a public resource "
                 "(Hugging Face, a URL, torchvision or a pip package) if one exists; otherwise someone must "

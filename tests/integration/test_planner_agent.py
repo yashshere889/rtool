@@ -16,7 +16,7 @@ from research_tool.knowledge.store import KnowledgeStore
 from research_tool.llm.client import LLMClient
 from research_tool.llm.mock_backend import MockLLM
 from research_tool.llm.types import ChatRequest
-from research_tool.schemas.common import SelectedItem
+from research_tool.schemas.common import ResearchBrief, SelectedItem
 from research_tool.schemas.hypothesis import CheckedEvidence, Hypothesis
 from research_tool.schemas.literature import Corpus, Entity, KnowledgeMap, PaperRecord
 from research_tool.schemas.plan import ExperimentPlan
@@ -240,6 +240,30 @@ def test_rejection_feedback_reaches_every_planning_step(runs_root: Path, tmp_pat
     redo = {schema(r): r.messages[-1].content for r in llm.calls[first:]}
     assert set(redo) == {"PlanCore", "ResourcePlan", "ComputeEstimate"}
     assert all("Use DistilBERT and keep each run under an hour" in text for text in redo.values())
+
+
+def test_the_brief_reaches_every_planning_step(runs_root: Path, tmp_path: Path) -> None:
+    run = seed(runs_root, tmp_path)
+    brief = ResearchBrief(
+        topic="Sentiment robustness",
+        questions=["Does label noise lower BERT accuracy on IMDB?"],
+        constraints=["Use IMDB only", "5 seeds; every run under 10 minutes"],
+        notes="Keep it small",
+    )
+    ArtifactStore(run.artifacts_dir).put("research_brief", brief, producer=Producer(stage="user", agent="test"))
+    llm = MockLLM()
+    llm.add(lambda r: schema(r) == "PlanCore", core)
+    llm.add(lambda r: schema(r) == "ResourcePlan", resources)
+    llm.add(
+        lambda r: schema(r) == "ComputeEstimate",
+        {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 0.1, "justification": "small"},
+    )
+    Engine(run, services(run, llm)).advance()
+    prompts = {schema(r): r.messages[-1].content for r in llm.calls}
+    assert set(prompts) == {"PlanCore", "ResourcePlan", "ComputeEstimate"}
+    for text in prompts.values():
+        assert "Use IMDB only" in text and "5 seeds; every run under 10 minutes" in text and "Keep it small" in text
+    assert "Does label noise lower BERT accuracy on IMDB?" in prompts["PlanCore"]
 
 
 def planned(runs_root: Path, tmp_path: Path) -> tuple[RunHandle, MockLLM]:

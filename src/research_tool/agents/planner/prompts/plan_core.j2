@@ -8,6 +8,24 @@ Dependent variables: {{ h.dependent_variables | join(", ") }}
 Controls: {{ h.controls | join(", ") or "none given" }}
 Suggested data and methods: {{ (h.datasets + h.methods) | join(", ") or "none given" }}
 Success criteria: {{ h.success_criteria }}
+{% if brief.questions %}
+
+The research question(s) this run answers:
+{% for q in brief.questions %}
+- {{ q }}
+{% endfor %}
+{% endif %}
+{% if brief.constraints or brief.notes %}
+
+The researcher's requirements: follow every one exactly (datasets, models, conditions, number of seeds, time and
+budget); they override the hypothesis's suggestions and the defaults below:
+{% for c in brief.constraints %}
+- {{ c }}
+{% endfor %}
+{% if brief.notes %}
+- {{ brief.notes }}
+{% endif %}
+{% endif %}
 
 What the literature says about methods and data (excerpts):
 {% for s in snippets %}
