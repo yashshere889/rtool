@@ -95,6 +95,8 @@ def test_design_rules() -> None:
     issues = " ".join(design_issues(core, min_seeds=3))
     assert "baseline" in issues and "unique" in issues and "at least 3 seeds" in issues
     assert "primary" not in issues
+    twice = normalise_core(core_with([{"name": "Accuracy", "definition": "a"}, {"name": "accuracy", "definition": ""}]))
+    assert "metric names must be unique: ['accuracy']" in design_issues(twice, min_seeds=1)
     with pytest.raises(ValidationError, match="higher_is_better"):  # the model may not leave the direction out
         PlanCore.model_validate(core.model_dump() | {"metrics": [{"name": "acc", "definition": "accuracy"}]})
 

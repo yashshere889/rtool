@@ -126,8 +126,14 @@ _HIGHER = {
 
 
 def metric_issues(metrics: list[Metric]) -> list[str]:
-    """Metrics whose direction contradicts their name (seen on Barkla: collision_frequency, 'higher is better')."""
-    issues = []
+    """Metrics named twice, or whose direction contradicts their name.
+
+    A metric named twice is tested twice, which inflates Holm's correction (a primary metric's p-value doubles).
+    Seen on Barkla: collision_frequency marked 'higher is better'.
+    """
+    names = [m.name for m in metrics]
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    issues = [f"metric names must be unique: {duplicates}"] if duplicates else []
     for metric in metrics:
         words = set(slug(metric.name).split("_"))
         lower, higher = sorted(words & _LOWER), sorted(words & _HIGHER)
