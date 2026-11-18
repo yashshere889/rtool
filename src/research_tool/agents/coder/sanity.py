@@ -82,6 +82,27 @@ def unused_names(source: str) -> list[str]:
     return [name for name, _line in sorted(assigned.items(), key=lambda item: item[1]) if name not in read]
 
 
+def swallowed_errors(source: str) -> list[int]:
+    """Lines of broad ``except`` handlers (bare, Exception, BaseException) that never re-raise.
+
+    Seen with Qwen3-Coder-Next and Nemotron (2026-11-16): ``except: pass`` around every LLM call, and a
+    failed model load that set ``llm = None`` and fell back to simulated detections. A failure then looks
+    like a normal result. Narrow handlers (ValueError, ImportError...) are normal and not listed.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    broad = {"Exception", "BaseException"}
+    return sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ExceptHandler)
+        and (node.type is None or (isinstance(node.type, ast.Name) and node.type.id in broad))
+        and not any(isinstance(n, ast.Raise) for n in ast.walk(node))
+    )
+
+
 def reads_resources(source: str) -> bool:
     try:
         tree = ast.parse(source)
@@ -105,6 +126,14 @@ def code_warnings(source: str, *, has_resources: bool) -> list[str]:
         shown = ", ".join(f"`{n}`" for n in unused[:6]) + (f" and {len(unused) - 6} more" if len(unused) > 6 else "")
         them = "it" if len(unused) == 1 else "them"
         warnings.append(f"run() sets {shown} but never uses {them}: is part of the procedure missing?")
+    swallowed = swallowed_errors(source)
+    if swallowed:
+        more = f" and {len(swallowed) - 5} more" if len(swallowed) > 5 else ""
+        lines = ", ".join(str(n) for n in swallowed[:5]) + more
+        warnings.append(
+            f"experiment.py catches every error without re-raising (line {lines}): a failed model load or LLM call "
+            "would look like a normal result, or fall back to made-up numbers"
+        )
     if has_resources and not reads_resources(source):
         warnings.append("run() never reads `resources`, although data or models were downloaded for it")
     return warnings

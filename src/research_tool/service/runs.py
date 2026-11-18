@@ -190,7 +190,8 @@ def replay_run(source: RunHandle, stage: str, tag: str, overlays: Iterable[Path]
     root = source.root.parent / run_id
     if root.exists():
         raise RToolError(f"run directory already exists: {root}")
-    shutil.copytree(source.root, root)
+    # symlinks=True: the coder's .venv links to the container's python; a copied binary will not run there
+    shutil.copytree(source.root, root, symlinks=True)
     # fresh events (so `rtool stats` counts only the replay), no queued actions, no lease, no Slurm jobs
     (root / "events.jsonl").unlink(missing_ok=True)
     (root / "state" / "episode.lease").unlink(missing_ok=True)

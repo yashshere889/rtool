@@ -35,6 +35,8 @@ Null hypothesis: {{ plan.null_hypothesis }}
 - {{ pack.smoke }}
 - Write files only under `workdir`. Print a few short progress lines, nothing large.
 - Measure every metric by really carrying out the procedure inside run() (training, simulation, evaluation). Never hard-code metric values, never compute them from the condition name alone, and never write mock, placeholder or "hypothetical" results: the results must be able to come out against the hypothesis.
+- Never catch Exception (or use a bare `except`) without re-raising, and never fall back to simulated or random results when a model or a call fails: let the run fail.
+- If the procedure changes the data (injects errors, perturbs inputs, adds distractors), the model or method under test must receive exactly the changed data, built from the changed objects and not from the originals, and the answer key must index the changed data. Smoke mode may swap in a cheap stand-in for the model, but it must go through the same data path as the full run.
 {% if feedback %}
 ## Requests from the researcher or reviewers — address every one
 {% for f in feedback %}- {{ f }}

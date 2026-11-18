@@ -21,8 +21,13 @@ def test_replay_redoes_one_stage_under_an_overlay(runs_root: Path, mock_llm: Moc
     overlay = tmp_path / "overlay.yaml"
     overlay.write_text("llm: {served_model: qwen-test}\nslurm: {episode: {gpus: 2}}\n")
 
+    link = source.root / "work" / "venv-python"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to("/usr/bin/python3")
+
     copy = replay_run(source, "source", "qwen", [overlay])
 
+    assert (copy.root / "work" / "venv-python").is_symlink()  # copied as a link, not as the binary
     assert copy.run_id == f"{source.run_id}-source-qwen" and copy.root.parent == source.root.parent
     assert copy.config.llm.served_model == "qwen-test" and copy.config.slurm.episode.gpus == 2
     assert str(overlay.resolve()) in copy.config.slurm.episode.config_files  # episode jobs re-read it

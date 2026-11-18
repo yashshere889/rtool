@@ -95,3 +95,34 @@ def test_identical_planned_metrics_are_flagged_even_when_timings_differ() -> Non
     assert sanity.seed_warning("baseline", (0, 1), first, second) == ""  # a timing hides it...
     planned = ["miss_rate", "false_alarm_rate"]
     assert "exactly the same metrics" in sanity.seed_warning("baseline", (0, 1), first, second, planned)
+
+
+SWALLOWED = '''
+def run(condition, seed, resources, smoke, workdir):
+    try:
+        llm = load_model()
+    except Exception as exc:  # falls back to simulated detections
+        print(exc)
+        llm = None
+    for part in range(3):
+        try:
+            call(llm, part)
+        except:
+            pass
+    try:
+        n = int(condition)
+    except ValueError:  # a narrow handler is normal
+        n = 0
+    try:
+        call(llm, n)
+    except Exception as exc:
+        raise RuntimeError("call failed") from exc
+    return {"acc": 1.0}
+'''
+
+
+def test_broad_handlers_that_hide_failures_are_flagged() -> None:
+    assert sanity.swallowed_errors(SWALLOWED) == [5, 11]  # not the ValueError one, not the one that re-raises
+    assert sanity.swallowed_errors(REAL) == [] and sanity.swallowed_errors("def run(:\n") == []
+    (warning,) = [w for w in sanity.code_warnings(SWALLOWED, has_resources=False) if "catches every error" in w]
+    assert "line 5, 11" in warning
