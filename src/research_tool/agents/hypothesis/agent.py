@@ -129,7 +129,7 @@ def mmr(items: list[Hypothesis], vectors: dict[str, list[float]], k: int, divers
         best = max(pool, key=value)
         chosen.append(best)
         pool.remove(best)
-    return chosen
+    return sorted(chosen, key=lambda h: h.total_score, reverse=True)  # picked for variety, offered best first
 
 
 @register_agent("hypothesis")

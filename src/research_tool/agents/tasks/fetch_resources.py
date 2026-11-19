@@ -157,8 +157,8 @@ class FetchResources(Task):
                 else ""
             )
             raise StageFailed(
-                f"could not fetch {details}. Fix it (e.g. HF_TOKEN for gated data), then `rtool retry <run> --resume`."
-                + renamed,
+                f"could not fetch {details}. Fix it (e.g. HF_TOKEN for gated data), then resume the stage "
+                "(“Continue from where it stopped” in the web UI, or `rtool retry <run> --resume`)." + renamed,
                 needs_human=True,
             )
         results = [provided(r) for r in results]

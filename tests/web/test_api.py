@@ -12,7 +12,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from research_tool.core.actions import ActionInbox  # noqa: E402
-from research_tool.service import open_run, run_status  # noqa: E402
+from research_tool.service import list_runs, open_run, run_status  # noqa: E402
 from research_tool.testing.web import BASE, TOKEN, WRITE, StubRunner  # noqa: E402
 from research_tool.testing.web import web_client as client  # noqa: E402
 from research_tool.web.runner import LocalRunner  # noqa: E402
@@ -216,3 +216,32 @@ def test_the_app_shell_and_unknown_api_paths(runs_root: Path) -> None:
         assert page.status_code == 200 and "Research Tool" in page.text
         assert "script-src 'self'" in page.headers["content-security-policy"]
     assert c.get("/api/nope", headers={"authorization": f"Bearer {TOKEN}"}).status_code == 404
+
+
+def test_run_paths_reach_the_browser_run_relative() -> None:
+    from research_tool.web.deps import hide_run_paths
+
+    text = "Fix /mnt/scratch/users/someone/rtool/p/r1/work/code/experiment.py by hand (logs: /x/p/r1/work/logs)."
+    assert hide_run_paths("p", "r1", text) == "Fix work/code/experiment.py by hand (logs: work/logs)."
+    assert hide_run_paths("p", "r1", "/data/p/r2/x and /data/q/r1/y") == "/data/p/r2/x and /data/q/r1/y"
+
+
+def test_a_stage_error_names_run_files_without_server_paths(runs_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from research_tool.web.api import runs as runs_api
+
+    def failed(run):  # type: ignore[no-untyped-def]
+        status = run_status(run)
+        status.stages[0].last_error = f"Fix {run.root}/work/code/experiment.py by hand."
+        return status
+
+    def listed(root):  # type: ignore[no-untyped-def]
+        runs = list_runs(root)
+        runs[0].stages[0].last_error = f"Fix {root}/{runs[0].project}/{runs[0].run_id}/work/x.py by hand."
+        return runs
+
+    monkeypatch.setattr(runs_api, "run_status", failed)
+    monkeypatch.setattr(runs_api, "list_runs", listed)
+    c = client(runs_root)
+    run = c.get("/api/runs/sleep-demo/1-literature").json()
+    assert run["stages"][0]["last_error"] == "Fix work/code/experiment.py by hand."
+    assert str(runs_root) not in c.get("/api/runs").text  # the projects list carries the stage errors too
