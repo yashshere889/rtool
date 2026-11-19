@@ -7,6 +7,16 @@ Procedure:
 {{ loop.index }}. {{ step }}
 {% endfor %}
 Datasets mentioned in the collected literature: {{ known_datasets | join(", ") or "none" }}
+{% if brief.constraints or brief.notes %}
+
+The researcher's requirements (follow them exactly: use only the datasets and models they allow):
+{% for c in brief.constraints %}
+- {{ c }}
+{% endfor %}
+{% if brief.notes %}
+- {{ brief.notes }}
+{% endif %}
+{% endif %}
 {% if feedback %}
 
 Feedback from the researcher (follow it where it concerns datasets, models or code):
@@ -26,3 +36,4 @@ Rules:
 - Prefer public resources on the Hugging Face Hub: source "huggingface" with the exact repository id (for example "imdb" or "google-bert/bert-base-uncased").
 - Use source "url" only for a direct download link, "torchvision" for torchvision datasets, "pip" for software packages, and "manual" only if nothing public exists.
 - Only give identifiers you are confident exist; prefer well-known resources.
+- Do not list the experiment's own code (pipelines, scripts, analysis): rtool writes it. List code only if it already exists, e.g. a pip package.

@@ -21,6 +21,7 @@ from research_tool.hpc.slurm import JobState
 from research_tool.llm.client import LLMClient
 from research_tool.llm.mock_backend import MockLLM
 from research_tool.llm.types import ChatRequest
+from research_tool.schemas.common import ResearchBrief
 from research_tool.schemas.plan import (
     ComputeRequest,
     Condition,
@@ -168,6 +169,18 @@ def test_write_repair_approve_run_and_analyse(runs_root: Path, tmp_path: Path) -
     assert all(s.ok for s in bundle.smoke) and bundle.fingerprint == results.code_fingerprint
     kinds = [e["kind"] for e in EventLog(run.events_path, run.run_id)]
     assert "experiment_submitted" in kinds and "code_fix" in kinds
+
+
+def test_the_coder_sees_the_brief_and_the_time_per_run(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path)
+    brief = ResearchBrief(topic="t", constraints=["Train a small MLP on MNIST"])
+    ArtifactStore(run.artifacts_dir).put("research_brief", brief, producer=Producer(stage="user", agent="test"))
+    llm = coder_llm(GOOD)
+    advance(run, services(run, llm), Outcome.WAITING_GATE)
+    prompt = next(r for r in llm.calls if "Write the complete Python file" in r.messages[-1].content)
+    text = prompt.messages[-1].content
+    assert "Train a small MLP on MNIST" in text
+    assert "about 30 minutes (Slurm stops a run at 01:00:00)" in text
 
 
 def test_out_of_memory_in_full_runs_halves_the_batch_and_asks_again(runs_root: Path, tmp_path: Path) -> None:

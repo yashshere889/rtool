@@ -204,6 +204,8 @@ def test_extract_code_and_static_checks(tmp_path: Path) -> None:
     reply = f"Here you go:\n```python\nprint('x')\n```\nand the file:\n```python\n{GOOD}```\n"
     assert extract_code(reply) == GOOD  # the longest block, i.e. the file
     assert extract_code("no code at all") is None
+    assert extract_code(GOOD) == GOOD  # a bare file, no fences
+    assert extract_code(f"```python\n{GOOD}    x = 1") is None  # cut off at max_tokens: never save the fence
     path = tmp_path / "experiment.py"
     path.write_text(GOOD)
     assert static_problems(GOOD, path) == []

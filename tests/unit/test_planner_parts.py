@@ -205,6 +205,39 @@ def test_hub_checker() -> None:
     assert not manual.exists and "someone must provide it" in manual.note
 
 
+def test_a_missing_hub_id_comes_back_with_real_ones() -> None:
+    searched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/datasets":
+            term = request.url.params["search"]
+            searched.append(term)
+            return httpx.Response(200, json=[{"id": "armanc/scientific_papers"}] if term == "scientific_papers" else [])
+        return httpx.Response(404)
+
+    checker = HubChecker(
+        PoliteHttp(
+            client=httpx.Client(transport=httpx.MockTransport(handler)), default_interval_s=0, sleep=lambda _s: None
+        )
+    )
+    guess = ResourceChoice(
+        kind="dataset", name="scientific_papers", source="huggingface", identifier="nope/tldr", purpose=""
+    )
+    result = checker.check(guess)
+    assert not result.exists and "404" in result.note
+    assert "real ids that may fit: armanc/scientific_papers" in result.note
+    assert searched == ["scientific_papers"]  # the name found one, so the identifier was not searched too
+    other = ResourceChoice(kind="dataset", name="x", source="huggingface", identifier="nope/y", purpose="")
+    assert "real ids" not in checker.check(other).note  # nothing similar: just the 404
+
+
+def test_the_experiments_own_code_is_not_a_manual_resource() -> None:
+    code = ResourceSpec(kind="code", name="audit_pipeline", source="manual", identifier="", purpose="")
+    data = ResourceSpec(kind="dataset", name="imdb", source="huggingface", identifier="imdb", purpose="", verified=True)
+    issues = resource_issues([code, data], max_dataset_gb=100)
+    assert len(issues) == 1 and "rtool writes it" in issues[0]
+
+
 def test_manual_resources_are_an_issue_not_a_verified_resource() -> None:
     manual = ResourceSpec(
         kind="dataset", name="CS:GO env", source="manual", identifier="custom", purpose="", verified=True

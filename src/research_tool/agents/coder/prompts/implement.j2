@@ -6,6 +6,11 @@ Null hypothesis: {{ plan.null_hypothesis }}
 
 ## Design
 {{ plan.design }}
+{% if brief and (brief.constraints or brief.notes) %}
+## The researcher's requirements — follow every one exactly
+{% for c in brief.constraints %}- {{ c }}
+{% endfor %}{% if brief.notes %}- {{ brief.notes }}
+{% endif %}{% endif %}
 
 ## Conditions — run() receives one of these names
 {% for c in conditions %}- `{{ c.name }}`{% if c.is_baseline %} (baseline){% endif %}: {{ c.description }}
@@ -28,6 +33,7 @@ Null hypothesis: {{ plan.null_hypothesis }}
 - Python 3.10. Installed: {{ packages | join(", ") }}.
 - Need another pip package? List it on the `# requirements:` line at the top of the file (comma-separated).
 - Full runs get {{ gpu }}; smoke runs use only the CPU.
+- Each full run is planned to take about {{ budget }}. Size the full run (epochs, steps, amount of data) to use roughly that time, never more: a full run that ends in seconds measures nothing. Smoke runs stay tiny.
 {% for hint in pack.hints %}- {{ hint }}
 {% endfor %}
 ## Contract (checked automatically)

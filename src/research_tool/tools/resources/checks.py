@@ -86,4 +86,27 @@ class HubChecker:
                 True, note="a torchvision dataset: downloaded with torchvision when the plan is approved"
             )
         except HttpError as exc:
-            return ResourceCheck(False, note=str(exc)[:200])
+            note = str(exc)[:200]
+            # without a token the Hub answers 401 for an id that does not exist (it could be private)
+            if resource.source == "huggingface" and exc.status in (401, 404):
+                found = self.similar(resource)
+                note += f"; real ids that may fit: {', '.join(found)}" if found else ""
+            return ResourceCheck(False, note=note)
+
+    def similar(self, resource: ResourceChoice) -> list[str]:
+        """Up to 3 Hub ids close to a missing one, so a repair round picks a real id instead of guessing again."""
+        kind = "models" if resource.kind == "model" else "datasets"
+        found: list[str] = []
+        for term in dict.fromkeys([resource.name, resource.identifier.rsplit("/", 1)[-1]]):
+            try:
+                hits = self.http.get_json(
+                    f"{HF_API}/{kind}",
+                    params={"search": term, "limit": 3, "sort": "downloads", "direction": -1},
+                    headers=self.headers,
+                )
+            except HttpError:
+                continue
+            found += [h["id"] for h in hits if isinstance(h, dict) and h.get("id") and h["id"] not in found]
+            if found:
+                break
+        return found[:3]
