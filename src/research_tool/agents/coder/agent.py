@@ -678,7 +678,8 @@ class CoderSession:
             where = self.ctx.workspace.path("code/experiment.py")
             raise StageFailed(
                 f"the experiment code still fails after {rounds - 1} repair rounds ({diagnosis.summary}). "
-                f"Fix {where} by hand (logs: {self.logs}), then run `rtool retry <run> --resume`.",
+                f"Fix {where} by hand (logs: {self.logs}), then resume the stage "
+                "(“Continue from where it stopped” in the web UI, or `rtool retry <run> --resume`).",
                 needs_human=True,
             )
         if not self.playbook_applies(diagnosis):
@@ -736,7 +737,8 @@ class CoderSession:
         raise StageFailed(
             f"the model's fix for '{diagnosis.summary}' removed condition-specific code ({'; '.join(removed)}), "
             f"so the conditions might no longer differ. {where} is unchanged; the rejected rewrite is {rejected}. "
-            "Fix experiment.py by hand, then run `rtool retry <run> --resume`.",
+            "Fix experiment.py by hand, then resume the stage "
+            "(“Continue from where it stopped” in the web UI, or `rtool retry <run> --resume`).",
             needs_human=True,
         )
 

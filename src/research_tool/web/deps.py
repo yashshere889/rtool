@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,11 @@ def run_relative(run: RunHandle, path: str | Path) -> str | None:
         except OSError:
             return None
     return None
+
+
+def hide_run_paths(project: str, run_id: str, text: str) -> str:
+    """Absolute paths into a run made run-relative: the browser never needs server paths (they name the account)."""
+    return re.sub(rf"(?:/[^/\s]+)*/{re.escape(project)}/{re.escape(run_id)}/", "", text)
 
 
 def jailed(run: RunHandle, rel: str) -> Path:
