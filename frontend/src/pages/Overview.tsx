@@ -1,12 +1,15 @@
-import { CheckCircle2, CirclePause, Loader, Play, Square } from "lucide-react";
+import { CirclePause, Loader, Play, Square } from "lucide-react";
+import { useState } from "react";
 
 import { useResume, useSettings, useStop } from "@/api/hooks";
 import type { RunDetail } from "@/api/types";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { CheckpointCard } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
+import { FinishedSummary } from "@/components/FinishedSummary";
 import { useRunContext } from "@/components/layout/RunLayout";
 import { QueuedActions } from "@/components/QueuedActions";
+import { StageProgress } from "@/components/StageProgress";
 import { StageStepper } from "@/components/StageStepper";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -38,34 +41,38 @@ function RightNow({ run }: { run: RunDetail }) {
       </div>
     );
   }
-  const finished = headline.tone === "ok";
+  if (headline.tone === "ok") return <FinishedSummary run={run} />;
   const working = run.worker.active || headline.tone === "info";
-  const Icon = finished ? CheckCircle2 : working ? Loader : CirclePause;
+  const running = run.stages.find((s) => s.id === headline.stage);
+  const Icon = working ? Loader : CirclePause;
   return (
     <Card>
       <CardBody className="flex flex-wrap items-center gap-4 py-5">
-        <Icon className={`size-6 ${finished ? "text-ok" : working ? "animate-spin text-info [animation-duration:2.5s]" : "text-ink-soft"}`} />
+        <Icon className={`size-6 ${working ? "animate-spin text-info [animation-duration:2.5s]" : "text-ink-soft"}`} />
         <div className="min-w-0 flex-1">
           <p className="font-semibold">{headline.text}</p>
           <p className="text-sm text-ink-soft">
-            {finished
-              ? "Every stage is done. The final report and the review are on the Review page."
-              : run.worker.detail ||
-                (working
-                  ? "Nothing needs you right now; you will see a decision card here when it does."
-                  : "Nothing is advancing this run at the moment.")}
+            {run.worker.detail ||
+              (working
+                ? "Nothing needs you right now; you will see a decision card here when it does."
+                : "Nothing is advancing this run at the moment.")}
           </p>
           {run.worker.last_error && <p className="mt-1 text-sm text-bad">{run.worker.last_error}</p>}
         </div>
-        {!finished && !run.worker.active && (
+        {!run.worker.active && (
           <Button variant="secondary" onClick={() => resume.mutate()} busy={resume.isPending}>
             <Play /> Resume
           </Button>
         )}
-        {!finished && run.worker.active && settings.data && !settings.data.runs_locally && (
+        {run.worker.active && settings.data && !settings.data.runs_locally && (
           <Button variant="secondary" onClick={() => stop.mutate(false)} busy={stop.isPending}>
             <Square /> Pause
           </Button>
+        )}
+        {working && running && (
+          <div className="w-full border-t border-line pt-4">
+            <StageProgress run={run} stage={running} />
+          </div>
         )}
       </CardBody>
     </Card>
@@ -95,6 +102,7 @@ function Usage({ run }: { run: RunDetail }) {
 
 export function Overview() {
   const { run } = useRunContext();
+  const [feedStage, setFeedStage] = useState("");
   const otherQueued = { ...run, queued_actions: run.queued_actions.filter((a) => !a.gate) };
   return (
     <div className="space-y-6">
@@ -120,9 +128,27 @@ export function Overview() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <Card>
-          <CardHeader title="Activity" description="What the agents did, newest first. Updates live." />
+          <CardHeader
+            title="Activity"
+            description="What the agents did, newest first. Updates live."
+            action={
+              <select
+                aria-label="Show activity of"
+                className="h-8 rounded-md border border-line bg-surface px-2 text-sm"
+                value={feedStage}
+                onChange={(e) => setFeedStage(e.target.value)}
+              >
+                <option value="">Every stage</option>
+                {run.stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {stageTitle(s.id)}
+                  </option>
+                ))}
+              </select>
+            }
+          />
           <CardBody>
-            <ActivityFeed project={run.project} runId={run.run_id} />
+            <ActivityFeed project={run.project} runId={run.run_id} stage={feedStage || undefined} />
           </CardBody>
         </Card>
         <div className="space-y-6">

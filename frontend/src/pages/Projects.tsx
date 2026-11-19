@@ -10,6 +10,7 @@ import { buttonStyles } from "@/components/ui/button";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { dateTime, timeAgo } from "@/lib/format";
 import { runHeadline } from "@/lib/stages";
+import { useTitle } from "@/lib/useTitle";
 
 function RunCard({ run }: { run: RunSummary }) {
   const headline = runHeadline(run);
@@ -37,6 +38,7 @@ export function Projects() {
   const groups = new Map<string, RunSummary[]>();
   for (const run of runs.data ?? []) groups.set(run.project, [...(groups.get(run.project) ?? []), run]);
   const needYou = (runs.data ?? []).filter((r) => r.open_gates.length > 0).length;
+  useTitle(needYou ? `(${needYou}) Research projects` : "Research projects");
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">

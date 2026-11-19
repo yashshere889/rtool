@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ...core.events import EventLog
-from ..deps import get_run
+from ..deps import RunHandle, get_run, hide_run_paths
 
 router = APIRouter(tags=["events"])
 
@@ -32,6 +32,15 @@ def visible(events: list[dict[str, Any]], include_noise: bool) -> list[dict[str,
     return events if include_noise else [e for e in events if e.get("kind") not in NOISE]
 
 
+def private(run: RunHandle, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Events with run paths in their text fields made run-relative (see hide_run_paths)."""
+    hide = lambda v: hide_run_paths(run.spec.project, run.run_id, v) if isinstance(v, str) else v  # noqa: E731
+    return [
+        {**e, "data": {k: hide(v) for k, v in e["data"].items()}} if isinstance(e.get("data"), dict) else e
+        for e in events
+    ]
+
+
 @router.get("/runs/{project}/{run_id}/events", response_model=EventPage)
 def events(
     project: str,
@@ -47,9 +56,9 @@ def events(
     log = EventLog(run.events_path, run.run_id)
     if tail is not None:
         found, cursor = log.read_from(0)
-        return EventPage(events=visible(found, include_noise)[-max(1, min(tail, 5000)) :], cursor=cursor)
+        return EventPage(events=private(run, visible(found, include_noise)[-max(1, min(tail, 5000)) :]), cursor=cursor)
     found, cursor = log.read_from(after, limit=max(1, min(limit, 5000)))
-    return EventPage(events=visible(found, include_noise), cursor=cursor)
+    return EventPage(events=private(run, visible(found, include_noise)), cursor=cursor)
 
 
 @router.get("/runs/{project}/{run_id}/events/stream")
@@ -74,7 +83,7 @@ async def stream(
             found, new_cursor = await run_in_threadpool(log.read_from, cursor)
             if new_cursor != cursor:
                 cursor = new_cursor
-                shown = visible(found, include_noise=False)
+                shown = private(run, visible(found, include_noise=False))
                 if shown:
                     payload = json.dumps({"events": shown, "cursor": cursor})
                     yield f"id: {cursor}\nevent: events\ndata: {payload}\n\n"

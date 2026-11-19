@@ -1419,6 +1419,7 @@ export interface components {
             markdown: string;
             /** Others */
             others: components["schemas"]["HypothesisCard"][];
+            previous: components["schemas"]["Round"] | null;
             selection: components["schemas"]["Selection"] | null;
             /** Shortlist */
             shortlist: components["schemas"]["HypothesisCard"][];
@@ -1556,6 +1557,11 @@ export interface components {
             overview: string;
             /** Papers */
             papers: components["schemas"]["PaperCard"][];
+            /** Papers Added */
+            papers_added: string[];
+            /** Papers Removed */
+            papers_removed: components["schemas"]["RoundPaper"][];
+            previous: components["schemas"]["Round"] | null;
             /** Quality */
             quality: components["schemas"]["QualityCheck"][];
             /** Queries */
@@ -2040,6 +2046,13 @@ export interface components {
             findings: components["schemas"]["Finding"][];
             /** Head */
             head: number;
+            /** Hypothesis Checks */
+            hypothesis_checks: string[];
+            /**
+             * Hypothesis Outcome
+             * @enum {string}
+             */
+            hypothesis_outcome: "" | "supported" | "refuted" | "inconclusive";
             /** Markdown Path */
             markdown_path: string;
             /** Papers */
@@ -2204,6 +2217,51 @@ export interface components {
             stage: string;
             /** Version */
             version: number;
+        };
+        /**
+         * Round
+         * @description The version shown against the one before it.
+         */
+        Round: {
+            /** Feedback */
+            feedback: components["schemas"]["RoundFeedback"][];
+            /** Inputs Changed */
+            inputs_changed: string[];
+            /** Previous At */
+            previous_at: string;
+            /** Previous Version */
+            previous_version: number;
+            /**
+             * Unchanged
+             * @default false
+             */
+            unchanged: boolean;
+        };
+        /** RoundFeedback */
+        RoundFeedback: {
+            /**
+             * By
+             * @enum {string}
+             */
+            by: "you" | "stage";
+            /** Dropped */
+            dropped: string[];
+            /** From Stage */
+            from_stage: string | null;
+            /** Kept */
+            kept: string[];
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
+        /** RoundPaper */
+        RoundPaper: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
         };
         /** RunCell */
         RunCell: {

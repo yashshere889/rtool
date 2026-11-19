@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { OpenGate, RunDetail } from "@/api/types";
+import { usePaperMarks } from "@/lib/paperMarks";
 
 import { CheckpointCard } from "./CheckpointCard";
 
@@ -45,6 +46,9 @@ function wrap(children: ReactNode) {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** The decision sent (the card also loads the run's events). */
+const actionCall = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls.find(([url]) => String(url).endsWith("/actions"));
+
 describe("CheckpointCard", () => {
   it("sends the chosen option, bound to the gate the researcher saw", async () => {
     const fetch = vi.fn().mockResolvedValue(
@@ -65,8 +69,8 @@ describe("CheckpointCard", () => {
     await userEvent.click(screen.getByLabelText(/Adaptive thresholds/));
     await userEvent.click(choose);
 
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
-    const [url, init] = fetch.mock.calls[0];
+    await waitFor(() => expect(actionCall(fetch)).toBeDefined());
+    const [url, init] = actionCall(fetch)!;
     expect(url).toBe("/api/runs/sleep/r1/actions");
     expect(init.headers["X-Requested-With"]).toBe("rtool");
     expect(JSON.parse(init.body)).toEqual({
@@ -86,8 +90,8 @@ describe("CheckpointCard", () => {
     expect(send).toBeDisabled();
     await userEvent.type(screen.getByLabelText("What should change?"), "Drop the modelling papers");
     await userEvent.click(send);
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
-    expect(JSON.parse(fetch.mock.calls[0][1].body).payload.feedback).toBe("Drop the modelling papers");
+    await waitFor(() => expect(actionCall(fetch)).toBeDefined());
+    expect(JSON.parse(actionCall(fetch)![1].body).payload.feedback).toBe("Drop the modelling papers");
   });
 
   it("can keep the current choice at a reopened selection", async () => {
@@ -103,8 +107,56 @@ describe("CheckpointCard", () => {
     expect(screen.getByText("(your current choice)")).toBeInTheDocument();
     expect(screen.queryByText(/Reopened/)).not.toBeInTheDocument(); // not listed again among the details
     await userEvent.click(screen.getByRole("button", { name: "Keep my current choice" }));
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ kind: "approve", gate: "hypothesis_selection" });
+    await waitFor(() => expect(actionCall(fetch)).toBeDefined());
+    expect(JSON.parse(actionCall(fetch)![1].body)).toMatchObject({ kind: "approve", gate: "hypothesis_selection" });
+  });
+
+  it("will not approve over unsent Keep/Drop marks, which outlive the page that made them", async () => {
+    const litGate: OpenGate = { ...gate, stage: "literature", kind: "approve", gate: "literature_review", nonce: "lit1", actions: ["approve", "reject"] };
+    function Marker() {
+      const { mark } = usePaperMarks("sleep", "r1", "lit1");
+      return <button onClick={() => mark("doi:1", "exclude")}>mark</button>;
+    }
+    const first = render(wrap(<Marker />));
+    await userEvent.click(screen.getByRole("button", { name: "mark" }));
+    first.unmount(); // e.g. opening a paper in the reader
+
+    render(wrap(<CheckpointCard run={run} gate={litGate} />));
+    const approve = screen.getByRole("button", { name: /Approve/ });
+    expect(approve).toBeDisabled();
+    expect(screen.getByRole("note")).toHaveTextContent("You marked 1 paper Keep or Drop");
+    await userEvent.click(screen.getByRole("button", { name: "Discard marks" }));
+    expect(approve).toBeEnabled();
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it("adds what the stage warned about to the warnings to check", async () => {
+    const events = {
+      cursor: 2,
+      events: [
+        { ts: "2026-10-09T10:00:00+00:00", run: "r1", episode: null, kind: "stage_started", stage: "literature", data: {} },
+        { ts: "2026-10-09T10:01:00+00:00", run: "r1", episode: null, kind: "literature_small_corpus", stage: "literature", data: { included: 9, wanted: 30 } },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(events), { status: 200, headers: { "content-type": "application/json" } }))));
+    const litGate: OpenGate = { ...gate, stage: "literature", kind: "approve", gate: "literature_review", nonce: "lit2", actions: ["approve", "reject"] };
+    render(wrap(<CheckpointCard run={run} gate={litGate} />));
+    expect(await screen.findByRole("note", { name: "Warnings" })).toHaveTextContent("Only 9 relevant papers found (aimed for 30)");
+  });
+
+  it("offers the page's suggestions in the request dialog and adds a clicked one to the comment", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    const litGate: OpenGate = { ...gate, stage: "literature", kind: "approve", gate: "literature_review", nonce: "lit3", actions: ["approve", "reject"] };
+    render(wrap(<CheckpointCard run={run} gate={litGate} suggestions={["Find more papers on stimulation at home."]} />));
+    await userEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    expect(screen.getByText(/searched and screened again with your comments/)).toBeInTheDocument();
+    const box = screen.getByLabelText("What should change?");
+    await userEvent.type(box, "Focus on older adults.");
+    const suggestion = screen.getByRole("button", { name: /Find more papers on stimulation at home/ });
+    await userEvent.click(suggestion);
+    expect(box).toHaveValue("Focus on older adults.\nFind more papers on stimulation at home.");
+    expect(suggestion).toBeDisabled();
   });
 
   it("offers undo instead of buttons while a decision is queued", () => {

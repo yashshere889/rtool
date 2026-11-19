@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import re
 from collections.abc import Sequence
 from typing import Protocol
@@ -84,6 +85,9 @@ class FastEmbedEmbedder:
     """Small neural embedding model via fastembed (ONNX, CPU). Barkla only; downloads the model once."""
 
     def __init__(self, model: str = "BAAI/bge-small-en-v1.5", cache_dir: str | None = None) -> None:
+        # onnxruntime 1.30 locks a telemetry db in ~/.cache (NFS on Barkla); on a node whose NFS locking is broken
+        # (gpu33, 2026-11-17) that lock never returns and the stage hangs for good.
+        os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
         from fastembed import TextEmbedding  # type: ignore[import-not-found]
 
         self._model = TextEmbedding(model_name=model, cache_dir=cache_dir)

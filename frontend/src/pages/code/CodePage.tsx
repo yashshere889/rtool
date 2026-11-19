@@ -90,16 +90,7 @@ export function CodePage({ run, stage }: { run: RunDetail; stage: StageSummary }
     <div className="space-y-6">
       {header}
       {stage.gate && <CheckpointCard run={run} gate={stage.gate} showStageLink={false} />}
-      {stage.status === "failed" && (
-        <>
-          <FailureCard run={run} stage={stage} />
-          {view.editable && (
-            <p className="text-sm text-ink-soft">
-              You can fix experiment.py in the Code tab below and choose “Save and resume”: your version is tested first.
-            </p>
-          )}
-        </>
-      )}
+      {stage.status === "failed" && <FailureCard run={run} stage={stage} />}
       {stage.status === "stale" && stage.stale_reason && (
         <p className="rounded-lg bg-stale-soft px-4 py-3 text-sm text-stale">Will run again: {stage.stale_reason}</p>
       )}

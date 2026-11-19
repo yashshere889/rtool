@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("fastapi")
 
 from research_tool.core.artifacts import ArtifactStore  # noqa: E402
+from research_tool.core.state import FeedbackItem, FeedbackKind, StateStore  # noqa: E402
 from research_tool.service import open_run, run_status  # noqa: E402
 from research_tool.testing.web import WRITE, web_client  # noqa: E402
 from research_tool.web.runner import LocalRunner  # noqa: E402
@@ -21,6 +22,7 @@ GATE = {"stage": "hypotheses", "gate": "hypothesis_selection"}
 def test_three_hypotheses_with_their_papers(runs_root: Path) -> None:
     view = web_client(runs_root).get(f"{CHOOSING}/hypotheses").json()
     assert view["stage"] == "hypotheses" and view["versions"] == [1] and view["selection"] is None
+    assert view["previous"] is None  # the first set: nothing to compare with
     assert [c["index"] for c in view["shortlist"]] == [0, 1, 2]
     assert sum(view["weights"].values()) == pytest.approx(1.0) and view["markdown"].endswith("hypotheses.md")
     for card in view["shortlist"]:
@@ -95,3 +97,23 @@ def test_a_quote_is_found_in_the_paper(runs_root: Path) -> None:
     span = text["sections"][focus["section"]]["text"][focus["start"] : focus["end"]]
     assert focus["claim"] == -1 and " ".join(span.split()) == " ".join(evidence["quote"].split())
     assert c.get(url, params={"id": evidence["paper_id"], "quote": "nothing like this at all"}).json()["focus"] is None
+
+
+def test_new_hypotheses_that_come_back_the_same_say_so(runs_root: Path) -> None:
+    # the stage acted on a comment in a later attempt, but its output was identical, so the store kept version 1
+    # (written directly: the demo drafts in parallel, so whether a rerun repeats itself depends on timing)
+    run = open_run(runs_root, "sleep-demo", "2-hypotheses")
+    states = StateStore(run.state_dir)
+    st = states.load_stage("hypotheses")
+    assert st is not None
+    comment = FeedbackItem(
+        kind=FeedbackKind.HUMAN_REJECTION, text="Include one about older adults.", consumed_by_attempt=2
+    )
+    st.feedback.append(comment)
+    states.save_stage(st)
+
+    view = web_client(runs_root).get(f"{CHOOSING}/hypotheses").json()
+    assert view["versions"] == [1]
+    previous = view["previous"]
+    assert previous["unchanged"] and previous["previous_version"] == 1
+    assert [f["text"] for f in previous["feedback"]] == ["Include one about older adults."]

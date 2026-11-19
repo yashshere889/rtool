@@ -41,3 +41,17 @@ export function foundBy(paper: PaperCardData): string {
   if (first === "manual") return "added by you";
   return "";
 }
+
+/** The literature stage's steps, in the order the agent runs them (agents/literature/agent.py PHASES). */
+export const LITERATURE_STEPS = [
+  { id: "plan", label: "Planning the searches" },
+  { id: "search", label: "Searching" },
+  { id: "screen", label: "Screening" },
+  { id: "snowball", label: "Following citations" },
+  { id: "download", label: "Downloading" },
+  { id: "parse", label: "Reading the files" },
+  { id: "extract", label: "Extracting findings" },
+  { id: "digest", label: "Summarising" },
+  { id: "embed", label: "Comparing papers" },
+  { id: "map", label: "Mapping the field" },
+] as const;

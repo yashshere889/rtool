@@ -8,6 +8,7 @@ import type { HypothesesView, HypothesisCardData, Hypothesis, RunDetail, StageSu
 import { CheckpointCard } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
 import { ReopenButton } from "@/components/ReopenDialog";
+import { RoundBanner } from "@/components/RoundBanner";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -244,6 +245,17 @@ export function HypothesesPage({ run, stage }: { run: RunDetail; stage: StageSum
           </label>
         )}
       </div>
+      {view.previous && (
+        <RoundBanner round={view.previous} what="set of hypotheses">
+          <button
+            type="button"
+            className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+            onClick={() => setParam("version", String(view.previous!.previous_version))}
+          >
+            See the previous set (set {view.previous.previous_version})
+          </button>
+        </RoundBanner>
+      )}
       {!latest && (
         <p className="rounded-lg bg-info-soft px-4 py-3 text-sm text-info">
           You are looking at an earlier set. Choices are made from the latest set.

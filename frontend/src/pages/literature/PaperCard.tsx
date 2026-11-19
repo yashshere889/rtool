@@ -10,6 +10,7 @@ import { buttonStyles } from "@/components/ui/button";
 import { ErrorNote, Loading } from "@/components/ui/states";
 import { cn } from "@/lib/cn";
 import { authorsShort, foundBy, paperStatus } from "@/lib/literature";
+import type { Choice } from "@/lib/paperMarks";
 
 import { PaperPanel, type PanelKind } from "./PaperPanels";
 import { UploadDialog } from "./UploadDialog";
@@ -41,7 +42,7 @@ function Relevance({ value, reason }: { value: number | null; reason: string }) 
   );
 }
 
-export type Choice = "include" | "exclude";
+export type { Choice };
 
 /** Keep / Drop, while the literature checkpoint is open: sent together with the decision to request changes. */
 function ChoiceButtons({ paper, choice, onChoose }: { paper: PaperCardData; choice: Choice | null; onChoose: (c: Choice | null) => void }) {
