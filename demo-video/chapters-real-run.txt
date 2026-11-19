@@ -1,0 +1,7 @@
+0:00 Opening: real runs, nothing simulated
+0:09 A live run waiting for its researcher; GPU queue line, model start-up, resume after an interruption, real search counts
+0:44 Literature after a second round: what changed, counts, real papers, key findings, the reader, the map
+1:35 Hypotheses as the model drafted them (not chosen)
+1:52 A finished run: Inconclusive verdict, GPU runs, results, report
+2:29 A step that stopped with an error and waits for the researcher
+2:46 Close

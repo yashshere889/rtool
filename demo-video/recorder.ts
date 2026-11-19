@@ -27,7 +27,7 @@ const OVERLAY = `
   document.head.appendChild(css);
   const add = (id) => { const el = document.createElement("div"); el.id = id; document.body.appendChild(el); return el; };
   const cap = add("demo-cap"), tag = add("demo-tag"), card = add("demo-card"), cursor = add("demo-cursor");
-  tag.textContent = "Demo · simulated data and model";
+  tag.textContent = window.__demoTag || "Demo · simulated data and model";
   const saved = JSON.parse(sessionStorage.getItem("__demo") || "{}");
   cap.textContent = saved.cap || "";
   if (saved.x !== undefined) { cursor.style.transition = "none"; cursor.style.left = saved.x + "px"; cursor.style.top = saved.y + "px";
@@ -49,7 +49,7 @@ export class Recorder {
   private lastFrame: Buffer | null = null;
   private frames = 0;
 
-  constructor(private page: Page, private dir: string) {}
+  constructor(private page: Page, private dir: string, private tag?: string) {}
 
   private now(): number {
     return this.clock + (this.since === null ? 0 : Date.now() - this.since);
@@ -59,6 +59,8 @@ export class Recorder {
     rmSync(this.dir, { recursive: true, force: true });
     mkdirSync(this.dir, { recursive: true });
     // On every later page load too (the overlay keeps its caption and cursor in sessionStorage).
+    if (this.tag) await this.page.addInitScript(`window.__demoTag = ${JSON.stringify(this.tag)};`);
+    if (this.tag) await this.page.evaluate(`window.__demoTag = ${JSON.stringify(this.tag)};`);
     await this.page.addInitScript(`addEventListener("DOMContentLoaded", () => ${OVERLAY.trim().replace(/;$/, "")});`);
     await this.page.evaluate(OVERLAY);
     this.cdp = await this.page.context().newCDPSession(this.page);

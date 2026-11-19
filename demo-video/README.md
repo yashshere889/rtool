@@ -26,3 +26,11 @@ Both are recorded from the web UI in demo mode (simulated papers, model and clus
 Files: `tour.rec.ts` (the script and captions), `recorder.ts` (screencast capture, captions, cursor, cut waits),
 `encode.swift`, `check.rec.ts`, `explore.rec.ts` (dumps every page of the staged demo runs), `stills.swift` (unused:
 AVFoundation could not read frames back on this Mac; `check.rec.ts` does that in Chrome).
+
+## Real-run supplement
+
+`rtool-real-run.mp4` (2 min 52 s, 20 MB) and `rtool-real-run-email.mp4` (9 MB): the same UI on real Barkla runs, read
+only (no decision is taken). Recorded with `real.rec.ts` against the Barkla UI tunnel (`scripts/rtool-ui --no-browser`,
+port 8780) with the UI token copied to a private file: `DEMO_PORT=8780 DEMO_TOKEN=<file> npx playwright test real.rec.ts`,
+then `swift encode.swift out/real-frames rtool-real-run.mp4`. The error card (about 2:30 to 2:47) shows a Barkla path
+with the account name.
