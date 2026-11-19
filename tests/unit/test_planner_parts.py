@@ -169,6 +169,10 @@ def test_hub_checker() -> None:
             return httpx.Response(
                 200, json={"gated": "manual", "tags": ["license:llama3"], "siblings": [{"size": 10**9}]}
             )
+        if request.url.path == "/quote/GSPC/history":
+            return httpx.Response(200, text="<!DOCTYPE html><html><body>quotes</body></html>")
+        if request.url.path == "/data/ff.csv":
+            return httpx.Response(200, text="date,ret\n19260701,0.09\n")
         if request.url.path == "/pypi/pettingzoo/json":
             return httpx.Response(200, json={"info": {"name": "PettingZoo", "license": "MIT"}})
         return httpx.Response(404)
@@ -200,6 +204,14 @@ def test_hub_checker() -> None:
         ResourceChoice(kind="dataset", name="c", source="torchvision", identifier="CIFAR10", purpose="")
     )
     assert torchvision.exists
+    page = checker.check(
+        ResourceChoice(kind="dataset", name="S&P", source="url", identifier="https://x.test/quote/GSPC/history", purpose="")
+    )
+    assert not page.exists and "HTML" in page.note
+    csv = checker.check(
+        ResourceChoice(kind="dataset", name="ff", source="url", identifier="https://x.test/data/ff.csv", purpose="")
+    )
+    assert csv.exists and csv.note == "reachable"
     # nothing public was named: never "verified", whatever it is called
     manual = checker.check(
         ResourceChoice(kind="dataset", name="CS:GO env", source="manual", identifier="custom", purpose="")

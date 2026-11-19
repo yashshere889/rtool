@@ -27,6 +27,7 @@ from .structures import alphafold_models, pdb_header, uniprot_fasta
 HF_API = "https://huggingface.co/api"
 PYPI_API = "https://pypi.org/pypi"
 MANUAL_NOTE = "not public: nothing will be downloaded; someone must provide it, or the experiment code must build it"
+HTML_PAGE_NOTE = "a web page (HTML), not a data file: name the direct download URL of the file itself"
 _PIP_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")  # "pettingzoo[mpe]>=1.24" -> "pettingzoo"
 
 
@@ -126,7 +127,11 @@ class HubChecker:
                 note = f"gated ({gated}): needs HF_TOKEN and accepted terms" if gated else ""
                 return ResourceCheck(True, _hf_license(info), _hf_size_gb(info), note)
             if resource.source == "url":
-                self.http.get_text(resource.identifier, cache=False)
+                text = self.http.get_text(resource.identifier, cache=False)
+                # A quote or "history" page answers fine but is not the data (2026-11-17: a Yahoo Finance page
+                # was fetched as the S&P 500 dataset, and the Coder spent every repair round parsing HTML).
+                if resource.kind == "dataset" and text.lstrip()[:512].lower().startswith(("<!doctype html", "<html")):
+                    return ResourceCheck(False, note=HTML_PAGE_NOTE)
                 return ResourceCheck(True, note="reachable")
             if resource.source == "manual":
                 return ResourceCheck(False, note=MANUAL_NOTE)
