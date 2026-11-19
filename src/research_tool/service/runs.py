@@ -134,7 +134,25 @@ def load_app_config(
     merged: dict[str, Any] = deep_merge(dict(overrides or {}), parse_set_overrides(list(sets)))
     if runs_root is not None:
         merged.setdefault("paths", {})["runs_root"] = str(runs_root)
-    return load_config(*default_config_files(), *config_files, overrides=merged)
+    config_files = list(config_files)
+    return carry_config_files(load_config(*default_config_files(), *config_files, overrides=merged), config_files)
+
+
+def carry_config_files(config: AppConfig, config_files: Iterable[Path]) -> AppConfig:
+    """List ``config_files`` in ``slurm.episode.config_files``, after the ones already there.
+
+    Episode jobs rebuild their config from the run's snapshot plus exactly those files, so a file a
+    run was created or advanced with (a model overlay, say) is otherwise silently dropped by its jobs:
+    a site config such as barkla.yaml sets that list to itself and re-applies its own model on top.
+    """
+    files = config.slurm.episode.config_files
+    have = {str(Path(f).expanduser().resolve()) for f in files}
+    for path in config_files:
+        resolved = str(Path(path).expanduser().resolve())
+        if resolved not in have:
+            files.append(resolved)
+            have.add(resolved)
+    return config
 
 
 # ------------------------------------------------------------ create / find
@@ -204,7 +222,7 @@ def replay_run(source: RunHandle, stage: str, tag: str, overlays: Iterable[Path]
     root = source.root.parent / run_id
     if root.exists():
         raise RToolError(f"run directory already exists: {root}")
-    shutil.copytree(source.root, root)
+    shutil.copytree(source.root, root, symlinks=True)  # the coder .venv links to the container python
     # fresh events (so `rtool stats` counts only the replay), no queued actions, no lease, no Slurm jobs
     (root / "events.jsonl").unlink(missing_ok=True)
     (root / "state" / "episode.lease").unlink(missing_ok=True)

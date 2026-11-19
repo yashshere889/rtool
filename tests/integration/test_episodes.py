@@ -261,3 +261,34 @@ def test_continuation_episodes_keep_every_config_file_they_were_launched_with(
 
     assert result.exit_code == 0, result.output
     assert seen == [[str(site), str(overlay)]]
+
+
+def test_new_and_run_pass_their_config_overlays_to_episode_jobs(
+    runs_root: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Jobs rebuild their config from slurm.episode.config_files, so `-c` overlays must be listed there.
+
+    Before: `rtool new -c barkla.yaml -c qwen.yaml` saved Qwen in run.json, but every episode job ran
+    `rtool episode --config barkla.yaml` only, which put Nemotron back on top (2026-11-17).
+    """
+    from typer.testing import CliRunner
+
+    from research_tool.cli import main as cli
+
+    site, overlay = tmp_path / "site.yaml", tmp_path / "overlay.yaml"
+    site.write_text(f"slurm: {{episode: {{config_files: ['{site}']}}}}\n")  # like configs/barkla.yaml
+    overlay.write_text("llm: {served_model: other}\n")
+    args = ["new", "proj", "-t", "topic", "-p", "toy", "-c", str(site), "-c", str(overlay)]
+    result = CliRunner().invoke(cli.app, [*args, "--runs-root", str(runs_root), "--run-id", "r1"])
+    assert result.exit_code == 0, result.output
+    run = RunHandle(runs_root / "proj" / "r1")
+    files = [str(Path(f).resolve()) for f in run.config.slurm.episode.config_files]
+    assert files == [str(site.resolve()), str(overlay.resolve())]  # site once, overlay after it
+    assert "--config " + str(overlay.resolve()) in episode_job_spec(run, needs_llm=True).command
+
+    plain = make_run(runs_root, JOB)
+    seen: list[list[str]] = []
+    monkeypatch.setattr(cli, "_kick", lambda r, *a, **k: seen.append(list(r.config.slurm.episode.config_files)))
+    result = CliRunner().invoke(cli.app, ["run", str(plain.root), "-c", str(overlay), "--set", "slurm.backend=real"])
+    assert result.exit_code == 0, result.output
+    assert seen and seen[0][-1] == str(overlay.resolve())

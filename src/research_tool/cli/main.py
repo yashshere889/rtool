@@ -50,7 +50,17 @@ from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
 from ..llm.server import VLLMServer
 from ..packs import load_pack, pack_sources
-from ..service import check_edit, create_run, kick, load_app_config, queue_action, replay_run, run_status, stop_run
+from ..service import (
+    carry_config_files,
+    check_edit,
+    create_run,
+    kick,
+    load_app_config,
+    queue_action,
+    replay_run,
+    run_status,
+    stop_run,
+)
 from ..service import list_runs as list_all_runs
 from .stats import print_stats
 
@@ -296,6 +306,7 @@ def run_command(
     """Advance the run: submit an episode job (real Slurm) or run one episode here."""
     with _guard():
         run = _open_run(run_ref, runs_root, config, set_)
+        carry_config_files(run.config, config)  # the episode job must get the overlays this submission used
         if run.config.slurm.backend == "real" and not inline:
             _kick(run, "rtool run", needs_llm=llm_needed(run))
             return
