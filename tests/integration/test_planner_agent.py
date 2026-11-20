@@ -266,6 +266,32 @@ def test_the_brief_reaches_every_planning_step(runs_root: Path, tmp_path: Path) 
     assert "Does label noise lower BERT accuracy on IMDB?" in prompts["PlanCore"]
 
 
+def test_the_briefs_fixed_limits_are_enforced(runs_root: Path, tmp_path: Path) -> None:
+    run = seed(runs_root, tmp_path)
+    brief = ResearchBrief(topic="Sentiment robustness", seeds=5, max_minutes_per_run=10, datasets=["imdb"])
+    ArtifactStore(run.artifacts_dir).put("research_brief", brief, producer=Producer(stage="user", agent="test"))
+    llm = MockLLM()
+    llm.add(lambda r: schema(r) == "PlanCore", core)  # asks for 3 seeds
+    llm.add(lambda r: schema(r) == "ResourcePlan", resources)
+    too_long = {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 0.5, "justification": "BERT"}
+    llm.add(
+        lambda r: schema(r) == "ComputeEstimate",
+        lambda r: (
+            too_long | {"hours_per_run": 0.1}
+            if "Problems with the previous estimate" in r.messages[-1].content
+            else too_long
+        ),
+    )
+    Engine(run, services(run, llm)).advance()
+    plan = ArtifactStore(run.artifacts_dir).get("experiment_plan")
+    assert plan.seeds == [0, 1, 2, 3, 4]  # set from the brief, not the model's 3
+    assert plan.compute.hours_per_run == 0.1 and not plan.issues
+    repairs = [e["data"] for e in EventLog(run.events_path, run.run_id).read() if e["kind"] == "plan_repair"]
+    assert any("the researcher allows at most 10" in i for r in repairs for i in r["compute"])
+    prompts = [r.messages[-1].content for r in llm.calls]
+    assert all("Use only these datasets: imdb." in text for text in prompts)
+
+
 def planned(runs_root: Path, tmp_path: Path) -> tuple[RunHandle, MockLLM]:
     run = seed(runs_root, tmp_path)
     llm = MockLLM()

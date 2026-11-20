@@ -7,6 +7,7 @@ from typing import Any
 
 from ...core.config import AppConfig
 from ...hpc.jobspec import format_time_limit, parse_time_limit
+from ...schemas.common import ResearchBrief
 from ...schemas.plan import ComputeEstimate, ComputeRequest, Condition, ExperimentPlan, Metric, PlanCore, ResourceSpec
 
 SAFETY_FACTOR = 1.3  # runs take longer than estimated
@@ -244,6 +245,37 @@ def results_schema(conditions: list[Condition], metrics: list[Metric], seeds: li
     }
 
 
+def _key(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", name.lower())  # "CIFAR-10", "cifar10" and "uoft-cs/cifar10" agree
+
+
+def brief_issues(
+    brief: ResearchBrief | None,
+    *,
+    resources: list[ResourceSpec] | None = None,
+    hours_per_run: float | None = None,
+    n_seeds: int | None = None,
+) -> list[str]:
+    """Where a plan breaks the brief's fixed limits; pass only the parts to check."""
+    if brief is None:
+        return []
+    issues = []
+    if n_seeds is not None and brief.seeds and n_seeds != brief.seeds:
+        issues.append(f"the researcher asked for exactly {brief.seeds} seeds per condition, not {n_seeds}")
+    if resources is not None and brief.datasets:
+        allowed = {_key(d) for d in brief.datasets}
+        for r in resources:
+            names = {_key(r.name), _key(r.identifier), _key(r.identifier.rsplit("/", 1)[-1])}
+            if r.kind == "dataset" and not names & allowed:
+                issues.append(f"{r.name} is not one of the datasets the researcher allows: {', '.join(brief.datasets)}")
+    if hours_per_run is not None and brief.max_minutes_per_run and hours_per_run * 60 > brief.max_minutes_per_run:
+        issues.append(
+            f"one run is estimated at {hours_per_run * 60:g} minutes; the researcher allows at most "
+            f"{brief.max_minutes_per_run:g}: make each run smaller (fewer epochs or steps, less data)"
+        )
+    return issues
+
+
 def compute_issues(request: ComputeRequest, config: AppConfig) -> list[str]:
     """Does a compute request (e.g. edited by hand) fit the cluster and the budget? ``fit_compute`` is not
     used for that: it would pick a partition again instead of checking the one chosen."""
@@ -283,7 +315,9 @@ def compute_issues(request: ComputeRequest, config: AppConfig) -> list[str]:
     return issues
 
 
-def plan_issues(plan: ExperimentPlan, config: AppConfig, min_seeds: int, max_dataset_gb: float) -> list[str]:
+def plan_issues(
+    plan: ExperimentPlan, config: AppConfig, min_seeds: int, max_dataset_gb: float, brief: ResearchBrief | None = None
+) -> list[str]:
     """Everything the planner would warn about, for a whole plan."""
     return (
         _design_issues(plan.conditions, plan.ablations, len(plan.seeds), min_seeds)
@@ -291,4 +325,7 @@ def plan_issues(plan: ExperimentPlan, config: AppConfig, min_seeds: int, max_dat
         + metric_issues(plan.metrics)
         + resource_issues(plan.resources, max_dataset_gb)
         + compute_issues(plan.compute, config)
+        + brief_issues(
+            brief, resources=plan.resources, hours_per_run=plan.compute.hours_per_run, n_seeds=len(plan.seeds)
+        )
     )

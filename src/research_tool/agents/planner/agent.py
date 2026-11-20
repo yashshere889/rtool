@@ -24,8 +24,16 @@ from ...schemas.literature import Corpus, KnowledgeMap
 from ...schemas.plan import ComputeEstimate, ExperimentPlan, Metric, PlanCore, ResourcePlan, ResourceSpec
 from ...tools.http import PoliteHttp
 from ...tools.resources.checks import HubChecker, ResourceChecker
-from ..common import SYSTEM, compute_profile, open_corpus_kb
-from .checks import design_issues, fit_compute, normalise_core, one_primary, resource_issues, results_schema
+from ..common import SYSTEM, cached_models, compute_profile, open_corpus_kb
+from .checks import (
+    brief_issues,
+    design_issues,
+    fit_compute,
+    normalise_core,
+    one_primary,
+    resource_issues,
+    results_schema,
+)
 
 
 class PlannerConfig(BaseModel):
@@ -61,6 +69,7 @@ class PlannerAgent(Agent):
         snippets = self.evidence(ctx, corpus, hypothesis, cfg.evidence_snippets)
         known = [e.name for e in km.entities if e.kind == "dataset"][:15]
         compute = compute_profile(ctx.app_config)
+        cached = cached_models(ctx.app_config)
         feedback = [f.text for f in ctx.feedback]
         if selected.note.strip():
             feedback.insert(0, f"When choosing this hypothesis the researcher noted: {selected.note.strip()}")
@@ -83,13 +92,15 @@ class PlannerAgent(Agent):
                             compute=compute,
                             feedback=feedback,
                             issues=core_issues,
-                            min_seeds=cfg.min_seeds,
+                            min_seeds=brief.seeds or cfg.min_seeds,
                         ),
                         profile="reason",
                         system=SYSTEM,
                     )
                 )
-                core_issues = design_issues(core, cfg.min_seeds)
+                if brief.seeds:  # a fixed number: set it rather than ask the model again
+                    core.n_seeds = brief.seeds
+                core_issues = design_issues(core, min(cfg.min_seeds, brief.seeds or cfg.min_seeds))
             if resources is None or res_issues:
                 plan = ctx.llm.structured(
                     ResourcePlan,
@@ -99,6 +110,7 @@ class PlannerAgent(Agent):
                         h=hypothesis,
                         core=core,
                         known_datasets=known,
+                        cached_models=cached,
                         feedback=feedback,
                         issues=res_issues,
                     ),
@@ -106,7 +118,7 @@ class PlannerAgent(Agent):
                     system=SYSTEM,
                 )
                 resources = [self.verify(checker, choice, cfg.check_resources) for choice in plan.resources]
-                res_issues = resource_issues(resources, cfg.max_dataset_gb)
+                res_issues = resource_issues(resources, cfg.max_dataset_gb) + brief_issues(brief, resources=resources)
             runs = len(core.conditions + core.ablations) * core.n_seeds
             if estimate is None or cmp_issues:
                 estimate = ctx.llm.structured(
@@ -125,6 +137,7 @@ class PlannerAgent(Agent):
                     system=SYSTEM,
                 )
             request, cmp_issues = fit_compute(estimate, runs, ctx.app_config)
+            cmp_issues += brief_issues(brief, hours_per_run=request.hours_per_run)
             if not (core_issues or res_issues or cmp_issues):
                 break
             ctx.emit("plan_repair", design=core_issues, resources=res_issues, compute=cmp_issues)

@@ -7,15 +7,15 @@ Procedure:
 {{ loop.index }}. {{ step }}
 {% endfor %}
 Datasets mentioned in the collected literature: {{ known_datasets | join(", ") or "none" }}
-{% if brief.constraints or brief.notes %}
+{% if cached_models %}
+Models already on the cluster (no download, no token; prefer one of these when a model is needed): {{ cached_models | join(", ") }}
+{% endif %}
+{% if brief.requirements() %}
 
 The researcher's requirements (follow them exactly: use only the datasets and models they allow):
-{% for c in brief.constraints %}
+{% for c in brief.requirements() %}
 - {{ c }}
 {% endfor %}
-{% if brief.notes %}
-- {{ brief.notes }}
-{% endif %}
 {% endif %}
 {% if feedback %}
 

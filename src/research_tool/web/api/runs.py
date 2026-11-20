@@ -66,6 +66,9 @@ class NewRun(BaseModel):
     pack: str = "generic"
     review: ReviewMode = "every_step"
     max_gpu_hours: float | None = Field(default=None, gt=0)
+    seeds: int | None = Field(default=None, ge=1, le=100)
+    max_minutes_per_run: float | None = Field(default=None, gt=0)
+    datasets: list[str] = Field(default_factory=list, max_length=20)
 
 
 class Created(BaseModel):
@@ -125,6 +128,9 @@ def new_run(body: NewRun, request: Request) -> Created:
                 constraints=[c.strip() for c in body.constraints if c.strip()],
                 seed_queries=[s.strip() for s in body.seed_queries if s.strip()],
                 pack=body.pack,
+                seeds=body.seeds,
+                max_minutes_per_run=body.max_minutes_per_run,
+                datasets=[d.strip() for d in body.datasets if d.strip()],
                 created_by="rtool ui",
             )
     except RToolError as exc:

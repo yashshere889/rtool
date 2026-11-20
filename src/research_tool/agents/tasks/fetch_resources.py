@@ -20,7 +20,7 @@ from ...core.registry import register_agent
 from ...hpc.storage import QuotaError, ensure_room
 from ...schemas.plan import ExperimentPlan, FetchedResource, ResourceManifest
 from ...tools.http import PoliteHttp
-from ...tools.resources.fetch import Fetcher, Torchvision, tree_size
+from ...tools.resources.fetch import Fetcher, Torchvision, local_models, tree_size
 from ..coder.env import ExperimentEnv
 
 GATE = "manual_resources"
@@ -133,6 +133,7 @@ class FetchResources(Task):
                 http=PoliteHttp(),
                 hf_token=os.environ.get("HF_TOKEN"),
                 torchvision=torchvision_downloader(ctx.app_config.experiments, root, ctx.workspace.path("logs")),
+                local=local_models(ctx.app_config.llm.server.hf_home),
             )
         )
         done: dict[str, dict] = ctx.state.setdefault("fetched", {})

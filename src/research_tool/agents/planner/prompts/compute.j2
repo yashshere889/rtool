@@ -10,15 +10,12 @@ Resources: {% for r in resources %}{{ r.name }} ({{ r.kind }}{% if r.size_gb %},
 Available compute:
 {{ compute }}
 Number of runs planned: {{ runs }}
-{% if brief.constraints or brief.notes %}
+{% if brief.requirements() %}
 
 The researcher's requirements (follow every limit on time, GPUs and budget exactly):
-{% for c in brief.constraints %}
+{% for c in brief.requirements() %}
 - {{ c }}
 {% endfor %}
-{% if brief.notes %}
-- {{ brief.notes }}
-{% endif %}
 {% endif %}
 {% if feedback %}
 
