@@ -1,7 +1,7 @@
 # Architecture
 
 rtool turns a research topic into a reviewed report with six AI agents, running on
-Barkla with a local LLM (Nemotron Nano 12B v2). This page explains how the pieces
+Barkla with a local LLM (Qwen3.6-35B-A3B by default). This page explains how the pieces
 fit together; [adding_an_agent.md](adding_an_agent.md) shows how to extend it and
 [barkla_runbook.md](barkla_runbook.md) how it runs on the cluster.
 
@@ -109,8 +109,8 @@ model. The client gives them:
   the schema. So every structured prompt ends with its fields spelled out (name,
   type, description), and the constraint requires every field
   (`llm.describe_schema`); before this, 88 of 98 paper extractions had no method.
-- reasoning on/off via Nemotron's `/think` / `/no_think`; reasoning is split
-  from the answer. With reasoning on, JSON is produced in a second call.
+- reasoning on/off per call (`llm.reasoning_control`: Qwen3.6's `enable_thinking` chat-template
+  argument, or Nemotron's `/think` / `/no_think`); reasoning is split from the answer. With reasoning on, JSON is produced in a second call.
 - `parallel(...)` — many requests at once (32 on Barkla), batched by vLLM.
 
 Every prompt is a Jinja template next to its agent; its hash is stored with the

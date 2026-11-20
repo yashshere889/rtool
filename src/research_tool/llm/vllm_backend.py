@@ -2,8 +2,10 @@
 
 Model-specific behaviour handled here:
 
-* **Reasoning control** — Nemotron Nano v2 switches reasoning with ``/think`` or
-  ``/no_think`` in the system prompt (model card). We set exactly one flag per call.
+* **Reasoning control** — ``system_flag``: Nemotron Nano v2 switches reasoning with ``/think`` or
+  ``/no_think`` in the system prompt (model card); we set exactly one flag per call.
+  ``chat_template``: Qwen3.6 ignores those flags and takes ``enable_thinking`` as a chat-template
+  argument. ``none``: the model has no thinking switch.
 * **Reasoning extraction** — with ``--reasoning-parser`` the server returns the
   thinking in ``reasoning_content`` (older vLLM) or ``reasoning`` (newer); without
   it, the text contains ``...</think>answer`` (the chat template pre-fills ``<think>``).
@@ -125,6 +127,8 @@ class VLLMBackend:
                 payload[name] = getattr(request, name)
         if request.stop:
             payload["stop"] = list(request.stop)
+        if self.reasoning_control == "chat_template":
+            payload["chat_template_kwargs"] = {"enable_thinking": request.reasoning == "on"}
         if request.json_schema is not None:
             payload.update(self._structured_fields(request.json_schema))
         return payload

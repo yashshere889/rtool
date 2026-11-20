@@ -6,7 +6,8 @@ only difference between two replays is the model. Prompts, profiles (temperature
 schemas and thresholds are identical; `configs/barkla-qwen3-coder-next.yaml` changes only the server and
 the reasoning flag.
 
-Both models are open and run on Barkla; nothing here calls a hosted LLM, including as a judge.
+Since 2026-11-20 the default model is Qwen3.6-35B-A3B; Nemotron is the overlay
+`configs/barkla-nemotron.yaml`. Both models are open and run on Barkla; nothing here calls a hosted LLM, including as a judge.
 
 ## Differences to keep in mind when reading results
 
@@ -16,7 +17,9 @@ Both models are open and run on Barkla; nothing here calls a hosted LLM, includi
 * FP8 weights, not BF16 (the model card's numbers are for BF16).
 * One replay per model per stage is one sample. Repeat (`--tag qwen2`, `--tag nemo2`) before believing a
   small difference; Nemotron at temperature 0.6 and Qwen at 0.0 (the profiles' values) both vary.
-* Sampling follows the profiles, not the Qwen card's recommended temperature 1.0 / top-p 0.95 / top-k 40.
+* The profiles now hold Qwen3.6's card values (temperature 1.0 / 0.95, 0.7 / 0.8 non-thinking), so both models
+  replay with those; the old Nemotron values (0.6 / 0.95, greedy) are no longer in effect.
+* Sampling follows the profiles, not the Qwen3-Coder-Next card's recommended temperature 1.0 / top-p 0.95 / top-k 40.
   A second round with those values is a separate experiment.
 
 ## One-time setup on Barkla (needs your interactive login)
@@ -39,9 +42,10 @@ Pick a source run that is at rest and has the stage's inputs (for example
 
 ```bash
 OVERLAY=~/"Research tool"/configs/barkla-qwen3-coder-next.yaml
+NEMO=~/"Research tool"/configs/barkla-nemotron.yaml
 R=multi-agent-research-pipeline/20261014-214434-bdf6
 for stage in hypotheses plan code report; do
-  rtool replay $R --stage $stage --tag nemo                     # current config: Nemotron
+  rtool replay $R --stage $stage --tag nemo --config "$NEMO"    # Nemotron
   rtool replay $R --stage $stage --tag qwen --config "$OVERLAY" # Qwen3-Coder-Next
   rtool run $R-$stage-nemo
   rtool run $R-$stage-qwen
@@ -51,7 +55,7 @@ done
 Each copy stops where the stage's own gate opens (hypotheses and plan at their checkpoints, code at
 `gpu_runs` before any GPU time, report/review at `final_report`), so no experiment is run. Start with
 `hypotheses` on Qwen as the smoke test: if vLLM 0.15 rejects a flag (the overlay keeps
-`--safetensors-load-strategy` and `--structured-outputs-config` from the Nemotron config), the episode
+`--safetensors-load-strategy` and `--structured-outputs-config` from barkla.yaml), the episode
 records the server error and `rtool stats <run>` names it.
 
 Replay copies the whole run directory (papers, texts, datasets), so use runs whose directory is a few

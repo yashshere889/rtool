@@ -38,7 +38,7 @@ def test_structured_breaks_repetition_loops_by_sampling() -> None:
     result = LLMClient(llm, LLMConfig()).structured(ToyNumbers, "give numbers")
     assert result.values == [1.0, 2.0]
     first, second = llm.calls
-    assert first.temperature == 0.0 and (second.temperature, second.top_p) == (0.6, 0.95)
+    assert first.temperature == 0.7 and (second.temperature, second.top_p) == (0.6, 0.95)
     assert len(second.messages) == len(first.messages)  # the looping reply is not shown back
     assert second.messages[-1].content.endswith("never repeat yourself.")
 
@@ -67,7 +67,7 @@ def test_profiles_and_budget_charging() -> None:
     client = LLMClient(llm, LLMConfig()).bind(budget=budget, on_call=calls.append, stage="s")
     client.chat("hello", profile="reason")
     request = llm.calls[0]
-    assert (request.reasoning, request.temperature, request.top_p) == ("on", 0.6, 0.95)
+    assert (request.reasoning, request.temperature, request.top_p) == ("on", 1.0, 0.95)
     assert budget.stage_usage.llm_calls == 1 and budget.stage_usage.prompt_tokens > 0
     assert calls and calls[0]["profile"] == "reason"
     with pytest.raises(BudgetExceeded):

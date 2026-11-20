@@ -8,11 +8,12 @@ from research_tool.core.config import GateMode, load_config, parse_set_overrides
 from research_tool.core.errors import ConfigError
 
 
-def test_defaults_include_nemotron_profiles() -> None:
+def test_defaults_are_qwen_with_the_model_cards_sampling() -> None:
     cfg = load_config(env={})
-    assert cfg.llm.model == "nvidia/NVIDIA-Nemotron-Nano-12B-v2"
+    assert cfg.llm.model == "Qwen/Qwen3.6-35B-A3B"
     assert cfg.llm.profile("extract").reasoning == "off"
-    assert cfg.llm.profile("reason").temperature == pytest.approx(0.6)
+    assert cfg.llm.profile("reason").temperature == pytest.approx(1.0)
+    assert cfg.llm.reasoning_control == "chat_template"
     with pytest.raises(ConfigError):
         cfg.llm.profile("nope")
 

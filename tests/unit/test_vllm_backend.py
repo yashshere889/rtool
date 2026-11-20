@@ -76,6 +76,21 @@ def test_payload_and_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     assert json.loads(seen[0].content)["messages"][0]["role"] == "user"
 
 
+def test_chat_template_mode_sets_enable_thinking_and_no_system_flag() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(200, json=completion("ok"))
+
+    backend = make_backend(handler, reasoning_control="chat_template")
+    for reasoning, expected in (("on", True), ("off", False)):
+        backend.chat(request(reasoning=reasoning))
+        body = json.loads(seen[-1].content)
+        assert body["chat_template_kwargs"] == {"enable_thinking": expected}
+        assert body["messages"][0]["role"] == "user"  # no /think or /no_think system message
+
+
 @pytest.mark.parametrize(
     ("message", "expected_reasoning", "expected_text"),
     [

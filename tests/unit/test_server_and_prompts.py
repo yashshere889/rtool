@@ -37,15 +37,14 @@ def test_command_follows_the_model_card(monkeypatch: pytest.MonkeyPatch, tmp_pat
     server = VLLMServer(cfg, tmp_path)
     cmd = server.command(4321)
     assert cmd[:5] == ["apptainer", "exec", "--nv", "--bind", "/mnt/scratch:/mnt/scratch"]
-    assert cmd[5:9] == ["/images/vllm.sif", "vllm", "serve", "nvidia/NVIDIA-Nemotron-Nano-12B-v2"]
+    assert cmd[5:9] == ["/images/vllm.sif", "vllm", "serve", "Qwen/Qwen3.6-35B-A3B"]
     joined = " ".join(cmd)
     for expected in (
         "--host 127.0.0.1",
         "--port 4321",
-        "--served-model-name nemotron",
-        "--trust-remote-code",
-        "--mamba_ssm_cache_dtype float32",
-        "--reasoning-parser deepseek_r1",
+        "--served-model-name qwen3.6",
+        "--language-model-only",
+        "--reasoning-parser qwen3",
     ):
         assert expected in joined
     env = server.environment("tok")

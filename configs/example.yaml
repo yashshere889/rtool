@@ -57,22 +57,23 @@ budgets:
 
 llm:
   backend: mock                           # mock | vllm (a server per episode) | external (a URL)
-  model: nvidia/NVIDIA-Nemotron-Nano-12B-v2
+  model: Qwen/Qwen3.6-35B-A3B
+  reasoning_control: chat_template        # chat_template (Qwen3.6) | system_flag (Nemotron /think) | none
   base_url: null                          # for backend=external, e.g. http://127.0.0.1:8000/v1
   concurrency: 16                         # parallel requests for bulk work (Barkla: 32)
   structured_with_reasoning: true         # false: think first, then format JSON in a second call
   profiles:                               # agents name a profile, never a model
-    extract: {reasoning: "off", temperature: 0.0, max_tokens: 2048}
-    reason:  {reasoning: "on", temperature: 0.6, top_p: 0.95, max_tokens: 8192, thinking_budget: 4096}
+    extract: {reasoning: "off", temperature: 0.7, top_p: 0.8, presence_penalty: 1.5, max_tokens: 2048}
+    reason:  {reasoning: "on", temperature: 1.0, top_p: 0.95, presence_penalty: 1.5, max_tokens: 8192, thinking_budget: 4096}
     code:    {reasoning: "on", temperature: 0.6, top_p: 0.95, max_tokens: 16384, thinking_budget: 4096}
-    write:   {reasoning: "off", temperature: 0.0, max_tokens: 4096}
-    judge:   {reasoning: "on", temperature: 0.6, top_p: 0.95, max_tokens: 4096, thinking_budget: 2048, samples: 3}
-    # each profile also takes presence_penalty / frequency_penalty (they count generated tokens only)
+    write:   {reasoning: "off", temperature: 0.7, top_p: 0.8, presence_penalty: 1.5, max_tokens: 4096}
+    judge:   {reasoning: "on", temperature: 1.0, top_p: 0.95, presence_penalty: 1.5, max_tokens: 4096, thinking_budget: 2048, samples: 3}
+    # sampling values are the Qwen3.6 model card's; each profile also takes frequency_penalty (penalties count generated tokens only)
   server:                                 # backend=vllm: how an episode starts its own server
-    container: null                       # Apptainer image with vLLM (Barkla: $NEMOTRON_SIF)
+    container: null                       # Apptainer image with vLLM >= 0.19 (Barkla: see configs/barkla.yaml)
     hf_home: null                         # Hugging Face cache with the weights (read offline)
     home: null                            # HOME inside the container
-    reasoning_parser: deepseek_r1         # Barkla: null (Nemotron v2's tokenizer has no single <think> token)
+    reasoning_parser: qwen3               # splits <think> from the answer (Nemotron: null, its tokenizer has no single <think> token)
 
 slurm:
   backend: fake                           # fake | real
