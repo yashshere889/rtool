@@ -1,14 +1,14 @@
 #!/bin/bash -l
-# Build an Apptainer image with vLLM. ONLY needed if the nemotron module's container
-# has no vLLM (the M0 probe tells us). Run on a viz node — the Barkla docs ask for
+# Build an Apptainer image with vLLM. Needed for any model the nemotron module's image (vLLM 0.11.0)
+# is too old for: Qwen3.6-35B-A3B (the default) needs vLLM >= 0.19. Run on a viz node — the Barkla docs ask for
 # lengthy builds and data transfers to happen on barklaviz1/2, not the login node.
 #
 #     bash build_vllm_sif.sh [vllm-image-tag]
 #
 # Pulls the official vllm/vllm-openai image from Docker Hub (several GB) and writes
-# a single .sif file (one inode). The model card needs vLLM >= 0.10.1.
+# a single .sif file (one inode). The Qwen3.6 model card needs vLLM >= 0.19.
 set -euo pipefail
-TAG="${1:-v0.10.1}"
+TAG="${1:-v0.19.1}"
 OUT_DIR="${RTOOL_CONTAINERS:-/mnt/scratch/users/$USER/rtool/containers}"
 # Keep Apptainer's cache and temp space out of $HOME (75 GB / 100k-file quota).
 export APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-/mnt/scratch/users/$USER/.apptainer-cache}"

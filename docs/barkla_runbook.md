@@ -11,7 +11,7 @@ What `scripts/probe_barkla.sh` found on 2026-10-08, and how rtool is set up on B
 | Runs (one folder per run) | `/mnt/scratch/users/$USER/rtool/projects` | jobs must be submitted from scratch |
 | Datasets / models for experiments | `/mnt/scratch/users/$USER/rtool/resources` | shared by runs |
 | Web UI job (socket, token, log) | `/mnt/scratch/users/$USER/rtool/ui` (mode 0700) | jobs run from scratch; only you can open it |
-| Nemotron weights (23 GB) | `/mnt/scratch/users/$USER/rtool/hf` | read offline by vLLM |
+| Model weights (Qwen3.6-35B-A3B, ~72 GB; Nemotron 23 GB) | `/mnt/scratch/users/$USER/rtool/hf` | read offline by vLLM |
 | vLLM's home inside the container | `/mnt/scratch/users/$USER/rtool/vllm-home` | caches; hides `~/.local` |
 | Secrets (you create, `chmod 600`) | `~/.config/rtool/secrets.env` | never printed |
 
@@ -47,7 +47,11 @@ LLM benchmark (one GPU, ~30 min): `cd ~/scratch/rtool/bench && sbatch ~/"Researc
   Hugging Face, PyPI, GitHub). Semantic Scholar answers 429 without an API key.
 - **Nemotron module:** `nemotron/nano-12b-v2` sets `NEMOTRON_SIF` (9.4 GB image).
   Inside: Python 3.10, vLLM 0.11.0, torch 2.8.0+cu128, transformers 4.57.1,
-  xgrammar 0.1.25, mamba_ssm, causal_conv1d. No separate vLLM image is needed.
+  xgrammar 0.1.25, mamba_ssm, causal_conv1d. It serves Nemotron without a separate vLLM image
+  and still runs the experiments; the default LLM, Qwen3.6-35B-A3B, needs vLLM >= 0.19, so it is served
+  from its own image: `bash scripts/build_vllm_sif.sh v0.19.1` (as a Slurm job), then
+  `RTOOL_MODEL=Qwen/Qwen3.6-35B-A3B sbatch scripts/fetch_model.sh`. Both are untried on Barkla
+  (written 2026-11-20); the Qwen server needs 2 GPUs (`slurm.episode.gpus: 2`).
 - **GPU nodes:** driver 580.159.04 (CUDA 13.0). One GPU gets 8 CPUs on gpu05
   (V100) and 24 CPUs on gpu-l40s (`DefCpuPerGPU=24`); node-local `/tmp` ≈ 350 GB.
 - **Python for the orchestrator:** `miniforge3/25.3.0-python3.12.10`, sqlite 3.49.2 with FTS5.

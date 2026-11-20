@@ -25,7 +25,7 @@ ENDPOINTS = {
     "Semantic Scholar": "https://api.semanticscholar.org/graph/v1/paper/search?query=test&limit=1",
     "arXiv": "https://export.arxiv.org/api/query?search_query=all:test&max_results=1",
     "Crossref": "https://api.crossref.org/works?rows=1",
-    "Hugging Face": "https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-Nano-12B-v2",
+    "Hugging Face": "https://huggingface.co/api/models/Qwen/Qwen3.6-35B-A3B",
 }
 
 

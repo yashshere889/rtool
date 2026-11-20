@@ -67,7 +67,7 @@ def test_doctor_loads_the_server_modules_like_an_episode(tmp_path: Path) -> None
     bin_dir.mkdir()
     (bin_dir / "apptainer").write_text("#!/bin/sh\n", encoding="utf-8")
     (bin_dir / "apptainer").chmod(0o755)
-    weights = tmp_path / "hf" / "hub" / "models--nvidia--NVIDIA-Nemotron-Nano-12B-v2"
+    weights = tmp_path / "hf" / "hub" / "models--Qwen--Qwen3.6-35B-A3B"
     weights.mkdir(parents=True)
     cfg = load_config(
         overrides={

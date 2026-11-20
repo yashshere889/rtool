@@ -1,8 +1,8 @@
 # Research Tool (`rtool`)
 
 A resumable, human-gated multi-agent research pipeline for the University of
-Liverpool's **Barkla** HPC cluster, powered only by a local LLM (NVIDIA
-Nemotron Nano 12B v2, served by vLLM on the cluster's GPUs).
+Liverpool's **Barkla** HPC cluster, powered only by a local LLM (Qwen3.6-35B-A3B by default,
+served by vLLM on the cluster's GPUs; NVIDIA Nemotron Nano 12B v2 via `configs/barkla-nemotron.yaml`).
 
 ```
 literature ─▶[review]─▶ hypotheses ─▶[pick 1 of 3]─▶ plan ─▶[approve]─▶ fetch data

@@ -163,16 +163,28 @@ def test_barkla_site_config_loads(monkeypatch) -> None:  # noqa: ANN001
     path = Path(__file__).resolve().parents[2] / "configs" / "barkla.yaml"
     cfg = load_config(path, env={"USER": "someone"})
     assert str(cfg.paths.runs_root) == "/mnt/scratch/users/someone/rtool/projects"
-    assert cfg.llm.server.container == "$NEMOTRON_SIF"  # expanded later, when the server starts
+    assert cfg.llm.server.container == "/mnt/scratch/users/someone/rtool/containers/vllm-v0.19.1.sif"  # vLLM >= 0.19
     assert cfg.slurm.experiment_partitions == ["gpu-l40s", "gpu-h100", "gpu-v100"]
     assert cfg.slurm.partitions["gpu-h100"].gpus_per_node == 4
     assert cfg.knowledge.embedder == "fastembed" and cfg.paths.resources_root is not None
     choices = cfg.slurm.episode.gpu_choices
-    assert choices[0].partition == "gpu-l40s" and len(choices) >= 4
+    assert cfg.slurm.episode.gpus == 2  # Qwen3.6 BF16 (~72 GB) is served with tensor parallel 2
+    assert choices[0].partition == "gpu-l40s" and len(choices) == 3
     for choice in choices:  # every choice must pass the job validator
         partition = cfg.slurm.partitions[choice.partition]
         assert partition.allows_gpu_type(choice.gpu_type) and (partition.gpu_memory_gb or 0) >= 40  # type: ignore[arg-type]
     assert cfg.slurm.partitions["gpu-a-lowsmall"].preemptible
+
+
+def test_nemotron_overlay_switches_the_model_back() -> None:
+    configs = Path(__file__).resolve().parents[2] / "configs"
+    cfg = load_config(configs / "barkla.yaml", configs / "barkla-nemotron.yaml", env={"USER": "someone"})
+    assert cfg.llm.model == "nvidia/NVIDIA-Nemotron-Nano-12B-v2" and cfg.llm.reasoning_control == "system_flag"
+    assert cfg.llm.server.container == "$NEMOTRON_SIF" and cfg.llm.server.reasoning_parser is None
+    assert (
+        "--trust-remote-code" in cfg.llm.server.extra_args and "--language-model-only" not in cfg.llm.server.extra_args
+    )
+    assert cfg.slurm.episode.gpus == 1 and len(cfg.slurm.episode.gpu_choices) == 6
 
 
 def test_llm_needed_looks_only_at_what_can_run_next(runs_root: Path, mock_llm: MockLLM) -> None:

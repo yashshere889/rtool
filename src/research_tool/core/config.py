@@ -90,15 +90,25 @@ class LLMProfile(_Section):
 
 
 def _default_profiles() -> dict[str, LLMProfile]:
-    # Nemotron model card: reasoning on -> temperature 0.6 / top_p 0.95; reasoning off -> greedy.
+    # Qwen3.6 model card (Best Practices): thinking, general -> 1.0 / 0.95 / presence_penalty 1.5;
+    # thinking, precise coding -> 0.6 / 0.95; non-thinking -> 0.7 / 0.8 / presence_penalty 1.5. top_k=20
+    # comes from the model's generation_config.json, which vLLM applies by default.
     return {
-        "extract": LLMProfile(reasoning="off", temperature=0.0, max_tokens=2048),
-        "reason": LLMProfile(reasoning="on", temperature=0.6, top_p=0.95, max_tokens=8192, thinking_budget=4096),
+        "extract": LLMProfile(reasoning="off", temperature=0.7, top_p=0.8, presence_penalty=1.5, max_tokens=2048),
+        "reason": LLMProfile(
+            reasoning="on", temperature=1.0, top_p=0.95, presence_penalty=1.5, max_tokens=8192, thinking_budget=4096
+        ),
         # 16k: Nemotron's reasoning alone used ~7k of 8k on Barkla (2026-11-16), cutting experiment.py off
         "code": LLMProfile(reasoning="on", temperature=0.6, top_p=0.95, max_tokens=16384, thinking_budget=4096),
-        "write": LLMProfile(reasoning="off", temperature=0.0, max_tokens=4096),
+        "write": LLMProfile(reasoning="off", temperature=0.7, top_p=0.8, presence_penalty=1.5, max_tokens=4096),
         "judge": LLMProfile(
-            reasoning="on", temperature=0.6, top_p=0.95, max_tokens=4096, thinking_budget=2048, samples=3
+            reasoning="on",
+            temperature=1.0,
+            top_p=0.95,
+            presence_penalty=1.5,
+            max_tokens=4096,
+            thinking_budget=2048,
+            samples=3,
         ),
     }
 
@@ -106,7 +116,7 @@ def _default_profiles() -> dict[str, LLMProfile]:
 class LLMServerConfig(_Section):
     """How an episode starts its own vLLM server (``llm.backend: vllm``)."""
 
-    # Apptainer image containing vLLM; "${NEMOTRON_SIF}" works after `module load nemotron/nano-12b-v2`.
+    # Apptainer image containing vLLM >= 0.19 (scripts/build_vllm_sif.sh); "${NEMOTRON_SIF}" (vLLM 0.11) is too old.
     container: str | None = None
     modules: list[str] = Field(default_factory=lambda: ["apptainer/1.3.6"])
     host: str = "127.0.0.1"  # never expose the server beyond the node
@@ -114,9 +124,9 @@ class LLMServerConfig(_Section):
     max_model_len: int = Field(default=65536, gt=0)
     max_num_seqs: int = Field(default=64, gt=0)
     gpu_memory_utilization: float = Field(default=0.90, gt=0, le=1)
-    reasoning_parser: str | None = "deepseek_r1"  # splits <think> reasoning from the answer
-    # Required by Nemotron Nano v2 (model card): remote code + float32 Mamba state for accuracy.
-    extra_args: list[str] = Field(default_factory=lambda: ["--trust-remote-code", "--mamba_ssm_cache_dtype", "float32"])
+    reasoning_parser: str | None = "qwen3"  # splits <think> reasoning from the answer
+    # Qwen3.6 card: text only, so skip the vision encoder (frees KV-cache memory).
+    extra_args: list[str] = Field(default_factory=lambda: ["--language-model-only"])
     binds: list[str] = Field(default_factory=list)  # extra Apptainer --bind specs
     hf_home: str | None = None  # Hugging Face cache holding the weights
     # HOME inside the container: keeps vLLM/Triton/FlashInfer caches out of your real home and
@@ -131,8 +141,8 @@ class LLMServerConfig(_Section):
 
 class LLMConfig(_Section):
     backend: Literal["mock", "vllm", "external"] = "mock"
-    model: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2"  # what the server loads (HF id or local path)
-    served_model: str = "nemotron"  # the name requests use
+    model: str = "Qwen/Qwen3.6-35B-A3B"  # what the server loads (HF id or local path)
+    served_model: str = "qwen3.6"  # the name requests use
     base_url: str | None = None  # backend=external, e.g. http://127.0.0.1:8000/v1
     api_key_env: str = "RTOOL_LLM_API_KEY"  # backend=external: env var holding the bearer token
     request_timeout_s: float = Field(default=900, gt=0)
@@ -143,7 +153,8 @@ class LLMConfig(_Section):
     # Can the server constrain the answer *after* free-form reasoning (needs a reasoning parser)?
     # If not, reasoning + JSON is done in two calls: think first, then format.
     structured_with_reasoning: bool = True
-    reasoning_control: Literal["system_flag", "none"] = "system_flag"  # Nemotron: /think or /no_think
+    # system_flag: Nemotron's /think or /no_think; chat_template: Qwen3.6's enable_thinking; none: no switch
+    reasoning_control: Literal["system_flag", "chat_template", "none"] = "chat_template"
     # Spell out each JSON field (name, type, description) at the end of structured prompts, and require
     # every field in the constraint: the constraint alone never shows the model what a field is for.
     describe_schema: bool = True
