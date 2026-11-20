@@ -6,11 +6,10 @@ Null hypothesis: {{ plan.null_hypothesis }}
 
 ## Design
 {{ plan.design }}
-{% if brief and (brief.constraints or brief.notes) %}
+{% if brief and brief.requirements() %}
 ## The researcher's requirements — follow every one exactly
-{% for c in brief.constraints %}- {{ c }}
-{% endfor %}{% if brief.notes %}- {{ brief.notes }}
-{% endif %}{% endif %}
+{% for c in brief.requirements() %}- {{ c }}
+{% endfor %}{% endif %}
 
 ## Conditions — run() receives one of these names
 {% for c in conditions %}- `{{ c.name }}`{% if c.is_baseline %} (baseline){% endif %}: {{ c.description }}

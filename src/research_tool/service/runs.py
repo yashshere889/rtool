@@ -148,6 +148,9 @@ def create_run(
     constraints: Iterable[str] = (),
     seed_queries: Iterable[str] = (),
     pack: str = "generic",
+    seeds: int | None = None,
+    max_minutes_per_run: float | None = None,
+    datasets: Iterable[str] = (),
     run_id: str | None = None,
     created_by: str = "rtool new",
 ) -> RunHandle:
@@ -162,6 +165,9 @@ def create_run(
         constraints=list(constraints),
         seed_queries=list(seed_queries),
         domain_pack=pack,
+        seeds=seeds,
+        max_minutes_per_run=max_minutes_per_run,
+        datasets=list(datasets),
     )
     ArtifactStore(run.artifacts_dir).put("research_brief", brief, producer=Producer(stage="user", agent=created_by))
     return run

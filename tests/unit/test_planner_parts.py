@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from research_tool.agents.planner.checks import (
+    brief_issues,
     compute_issues,
     design_issues,
     fit_compute,
@@ -22,10 +23,11 @@ from research_tool.agents.planner.checks import (
 )
 from research_tool.agents.tasks.fetch_resources import torchvision_downloader
 from research_tool.core.config import ExperimentsConfig, load_config
+from research_tool.schemas.common import ResearchBrief
 from research_tool.schemas.plan import ComputeEstimate, Condition, Metric, PlanCore, ResourceChoice, ResourceSpec
 from research_tool.tools.http import PoliteHttp
 from research_tool.tools.resources.checks import HubChecker
-from research_tool.tools.resources.fetch import Fetcher
+from research_tool.tools.resources.fetch import Fetcher, local_models
 
 BARKLA = Path(__file__).resolve().parents[2] / "configs" / "barkla.yaml"
 
@@ -322,3 +324,43 @@ def test_the_torchvision_downloader_runs_torchvision_itself(tmp_path: Path) -> N
         download("ImageNet", tmp_path / "data" / "c")
     with pytest.raises(RuntimeError, match="has no dataset 'ImageNet100'"):
         download("ImageNet100", tmp_path / "data" / "d")
+
+
+def test_brief_limits_name_datasets_loosely_and_check_time_and_seeds() -> None:
+    brief = ResearchBrief(topic="t", seeds=5, max_minutes_per_run=10, datasets=["CIFAR-10", "MNIST"])
+    ok = [ResourceSpec(kind="dataset", name="cifar10", source="huggingface", identifier="uoft-cs/cifar10", purpose="")]
+    other = ResourceSpec(
+        kind="dataset", name="ImageNet-100", source="torchvision", identifier="ImageNet100", purpose=""
+    )
+    model = ResourceSpec(
+        kind="model", name="ResNet", source="huggingface", identifier="microsoft/resnet-18", purpose=""
+    )
+    assert brief_issues(brief, resources=[*ok, model], hours_per_run=10 / 60, n_seeds=5) == []
+    issues = brief_issues(brief, resources=[*ok, other], hours_per_run=0.5, n_seeds=3)
+    assert len(issues) == 3 and "ImageNet-100" in issues[1] and "30 minutes" in issues[2]
+    assert brief_issues(None, n_seeds=1) == brief_issues(ResearchBrief(topic="t"), n_seeds=1, hours_per_run=9) == []
+
+
+def test_a_model_in_the_llm_cache_is_used_where_it_is(tmp_path: Path) -> None:
+    repo = tmp_path / "hf" / "hub" / "models--nvidia--Nemotron-Nano"
+    (repo / "refs").mkdir(parents=True)
+    (repo / "refs" / "main").write_text("abc")
+    (repo / "snapshots" / "abc").mkdir(parents=True)
+    (repo / "snapshots" / "abc" / "model.safetensors").write_bytes(b"x" * 10)
+    local = local_models(str(tmp_path / "hf"))
+    assert local == {"nvidia/Nemotron-Nano": str(repo / "snapshots" / "abc")}
+    assert local_models(None) == local_models(str(tmp_path / "nowhere")) == {}
+
+    def no_download(**_: object) -> str:
+        raise AssertionError("downloaded a model the cluster already has")
+
+    spec = ResourceSpec(
+        kind="model", name="Nemotron", source="huggingface", identifier="nvidia/Nemotron-Nano", purpose=""
+    )
+    got = Fetcher(tmp_path / "res", snapshot=no_download, local=local).fetch(spec)
+    assert (got.status, got.path, got.bytes, got.note) == (
+        "ready",
+        local["nvidia/Nemotron-Nano"],
+        10,
+        "already on the cluster",
+    )

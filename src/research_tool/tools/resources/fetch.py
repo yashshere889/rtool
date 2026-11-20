@@ -2,7 +2,8 @@
 
 * Hugging Face datasets/models: ``huggingface_hub.snapshot_download`` (installed
   on Barkla via the ``[barkla]`` extra), into a cache shared across runs so a
-  model is downloaded once.
+  model is downloaded once. A model already in the LLM server's cache
+  (:func:`local_models`) is used from there instead.
 * URLs: streamed with a size cap.
 * torchvision datasets: downloaded once by torchvision itself (``torchvision``, a callable that runs it in
   the experiment environment), so smoke tests and every run read the same local folder.
@@ -35,6 +36,23 @@ def default_snapshot() -> Snapshot | None:
     return snapshot_download
 
 
+def local_models(hf_home: str | None) -> dict[str, str]:
+    """Hub models already in a Hugging Face cache (on Barkla: the LLM server's weights): id -> snapshot folder."""
+    hub = Path(os.path.expandvars(os.path.expanduser(hf_home))) / "hub" if hf_home else None
+    found: dict[str, str] = {}
+    if hub is None or not hub.is_dir():
+        return found
+    for repo in sorted(hub.glob("models--*")):
+        snapshots = repo / "snapshots"
+        ref = repo / "refs" / "main"
+        pinned = snapshots / ref.read_text().strip() if ref.is_file() else None
+        newest = max(snapshots.glob("*"), key=lambda p: p.stat().st_mtime, default=None) if snapshots.is_dir() else None
+        path = pinned if pinned is not None and pinned.is_dir() else newest
+        if path is not None:
+            found[repo.name.removeprefix("models--").replace("--", "/", 1)] = str(path)
+    return found
+
+
 def tree_size(path: Path) -> tuple[int, int]:
     total, count = 0, 0
     for root, _dirs, files in os.walk(path):
@@ -55,8 +73,10 @@ class Fetcher:
         hf_token: str | None = None,
         max_url_bytes: int = 50 * 1024**3,
         torchvision: Torchvision | None = None,
+        local: dict[str, str] | None = None,
     ) -> None:
         self.root = Path(root)
+        self.local = local or {}  # Hub model id -> a folder that already holds it
         self.http = http
         self.snapshot = snapshot if snapshot is not None else default_snapshot()
         self.hf_token = hf_token
@@ -93,6 +113,12 @@ class Fetcher:
                 **base, status="failed", note="huggingface_hub is not installed here (it is part of the [barkla] extra)"
             )
         repo_type = "model" if resource.kind == "model" else "dataset"
+        if repo_type == "model" and resource.identifier in self.local:
+            path = self.local[resource.identifier]
+            size, files = tree_size(Path(path))
+            return FetchedResource(
+                **base, status="ready", path=path, bytes=size, files=files, note="already on the cluster"
+            )
         target = self.root / "hf" / f"{repo_type}s" / _SAFE.sub("--", resource.identifier)
         path = self.snapshot(
             repo_id=resource.identifier, repo_type=repo_type, local_dir=str(target), token=self.hf_token

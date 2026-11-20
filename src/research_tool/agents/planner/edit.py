@@ -17,6 +17,7 @@ from typing import Any
 from ...core.editing import EditContext, EditResult, artifact_editor
 from ...core.errors import ActionError, ArtifactError
 from ...hpc.jobspec import parse_time_limit
+from ...schemas.common import ResearchBrief
 from ...schemas.plan import ComputeRequest, ExperimentPlan
 from .agent import PlannerConfig, render_markdown
 from .checks import SAFETY_FACTOR, UNCHECKED, format_time, plan_issues, results_schema, slug
@@ -72,6 +73,15 @@ def _hypothesis_title(ctx: EditContext, plan: ExperimentPlan) -> str:
     return str(item.get("title") or plan.hypothesis[:80])
 
 
+def _brief(ctx: EditContext) -> ResearchBrief | None:
+    try:
+        return ResearchBrief.model_validate(
+            ctx.store.envelope("research_brief", ctx.previous.inputs.get("research_brief")).payload
+        )
+    except ArtifactError:
+        return None
+
+
 @artifact_editor("experiment_plan")
 def edit_plan(value: dict[str, Any], ctx: EditContext) -> EditResult:
     previous = ExperimentPlan.model_validate(ctx.previous.payload)
@@ -107,7 +117,7 @@ def edit_plan(value: dict[str, Any], ctx: EditContext) -> EditResult:
     plan.compute = _compute(plan, previous, ctx)
     plan.results_schema = results_schema(plan.run_conditions(), plan.metrics, plan.seeds)
     cfg = ctx.config if isinstance(ctx.config, PlannerConfig) else PlannerConfig()
-    plan.issues = plan_issues(plan, ctx.app_config, cfg.min_seeds, cfg.max_dataset_gb)
+    plan.issues = plan_issues(plan, ctx.app_config, cfg.min_seeds, cfg.max_dataset_gb, _brief(ctx))
     files = {}
     if plan.markdown_path:
         files[plan.markdown_path.rsplit("/", 1)[-1]] = render_markdown(plan, _hypothesis_title(ctx, plan))

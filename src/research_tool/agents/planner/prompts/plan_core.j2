@@ -15,16 +15,13 @@ The research question(s) this run answers:
 - {{ q }}
 {% endfor %}
 {% endif %}
-{% if brief.constraints or brief.notes %}
+{% if brief.requirements() %}
 
 The researcher's requirements: follow every one exactly (datasets, models, conditions, number of seeds, time and
 budget); they override the hypothesis's suggestions and the defaults below:
-{% for c in brief.constraints %}
+{% for c in brief.requirements() %}
 - {{ c }}
 {% endfor %}
-{% if brief.notes %}
-- {{ brief.notes }}
-{% endif %}
 {% endif %}
 
 What the literature says about methods and data (excerpts):

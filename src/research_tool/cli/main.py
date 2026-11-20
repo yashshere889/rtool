@@ -228,6 +228,12 @@ def new(
     constraint: list[str] = typer.Option([], "--constraint", help="A constraint, e.g. 'max 24 GPU-hours'."),
     seed_query: list[str] = typer.Option([], "--seed-query", help="A search query to start from (repeatable)."),
     pack: str = typer.Option("generic", "--pack", help="Domain pack."),
+    seeds: int | None = typer.Option(None, "--seeds", min=1, help="Exactly this many seeds per condition."),
+    max_minutes: float | None = typer.Option(
+        None, "--max-minutes-per-run", min=0.1, help="Longest one run (one condition, one seed) may take."
+    ),
+    dataset: list[str] = typer.Option([], "--dataset", help="A dataset the plan may use (repeatable; default: any)."),
+    max_gpu_hours: float | None = typer.Option(None, "--max-gpu-hours", min=0.01, help="GPU budget for the run."),
     config: list[Path] = typer.Option([], "--config", "-c", help="Extra config YAML (repeatable)."),
     set_: list[str] = typer.Option([], "--set", help="Override config, e.g. --set gates.default=auto."),
     runs_root: Path | None = typer.Option(None, "--runs-root", help="Where run directories live."),
@@ -235,6 +241,8 @@ def new(
 ) -> None:
     """Create a run from a pipeline and a research brief."""
     with _guard():
+        if max_gpu_hours is not None:
+            set_ = [f"budgets.run.max_gpu_hours={max_gpu_hours}", *set_]
         cfg = _app_config(config, set_, runs_root)
         run = create_run(
             cfg,
@@ -245,6 +253,9 @@ def new(
             constraints=constraint,
             seed_queries=seed_query,
             pack=pack,
+            seeds=seeds,
+            max_minutes_per_run=max_minutes,
+            datasets=dataset,
             run_id=run_id,
         )
         console.print(f"created run [bold]{run.run_id}[/bold] at {run.root}")

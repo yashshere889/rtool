@@ -1652,8 +1652,12 @@ export interface components {
         NewRun: {
             /** Constraints */
             constraints?: string[];
+            /** Datasets */
+            datasets?: string[];
             /** Max Gpu Hours */
             max_gpu_hours?: number | null;
+            /** Max Minutes Per Run */
+            max_minutes_per_run?: number | null;
             /**
              * Pack
              * @default generic
@@ -1674,6 +1678,8 @@ export interface components {
             review: "every_step" | "gpu_and_final" | "automatic";
             /** Seed Queries */
             seed_queries?: string[];
+            /** Seeds */
+            seeds?: number | null;
             /**
              * Topic
              * @description The research question or topic

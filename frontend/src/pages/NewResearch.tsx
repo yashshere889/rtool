@@ -54,6 +54,9 @@ export function NewResearch() {
   const [pack, setPack] = useState("generic");
   const [review, setReview] = useState<NewRun["review"]>("every_step");
   const [gpuHours, setGpuHours] = useState("");
+  const [seeds, setSeeds] = useState("");
+  const [minutes, setMinutes] = useState("");
+  const [datasets, setDatasets] = useState("");
   const [more, setMore] = useState(false);
 
   const submit = async () => {
@@ -66,6 +69,9 @@ export function NewResearch() {
       pack,
       review,
       max_gpu_hours: gpuHours ? Number(gpuHours) : null,
+      seeds: seeds ? Number(seeds) : null,
+      max_minutes_per_run: minutes ? Number(minutes) : null,
+      datasets: lines(datasets),
     });
     toast.success("Research started", { description: created.kick.detail });
     navigate(runPath(created.run.project, created.run.run_id));
@@ -186,6 +192,20 @@ export function NewResearch() {
               </Field>
               <Field label="GPU-hour limit" htmlFor="gpu" hint="Optional cap for the whole study.">
                 <Input id="gpu" type="number" min={1} step={1} value={gpuHours} onChange={(e) => setGpuHours(e.target.value)} />
+              </Field>
+              <Field label="Seeds per condition" htmlFor="seeds" hint="Optional: exactly this many repeats.">
+                <Input id="seeds" type="number" min={1} max={100} step={1} value={seeds} onChange={(e) => setSeeds(e.target.value)} />
+              </Field>
+              <Field label="Minutes per run" htmlFor="minutes" hint="Optional: the longest one run may take.">
+                <Input id="minutes" type="number" min={1} step={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
+              </Field>
+              <Field
+                label="Allowed datasets"
+                htmlFor="datasets"
+                hint="One per line, e.g. MNIST. Leave empty to let the planner choose."
+                className="sm:col-span-2"
+              >
+                <Textarea id="datasets" className="min-h-16" value={datasets} onChange={(e) => setDatasets(e.target.value)} />
               </Field>
               <Field
                 label="Project"

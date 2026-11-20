@@ -2489,6 +2489,14 @@
       "title": "Constraints",
       "type": "array"
      },
+     "datasets": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Datasets",
+      "type": "array"
+     },
      "max_gpu_hours": {
       "anyOf": [
        {
@@ -2500,6 +2508,18 @@
        }
       ],
       "title": "Max Gpu Hours"
+     },
+     "max_minutes_per_run": {
+      "anyOf": [
+       {
+        "exclusiveMinimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Minutes Per Run"
      },
      "pack": {
       "default": "generic",
@@ -2544,6 +2564,19 @@
       "maxItems": 20,
       "title": "Seed Queries",
       "type": "array"
+     },
+     "seeds": {
+      "anyOf": [
+       {
+        "maximum": 100.0,
+        "minimum": 1.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seeds"
      },
      "topic": {
       "description": "The research question or topic",
