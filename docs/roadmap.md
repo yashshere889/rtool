@@ -46,8 +46,8 @@ Each pack gets a folder of cases that need no human grader. One case is a brief,
 outcome. Four kinds:
 
 - **Planted effect.** Synthetic data with a known effect. The tool must recover its direction and rough size.
-- **Null.** The same data with labels shuffled. The tool must report no effect. The false-positive rate must be at or below alpha.
-- **Replication.** A published analysis with a known result. Given only the brief, the tool must reach the same finding.
+- **Null.** Conditions that are equal by construction (for example, labels shuffled). The tool must not claim an effect. Pipeline runs are too few to measure a false-positive rate, so the statistics engine's rate is tested offline and pipeline nulls are scored as "no false claim", with an interval.
+- **Replication.** A published analysis with a known result. Given the brief and the hypothesis, the tool must reach the same finding.
 - **Validator unit tests.** Plain unit tests for each deterministic check (identifiers resolve, a trap is caught).
 
 A **validity card** per pack records, for the model in use: pass rate per case kind, false-positive rate,
@@ -76,10 +76,12 @@ Each stage has an **exit test**. We do not start the next stage until it passes.
 
 ### Stage 0 — Pack contract and validity harness
 
+Detailed design: [stage0_design.md](stage0_design.md).
+
 Build:
-- Extend the pack so it can declare validators, resource sources, literature sources and a reviewer rubric. Existing packs keep working unchanged.
-- A case format (`benchmarks/<pack>/<case>/`) and a runner that executes a case through the pipeline and scores it L0–L3.
-- The validity card, generated from the runner's results.
+- Pack plan checks and a `local` resource source (for case data now, and your own data later). Existing packs keep working unchanged. Literature sources and a reviewer rubric per pack are designed here but built in Stage 1, where omics is their first user.
+- A case format (`benchmarks/<pack>/<case>/`), `rtool validity submit` to start case runs and `rtool validity score` to score them L0–L3.
+- The validity card, generated from the scores.
 - Run the **existing `generic` and `ml_dl` packs** through it first.
 
 Exit test: validity cards for `generic` and `ml_dl` exist with a baseline for the current model, and the
@@ -91,7 +93,7 @@ Build: tabular statistics plus an `omics` pack (scanpy, pydeseq2, gseapy). GEO a
 sources, PubMed and Europe PMC as literature sources. Validators: pseudoreplication (cells vs donors), batch
 confounding, gene and protein identifier resolution, multiple testing.
 
-Exit test: planted effects recovered, nulls clean (false positives at or below alpha), three published
+Exit test: planted effects recovered, nulls clean (no false claims, with an interval), three published
 reanalyses replicated, every validator caught its planted trap.
 
 ### Stage 2 — Simulate or model
