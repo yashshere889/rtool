@@ -277,3 +277,25 @@ def resolve_pipeline(spec: PipelineSpec, registry: AgentRegistry = default_regis
         for sid, item in partial.items()
     }
     return ResolvedPipeline(spec, stages, order)
+
+
+def pipeline_from(spec: PipelineSpec, start_at: str, registry: AgentRegistry = default_registry) -> PipelineSpec:
+    """``spec`` without the stages ``start_at`` builds on: what they would have made becomes initial artifacts.
+
+    Their gates go with them. Optional inputs only they produced are simply absent, as in any run
+    where nothing produced them.
+    """
+    resolved = resolve_pipeline(spec, registry)
+    dropped = resolved.ancestors(start_at)  # PipelineError for an unknown stage
+    kept = [s for s in spec.stages if s.id not in dropped]
+    made = {name for s in kept for name in resolved.stage(s.id).produces}
+    given = [name for s in kept for name in resolved.stage(s.id).consumes if name not in made]
+    derived = PipelineSpec(
+        name=f"{spec.name}-from-{start_at}",
+        description=f"{spec.description} Starts at {start_at!r}: what the stages before it make is provided.".strip(),
+        initial_artifacts=list(dict.fromkeys(given)),
+        gates={s.gate: spec.gates[s.gate] for s in kept if s.gate},
+        stages=[s.model_copy(update={"needs": [n for n in s.needs if n not in dropped]}) for s in kept],
+    )
+    resolve_pipeline(derived, registry)  # a kept stage that still lacks an input fails here, not in an episode
+    return derived

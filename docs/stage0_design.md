@@ -165,22 +165,29 @@ New code: one function, `pipeline_from(spec, start_at) -> PipelineSpec`, next to
 
 All are stored with `Producer(stage="user", agent="rtool validity")`, as `create_run` does for the brief.
 
-**Risk:** the Writer and Reviewer have never run with an empty corpus. PR 1 tests this with the mock
-model. The first real run will show whether the Reviewer's complaints about missing related work turn
-into change requests. If they do, the overlay sets the Reviewer's change requests to report-only for
-validity runs.
+**Risk:** the Writer and Reviewer had never run with an empty corpus. PR 1 runs it with the demo model
+(`tests/integration/test_validity.py`): the run finishes and scores L3. The demo model is scripted,
+though. The first real run will show whether the real model's complaints about missing related work
+turn into change requests. If they do, the overlay sets the Reviewer's change requests to report-only
+for validity runs.
 
 ### Config overlay
 
-Written per run, and also passed to its episodes through `slurm.episode.config_files`, as
-[`replay_run`](../src/research_tool/service/runs.py) does:
+Written to `validity-overlay.yaml` in the run folder. It is merged into the run's config and also added
+last to `slurm.episode.config_files`, as [`replay_run`](../src/research_tool/service/runs.py) does.
+Episodes re-read those files over the run's snapshot, so a file such as `barkla.yaml` can never turn a
+gate back to "ask".
 
 ```yaml
-gates: {default: auto}           # every gate, including gpu_runs, manual_resources and revision_limit
+gates:
+  default: auto
+  modes: {experiment_plan: auto, final_report: auto, gpu_runs: auto, manual_resources: auto, revision_limit: auto}
 budgets:
   run: {max_gpu_hours: 0, max_llm_calls: 3000, max_jobs: 40}   # experiments CPU-only in the baseline
-revisions: {max_rounds: 2}
 ```
+
+`modes` names every gate explicitly: the pipeline's own, the in-stage ones, and any the config already
+sets. A per-gate "ask" in a config file would otherwise beat `default: auto`.
 
 I checked that in-stage gates go through `config.gates.mode()` (`core/context.py:183`), and so does
 `revision_limit` (`core/engine.py:548`). So no validity run can stall waiting for a person. Because
@@ -285,7 +292,7 @@ highest level whose rule passes, together with every level below it.
 
 | Level | Reads | Passes when |
 |---|---|---|
-| L0 runs | `state/` | every stage DONE; the run never needed a person (no `needs_human` failure; gates were auto). Retries and Coder fix rounds are recorded, not failed |
+| L0 runs | `state/` | every stage DONE, and no human action was applied (the run state's `processed_actions` is empty: gates were auto and nobody retried or edited). Stage failure counts are recorded, not failed |
 | L1 code consistent | `experiment_results`, `code_bundle`, `experiment_plan` | `complete` is true; every pinned condition has every seed `ok`; `code_fingerprint == code_bundle.fingerprint`; no `warnings` on either (fake-experiment signs) |
 | L2 analysis sound | `experiment_plan`, `experiment_results` | `plan.issues` is empty (including pack checks); seeds match the brief; a `confirmatory` comparison exists for the pinned condition against the pinned baseline on the pinned primary metric, with a p-value |
 | L3 right answer | `experiment_results`, `final_report` | **Analysis:** that comparison's `significant` and `better` match `expect`, its `difference` is inside the band if given, and for replication the condition's mean is inside `value`. **Report:** `final_report.hypothesis_outcome` is in `expect.outcome` |
@@ -305,8 +312,9 @@ fail for reasons unrelated to soundness.
 
 | Category | Meaning |
 |---|---|
-| `stage_failed:<stage>` | an L0 failure, with the error's first line (Coder failures add `FixRecord.signature`) |
-| `incomplete_runs`, `fake_experiment`, `stale_results` | L1 failures |
+| `stage_failed:<stage>` | an L0 failure, with the error's first line |
+| `stalled_at_gate:<gate>`, `human_intervened` | L0 failures: the run waited for a person, or a person acted on it |
+| `incomplete_runs`, `missing_condition`, `fake_experiment`, `stale_results` | L1 failures (`missing_condition`: the plan left out a pinned condition) |
 | `plan_issue`, `missing_comparison` | L2 failures |
 | `wrong_analysis` | the statistics disagree with the truth (code or design wrong) |
 | `misread_results` | the statistics are right but the report's outcome is wrong (the Writer) |
@@ -331,6 +339,22 @@ there are two separate measurements:
    is pure Python with no model, runs in seconds, and goes in CI.
 2. **The pipeline, on cases.** Null cases are scored on "no false claim". The card gives k / N with a
    Wilson interval and says plainly how wide it is.
+
+**What the calibration test measured** (8 paired seeds unless noted, 600–2,000 simulated experiments each):
+
+| Analysis | Measured | Expected |
+|---|---|---|
+| Paired t-test on a null | false-positive rate 0.048 | 0.05 |
+| Paired t-test at d_z = 1 | power 0.681 | 0.681 (noncentral t) |
+| Wilcoxon signed-rank on a null | 0.034 | at most 0.05 (exact test) |
+| Mann–Whitney U on a null (6 seeds) | 0.015 | at most 0.05 |
+| Three comparisons with Holm | family-wise rate 0.046–0.054 (three batches of 4,000); 0.149 uncorrected | at most 0.05 |
+
+**Found:** when one run fails, `aggregate` drops the pairing for that comparison and uses a Welch
+test on all remaining runs. Seeded runs share variation across conditions, so this throws most of it
+away. Power at d_z = 1 falls from 0.70 to 0.44, while pairing on the 7 seeds left would keep 0.61
+(false positives 0.01 instead of 0.05). Fixing it means pairing on the shared seeds; that is a change
+to the analysis, not to the harness, so it is not in PR 1.
 
 Repeats are informative: the model profiles sample (temperature 0.6–1.0 in `core/config.py`), so the
 same case can go differently on a second run. Generator variants (effect size, noise, n) give a power
@@ -379,7 +403,7 @@ one is measured. So the baseline starts with one run per case, and repeats follo
 
 | PR | Contents | Runs where |
 |---|---|---|
-| 1 | Case format and loader; `pipeline_from`; seeding; overlay; scorer; scorer fixtures with the demo model; the offline stats calibration test | Mac / CI only |
+| 1 | Case format and loader; `pipeline_from`; seeding; overlay; scorer; scorer fixtures with the demo model; the offline stats calibration test. The pinned conditions and primary metric reach the planner as requirement lines in the brief, not yet enforced; runs of cases with their own data are refused until PR 2 | Mac / CI only. **Built:** `src/research_tool/validity/`, `pipeline_from` in `core/pipeline.py` |
 | 2 | `local` source (schema, check, fetch, planner prompt line, `resources.local` map); pinned `conditions` and `primary_metric` in the brief; pack `plan_checks` and `resource_sources`; `ml_dl` `held_out_issues`; the generic "test cannot reach alpha with these seeds" check | Mac / CI only |
 | 3 | `rtool validity submit` and `score`; the card (JSON + Markdown); the eight cases with their `generate.py` and `reference.py` | Mac / CI; the reference scripts run locally |
 | 4 | The baseline: deploy a clean commit to Barkla, submit, score, commit the cards | **Barkla, with your OK** |

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from research_tool.agents.base import Agent, AgentContext, artifact_type
 from research_tool.core.errors import PipelineError
-from research_tool.core.pipeline import find_pipeline, parse_pipeline, resolve_pipeline
+from research_tool.core.pipeline import find_pipeline, parse_pipeline, pipeline_from, resolve_pipeline
 from research_tool.core.registry import AgentRegistry
 
 
@@ -110,3 +110,24 @@ def test_cycles_are_rejected() -> None:
     spec = parse_pipeline(_spec([{"id": "a", "agent": "ping"}, {"id": "b", "agent": "pong"}]))
     with pytest.raises(PipelineError, match="cycle"):
         resolve_pipeline(spec, reg)
+
+
+def test_a_pipeline_can_start_at_a_later_stage() -> None:
+    derived = pipeline_from(find_pipeline("research"), "plan")
+    assert [s.id for s in derived.stages] == ["plan", "fetch", "code", "report", "review"]
+    # what literature and hypotheses would have made (the selection gate's choice included) is provided
+    assert derived.initial_artifacts == ["research_brief", "selected_hypothesis", "corpus", "knowledge_map"]
+    assert sorted(derived.gates) == ["experiment_plan", "final_report"]
+    assert resolve_pipeline(derived).order == ["plan", "fetch", "code", "report", "review"]
+
+
+def test_starting_at_the_first_stage_keeps_the_whole_pipeline() -> None:
+    spec = find_pipeline("research")
+    derived = pipeline_from(spec, "literature")
+    assert derived.stages == spec.stages and derived.gates == spec.gates
+    assert derived.initial_artifacts == ["research_brief"]
+
+
+def test_starting_at_an_unknown_stage_fails() -> None:
+    with pytest.raises(PipelineError, match="unknown stage"):
+        pipeline_from(find_pipeline("research"), "nowhere")
