@@ -1,0 +1,24 @@
+"""Experiment: {{ hypothesis }}
+
+Written by the rtool Coder from the approved plan. Edit freely; then run
+`rtool retry <run> --resume`. run.py calls run(...) once per condition and seed.
+"""
+
+# requirements:
+
+from __future__ import annotations
+
+import random
+
+CONDITIONS = {{ conditions }}  # name -> description
+METRICS = {{ metrics }}  # run() returns a float for each
+
+
+def run(condition: str, seed: int, resources: dict[str, str], smoke: bool, workdir: str) -> dict[str, float]:
+    """Run one condition with one seed and return {metric: value} for every name in METRICS.
+
+    resources maps resource names to local paths (already downloaded).
+    smoke=True: a tiny, fast version that goes through the same code path.
+    """
+    rng = random.Random(seed)
+    raise NotImplementedError("the rtool Coder implements the experiment here")

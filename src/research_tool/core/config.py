@@ -233,6 +233,13 @@ class LocalDataset(_Section):
     description: str = ""
 
 
+class PackImage(_Section):
+    """Another experiment image for one domain pack (e.g. a protein or imaging stack), used instead of `container`."""
+
+    container: str  # e.g. "$PROTEIN_SIF"
+    packages: list[str] = Field(default_factory=list)  # importable in that image; shown to the Coder
+
+
 class ExperimentsConfig(_Section):
     """How the Coder's experiment code runs: smoke tests inside the episode, full runs as Slurm jobs."""
 
@@ -248,6 +255,12 @@ class ExperimentsConfig(_Section):
     install_timeout_s: float = Field(default=1200, gt=0)  # pip install of extra requirements
     max_parallel_runs: int = Field(default=4, ge=1)  # array throttle: GPUs used at once
     local_data: dict[str, LocalDataset] = Field(default_factory=dict)  # name -> a dataset provided on disk
+    pack_images: dict[str, PackImage] = Field(default_factory=dict)  # domain pack -> its own image
+
+    def for_pack(self, pack: str) -> ExperimentsConfig:
+        """These settings with the pack's own image and packages, if the site gave it one."""
+        image = self.pack_images.get(pack)
+        return self.model_copy(update={"container": image.container, "packages": image.packages}) if image else self
 
 
 class AppConfig(_Section):

@@ -1,0 +1,32 @@
+# Sequences carrying the motif HEGH are label 1. Dipeptide counts see the motif; sequence length cannot.
+id: motif-classifier
+kind: planted
+pack: protein
+confirmed_by: "reference.py on the Mac (2026-11-21): length_only 0.482, dipeptide 0.742, difference 0.260, paired t 27.7"
+brief:
+  topic: Do dipeptide counts detect a short sequence motif that sequence length cannot?
+  constraints:
+    - CPU only. Use the provided motif_sequences data (train.csv and test.csv, columns id, sequence, label); download nothing.
+    - Train logistic regression with Adam (learning rate 0.05) for 15 epochs, batch size 32, and report accuracy on test.csv; also return test_sequences_in_train.
+  seeds: 8
+  max_minutes_per_run: 5
+  datasets: [motif_sequences]
+  conditions:
+    - {name: length_only, baseline: true, description: "logistic regression on the sequence length"}
+    - {name: dipeptide, description: "logistic regression on the 400 dipeptide counts per 100 residues"}
+  primary_metric: {name: test_accuracy, higher_is_better: true}
+hypothesis:
+  statement: Logistic regression on dipeptide counts classifies the motif sequences more accurately than one on sequence length.
+  null_hypothesis: Test accuracy is the same with both feature sets.
+  success_criteria: dipeptide has a higher mean test_accuracy than length_only, with p < 0.05 in a paired t-test over the 8 seeds.
+  independent_variables: [features]
+  dependent_variables: [test_accuracy]
+data:
+  - name: motif_sequences
+    generator: generate.py
+    args: {n_train: 300, n_test: 200, seed: 3}
+    description: "Protein-like sequences, label 1 when they carry the motif HEGH: train.csv and test.csv"
+expect:
+  significant: true
+  direction: better
+  difference: {low: 0.12, high: 0.4}

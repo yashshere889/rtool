@@ -59,6 +59,11 @@ SOURCE_RULES = {
     "its H5AD file is downloaded",
     "biomodels": 'source "biomodels" for a curated BioModels model, with its id as the identifier (for example '
     '"BIOMD0000000012"): its main SBML file is downloaded',
+    "uniprot": 'source "uniprot" for a protein sequence, with its UniProt accession (for example "P69905"): its '
+    "FASTA record is downloaded",
+    "alphafold": "source \"alphafold\" for a predicted structure, with the protein's UniProt accession: AlphaFold DB's "
+    "model (mmCIF) is downloaded",
+    "pdb": 'source "pdb" for an experimental structure, with its four-character PDB id (for example "4HHB")',
     "manual": 'source "manual" only if nothing public exists',
 }
 

@@ -10,7 +10,8 @@ from ..core.artifacts import artifact_type
 
 # "local": a dataset the researcher provides on disk (config experiments.local_data), named by its key;
 # "geo": a GEO series (accession GSE...); "cellxgene": a CELLxGENE Discover dataset (its dataset id);
-# "biomodels": a BioModels model (BIOMD... or MODEL...)
+# "biomodels": a BioModels model (BIOMD... or MODEL...); "uniprot": a protein sequence (accession);
+# "alphafold": AlphaFold DB's predicted structure (UniProt accession); "pdb": an experimental structure (PDB id)
 ResourceSource = Literal[
     "huggingface",
     "url",
@@ -20,6 +21,9 @@ ResourceSource = Literal[
     "geo",
     "cellxgene",
     "biomodels",
+    "uniprot",
+    "alphafold",
+    "pdb",
     "manual",
 ]
 
@@ -99,7 +103,7 @@ class ResourceChoice(BaseModel):
     source: ResourceSource
     identifier: str = Field(
         description="Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE "
-        "dataset id, BioModels id, or the name of a local dataset"
+        "dataset id, BioModels id, UniProt accession (uniprot, alphafold), PDB id, or the name of a local dataset"
     )
     subset: str | None = Field(default=None, description="Hugging Face config name, if any")
     split: str | None = None

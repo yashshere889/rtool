@@ -356,3 +356,40 @@ Not done: the web UI has no upload button (the CLI does it) and no protocol view
 Files: `agents/study/**`, `pipelines/study.yaml`, `packs/study/pack.yaml`, `core/registry.py`,
 `cli/main.py` (add-data), `validity/runs.py` (data_upload in the auto gates), `benchmarks/study/**`,
 `tests/integration/test_study_pipeline.py`.
+
+---
+
+## Stage 5 — GPU-heavy fields (local gate passed 2026-11-21)
+
+Built:
+- **Per-pack images**: site config `experiments.pack_images: {pack: {container, packages}}`. The Coder
+  runs in the pack's own image, shows the Coder that image's packages, and records it in the code bundle.
+- **Sources** `uniprot` (FASTA), `alphafold` (AlphaFold DB model, mmCIF) and `pdb` (RCSB mmCIF, checked
+  through its header file). UniProt URLs and status codes, AlphaFold's prediction fields, and RCSB's
+  download and header URLs were checked against their docs. AlphaFold's `/api` prefix is from memory.
+- **Packs:**
+  - `protein`: result check `leakage_issues`, which flags test sequences that are also in the training set.
+  - `imaging`: plan check for held-out data.
+  - `docking`.
+  - `md`: result check `energy_drift_issues`, which flags a constant-energy check whose energy drifts
+    more than 1 %.
+  - Each has hints, sources and three review questions.
+- **Case** `protein/motif-classifier` (planted, CPU). Reference on the Mac: length 0.482 against
+  dipeptides 0.742, paired t 27.7.
+
+Proved by `tests/integration/test_protein_pipeline.py`:
+- The Coder chose the pack image `/images/protein.sif`, and its prompt lists that image's packages.
+- A UniProt record was fetched through the real fetch stage from a mock server.
+- The clean run scores L3; a split leaking 3 test sequences into training is flagged as a design
+  problem and scores L1.
+- `tests/unit/test_gpu_packs.py` covers the sources, both checks and per-pack images.
+- Full suite exit 0, web tests exit 0, ruff clean. API types regenerated and the bundle rebuilt.
+
+Waits for Barkla: pack images, GPU runs of real protein, imaging, docking and MD cases, and the
+UniProt, AlphaFold and PDB probes. Not built: probes for the three new sources, cases for imaging,
+docking and MD, and an SMILES or structure validator (those need RDKit or OpenMM).
+
+Files: `core/config.py`, `agents/coder/agent.py`, `tools/resources/{structures,checks,fetch}.py`,
+`schemas/plan.py`, `agents/planner/agent.py`, `packs/{protein,imaging,docking,md}/**`, `testing/samples.py`,
+`benchmarks/protein/**`, `frontend/src/api/*`, `web/static/build-stamp.json`, `tests/unit/test_gpu_packs.py`,
+`tests/integration/test_protein_pipeline.py`.

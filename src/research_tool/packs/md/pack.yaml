@@ -1,0 +1,20 @@
+name: md
+description: >-
+  Molecular dynamics (OpenMM-style simulations of proteins and small molecules), compared across seeds,
+  usually on GPUs.
+smoke: >-
+  When smoke is True, simulate a few hundred steps of a tiny system through the same code path, so the run
+  takes seconds on a CPU.
+packages: [numpy]
+resource_sources: [pdb, alphafold, url, local, pip]
+literature_sources: [pubmed, europe_pmc, semantic_scholar, openalex]
+result_checks:
+  - research_tool.packs.md.checks:energy_drift_issues
+review_checks:
+  - Is the simulated time long enough for the process studied, and is it equilibrated before measuring?
+  - Are the force field, water model, temperature and pressure control stated, and are they suited to the system?
+  - Are the replicas independent (different starting velocities), and are results compared across replicas rather than frames?
+hints:
+  - Load structures only from the local paths in `resources`; never download. openmm, pdbfixer and mdtraj are not in the image; list them on the `# requirements:` line (or the site gives this pack its own image).
+  - The seed must set the initial velocities, so replicas differ; never treat frames of one trajectory as independent samples.
+  - Also return `energy_drift`, the relative change of the total energy in a short constant-energy check (rtool flags values above 0.01).

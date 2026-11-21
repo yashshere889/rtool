@@ -1,0 +1,20 @@
+name: protein
+description: >-
+  Protein sequences and structures (language models such as ESM, variant-effect and stability prediction,
+  structure analysis), compared across seeds, usually on GPUs.
+smoke: >-
+  When smoke is True, use at most SMOKE_EXAMPLES sequences and SMOKE_STEPS optimisation steps on the
+  smallest model, so the run finishes in under a minute on a CPU.
+packages: [torch, numpy, transformers]
+resource_sources: [huggingface, uniprot, alphafold, pdb, url, local, pip]
+literature_sources: [pubmed, europe_pmc, semantic_scholar, openalex, arxiv]
+result_checks:
+  - research_tool.packs.protein.checks:leakage_issues
+review_checks:
+  - Are training and test sequences separated by sequence identity or protein family, so the test is not on near-copies of the training data?
+  - Is the method compared with simple baselines (sequence conservation, BLOSUM substitution scores, a site-independent model)?
+  - Are variant-effect results reported per protein (and per assay) rather than only pooled?
+hints:
+  - Load models and data only from the local paths in `resources`; never download. ESM models are Hugging Face snapshots (`from_pretrained(path)`); fair-esm, biopython and scipy are not in the image, so list them on the `# requirements:` line if you use them (or the site gives this pack its own image).
+  - Split training and test data so that no test sequence (and no near-copy) is in the training set, and also return `test_sequences_in_train` (how many test sequences are exactly in the training set; rtool flags any) and `max_test_train_identity`.
+  - Put the model and every batch on the device; evaluate under `torch.no_grad()`; return plain floats.

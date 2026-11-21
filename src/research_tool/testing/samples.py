@@ -93,3 +93,28 @@ def biomodels_mock(files: dict[str, bytes]) -> PoliteHttp:
     return PoliteHttp(
         client=httpx.Client(transport=httpx.MockTransport(handler)), default_interval_s=0, sleep=lambda _s: None
     )
+
+
+FASTA = (
+    ">sp|P69905|HBA_HUMAN Hemoglobin subunit alpha OS=Homo sapiens\nMVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHF\n"
+)
+
+
+def _structures(request: httpx.Request) -> httpx.Response:
+    if request.url.host == "rest.uniprot.org" and request.url.path == "/uniprotkb/P69905.fasta":
+        return httpx.Response(200, text=FASTA)
+    if request.url.host == "alphafold.ebi.ac.uk" and request.url.path == "/api/prediction/P69905":
+        model = {"entryId": "AF-P69905-F1", "cifUrl": "https://alphafold.ebi.ac.uk/files/AF-P69905-F1-model_v4.cif"}
+        return httpx.Response(200, json=[{**model, "pdbUrl": "https://x/a.pdb", "globalMetricValue": 97.2}])
+    if request.url.path == "/files/AF-P69905-F1-model_v4.cif":
+        return httpx.Response(200, content=b"data_AF-P69905-F1\n")
+    if request.url.host == "files.rcsb.org" and request.url.path in ("/header/4hhb.cif", "/download/4hhb.cif"):
+        return httpx.Response(200, content=b"data_4HHB\n")
+    return httpx.Response(404)
+
+
+def structures_mock() -> PoliteHttp:
+    """UniProt (P69905), AlphaFold DB (its model) and RCSB PDB (4HHB), answering in their documented formats."""
+    return PoliteHttp(
+        client=httpx.Client(transport=httpx.MockTransport(_structures)), default_interval_s=0, sleep=lambda _s: None
+    )

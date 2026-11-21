@@ -24,10 +24,12 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from ...core.fs import atomic_write_text
 from ...schemas.plan import FetchedResource, ResourceSpec
 from ..http import HttpError, PoliteHttp
 from .models import biomodels_files, download_url, sbml_problem
 from .omics import cellxgene_latest, geo_files, h5ad_asset
+from .structures import RCSB_FILES, accession, alphafold_models, pdb_id, uniprot_fasta
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 Snapshot = Callable[..., str]
@@ -128,6 +130,8 @@ class Fetcher:
                 return self._cellxgene(resource, base)
             if resource.source == "biomodels":
                 return self._biomodels(resource, base)
+            if resource.source in ("uniprot", "alphafold", "pdb"):
+                return self._structure(resource, base)
             if resource.source == "huggingface":
                 return self._huggingface(resource, base)
             if resource.source == "torchvision":
@@ -189,6 +193,30 @@ class Fetcher:
         return FetchedResource(
             **base, status="ready", path=str(target), bytes=size, files=count, note=f"BioModels {model}"
         )
+
+    def _structure(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
+        """A UniProt sequence (FASTA), an AlphaFold DB model or a PDB entry (mmCIF), kept once per id."""
+        if self.http is None:
+            return FetchedResource(**base, status="failed", note="no HTTP client configured")
+        folder = self.root / resource.source
+        if resource.source == "uniprot":
+            dest = folder / f"{accession(resource.identifier)}.fasta"
+            if not dest.exists():
+                atomic_write_text(dest, uniprot_fasta(self.http, resource.identifier))
+            note = dest.read_text(encoding="utf-8").splitlines()[0][1:120]
+        elif resource.source == "alphafold":
+            model = alphafold_models(self.http, resource.identifier)[0]
+            url = model.get("cifUrl") or model["pdbUrl"]
+            dest = folder / url.rsplit("/", 1)[-1]
+            if not dest.exists():
+                self.http.download(url, dest, max_bytes=self.max_url_bytes, accept=())
+            note = f"AlphaFold model {model.get('entryId', '?')}, mean pLDDT {model.get('globalMetricValue', '?')}"
+        else:
+            dest = folder / f"{pdb_id(resource.identifier)}.cif"
+            if not dest.exists():
+                self.http.download(f"{RCSB_FILES}/download/{dest.name}", dest, max_bytes=self.max_url_bytes, accept=())
+            note = "PDB entry (mmCIF)"
+        return FetchedResource(**base, status="ready", path=str(dest), bytes=dest.stat().st_size, files=1, note=note)
 
     def _provided(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
         found = self.provided.get(resource.identifier)

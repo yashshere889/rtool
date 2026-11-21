@@ -21,6 +21,7 @@ from ..http import HttpError, PoliteHttp
 from .fetch import tree_size
 from .models import biomodels_files
 from .omics import cellxgene_latest, geo_files, h5ad_asset
+from .structures import alphafold_models, pdb_header, uniprot_fasta
 
 HF_API = "https://huggingface.co/api"
 PYPI_API = "https://pypi.org/pypi"
@@ -86,6 +87,16 @@ class HubChecker:
             if resource.source == "geo":
                 files = geo_files(self.http, resource.identifier)
                 return ResourceCheck(bool(files), note=f"GEO series with {len(files)} supplementary and matrix files")
+            if resource.source == "uniprot":
+                header = uniprot_fasta(self.http, resource.identifier).splitlines()[0]
+                return ResourceCheck(True, note=header[1:120])
+            if resource.source == "alphafold":
+                model = alphafold_models(self.http, resource.identifier)[0]
+                plddt = model.get("globalMetricValue", "?")
+                return ResourceCheck(True, note=f"AlphaFold model {model.get('entryId', '?')}, mean pLDDT {plddt}")
+            if resource.source == "pdb":
+                pdb_header(self.http, resource.identifier)
+                return ResourceCheck(True, note="PDB entry (mmCIF)")
             if resource.source == "biomodels":
                 files = biomodels_files(self.http, resource.identifier)
                 size = sum(f.get("fileSize") or 0 for f in files)

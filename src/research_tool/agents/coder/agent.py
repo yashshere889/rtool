@@ -352,6 +352,8 @@ class CoderSession:
             ctx.log(f"unknown domain pack {brief.domain_pack!r}; using {DEFAULT_PACK!r}")
             self.pack = load_pack(DEFAULT_PACK)
         self.prompts = PromptLibrary.for_agent(__package__, "coder", pack=self.pack.name)
+        # the pack's own image (e.g. a protein stack), if the site configured one, else the default image
+        self.experiments = ctx.app_config.experiments.for_pack(self.pack.name)
         self.provenance: dict[str, str] = self.state.setdefault("prompts", {})
         ws = ctx.workspace
         self.code, self.logs = ws.mkdir("code"), ws.mkdir("logs")
@@ -361,9 +363,7 @@ class CoderSession:
         binds = [str(root)] if self.manifest.root and root.is_absolute() else []
         factory = ctx.tools.get("experiment_env")
         self.env: ExperimentEnv = (
-            factory(ctx.app_config.experiments, self.code)
-            if factory
-            else ExperimentEnv(ctx.app_config.experiments, self.code, binds=binds)
+            factory(self.experiments, self.code) if factory else ExperimentEnv(self.experiments, self.code, binds=binds)
         )
         self.metric_names = [m.name for m in self.plan.metrics]
         self.conditions = [c.name for c in self.plan.run_conditions()]
@@ -404,7 +404,7 @@ class CoderSession:
         return prompt.text
 
     def packages(self) -> list[str]:
-        site = self.ctx.app_config.experiments.packages
+        site = self.experiments.packages
         return list(dict.fromkeys([*site, *self.pack.packages])) or ["(the Python standard library)"]
 
     def feedback(self) -> list[str]:
@@ -492,7 +492,7 @@ class CoderSession:
         return merge_requirements(
             declared_requirements(self.source()),
             list(self.state.get("extra_requirements", [])),
-            provided=self.ctx.app_config.experiments.packages,
+            provided=self.experiments.packages,
         )
 
     # ---------------------------------------------------------------- write
@@ -1049,7 +1049,7 @@ class CoderSession:
             root=self.ctx.relative(self.code),
             files=files,
             pack=self.pack.name,
-            container=self.ctx.app_config.experiments.container,
+            container=self.experiments.container,
             requirements=self.requirements(),
             smoke=[SmokeResult.model_validate(r) for r in self.state.get("smoke", [])],
             warnings=list(self.state.get("smoke_warnings", [])),
@@ -1066,7 +1066,7 @@ class CoderSession:
             f"Hypothesis: {self.plan.hypothesis}",
             "",
             f"Domain pack: `{self.pack.name}` · environment: "
-            + (f"`{self.ctx.app_config.experiments.container}`" if self.env.containerized else "local Python"),
+            + (f"`{self.experiments.container}`" if self.env.containerized else "local Python"),
             "",
             "## Files",
             "",

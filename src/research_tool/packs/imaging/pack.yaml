@@ -1,0 +1,19 @@
+name: imaging
+description: >-
+  Microscopy and cell images (segmentation with Cellpose-style models, image-based profiling), compared
+  across seeds, usually on GPUs.
+smoke: >-
+  When smoke is True, use at most SMOKE_EXAMPLES images and SMOKE_STEPS steps, so the run finishes in under
+  a minute on a CPU.
+packages: [torch, numpy]
+resource_sources: [huggingface, url, local, pip]
+literature_sources: [pubmed, europe_pmc, semantic_scholar, openalex, arxiv]
+plan_checks:
+  - research_tool.packs.ml_dl.checks:held_out_issues
+review_checks:
+  - Is the model evaluated on images (and plates, slides or donors) it never saw in training?
+  - Are cells from one image or donor treated as independent observations in the statistics?
+  - Is segmentation quality measured against ground-truth masks with a stated metric (for example average precision at an IoU threshold)?
+hints:
+  - Load images and models only from the local paths in `resources`; never download. cellpose, scikit-image and tifffile are not in the image; list them on the `# requirements:` line (or the site gives this pack its own image).
+  - Split by image, plate or donor, never by cell, and keep the split fixed across conditions.
