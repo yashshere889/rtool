@@ -30,7 +30,7 @@ from ...schemas.hypothesis import Hypothesis
 from ...schemas.plan import ComputeEstimate, ExperimentPlan, Metric, ResourceSpec
 from ...schemas.report import Check
 from ..coder.results import family_of_tests
-from ..common import SYSTEM
+from ..common import SYSTEM, refuse
 from ..planner.checks import (
     brief_issues,
     design_issues,
@@ -91,6 +91,7 @@ class ProtocolAgent(Agent):
         selected: SelectedItem = ctx.inputs.get("selected_hypothesis")
         hypothesis = Hypothesis.model_validate(selected.item)
         pack = load_pack(brief.domain_pack)
+        refuse(pack, "design a study of this hypothesis", hypothesis.statement)
         prompts = PromptLibrary.for_agent(__package__, "study", pack=brief.domain_pack)
         feedback = [f.text for f in ctx.feedback]
         issues: list[str] = []
@@ -101,6 +102,7 @@ class ProtocolAgent(Agent):
             provenance["protocol.j2"] = prompt.template_hash
             draft = normalise_core(ctx.llm.structured(ProtocolDraft, prompt.text, profile="reason", system=SYSTEM))
             draft = follow_brief(draft, brief)
+            refuse(pack, "write this protocol", draft.objective)
             draft.n_seeds = 1  # the units are the repetitions
             issues = design_issues(draft, 1, units=True) + brief_issues(
                 brief, conditions=draft.conditions, metrics=draft.metrics, units=True

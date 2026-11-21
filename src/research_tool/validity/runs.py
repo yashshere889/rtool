@@ -22,6 +22,7 @@ from ..core.engine import REVISION_LIMIT_GATE
 from ..core.fs import atomic_write_json, atomic_write_text
 from ..core.pipeline import find_pipeline, pipeline_from
 from ..core.run import RunHandle, is_valid_name
+from ..packs import load_pack, pack_refusal
 from ..schemas.common import SelectedItem
 from ..schemas.literature import Corpus, KnowledgeMap
 from ..tools.resources.fetch import content_hash
@@ -133,6 +134,11 @@ def create_case_run(
     so the run is scored against that, whatever happens to ``case.yaml`` later.
     """
     case.expectation(variant)  # an unknown variant fails here
+    brief = case.research_brief(variant)
+    texts = [brief.topic, *brief.questions, *brief.constraints, *brief.seed_queries, *brief.datasets]
+    refused = pack_refusal(load_pack(case.pack), *texts, *([case.hypothesis.statement] if case.hypothesis else []))
+    if refused:
+        raise CaseError(f"rtool refuses this case: {refused}")
     if repeat < 1:
         raise CaseError(f"repeat must be 1 or more, not {repeat}")
     spec = pipeline_from(find_pipeline(case.pipeline_name), case.start)

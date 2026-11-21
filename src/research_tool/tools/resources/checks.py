@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ...core.config import LocalDataset
+from ...packs.refusals import controlled_access
 from ...schemas.plan import ResourceChoice
 from ..http import HttpError, PoliteHttp
 from .fetch import tree_size
@@ -81,6 +82,9 @@ class HubChecker:
         self.local = dict(local or {})
 
     def check(self, resource: ResourceChoice) -> ResourceCheck:
+        repository = controlled_access(resource.identifier, resource=True)
+        if repository:  # before any request: the planner must choose open data instead
+            return ResourceCheck(False, note=f"controlled-access data ({repository}): rtool does not use it")
         if resource.source == "local":
             return local_check(resource, self.local)
         try:

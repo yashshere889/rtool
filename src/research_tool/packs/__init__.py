@@ -7,8 +7,9 @@ A pack is a folder ``packs/<name>/`` with:
 * ``prompts/<agent>/*.j2`` — optional prompt overrides (found by the prompt library);
 * in ``pack.yaml``, optionally: ``plan_checks`` (``"module:function"`` names of checks run on every
   plan, ``(plan, brief) -> list[str]``), ``result_checks`` (the same for finished runs,
-  ``(plan, records) -> list[str]``, reported as ``results.issues``) and ``resource_sources`` (the only
-  sources its plans may use).
+  ``(plan, records) -> list[str]``, reported as ``results.issues``), ``resource_sources`` (the only
+  sources its plans may use) and ``refuse`` (rules added to what rtool refuses in every pack, see
+  ``refusals.py``).
 
 The research brief names the pack (``rtool new --pack ml_dl``).
 """
@@ -24,6 +25,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from ..core.errors import ConfigError
+from .refusals import Refusal, parse_refusals, refusal_reason
 
 if TYPE_CHECKING:
     from ..schemas.code import RunRecord
@@ -49,6 +51,7 @@ class Pack:
     replicates: str = "seeds"  # "units": its plans analyse data, compared across units (donors, samples)
     review_checks: list[str] = field(default_factory=list)  # questions the Reviewer asks of every study
     literature_sources: list[str] = field(default_factory=list)  # search sources for its topics; empty: config's
+    refusals: tuple[Refusal, ...] = ()  # its own rules; the defaults in refusals.py apply to every pack
 
 
 def available_packs() -> list[str]:
@@ -75,6 +78,7 @@ def load_pack(name: str) -> Pack:
         replicates=str(data.get("replicates", "seeds")),
         review_checks=[str(q) for q in data.get("review_checks", [])],
         literature_sources=[str(s) for s in data.get("literature_sources", [])],
+        refusals=parse_refusals(name, data.get("refuse")),
     )
     if pack.replicates not in ("seeds", "units"):
         raise ConfigError(f"pack {name!r}: replicates must be 'seeds' or 'units', not {pack.replicates!r}")
@@ -102,3 +106,8 @@ def pack_plan_issues(pack: Pack, plan: ExperimentPlan, brief: ResearchBrief | No
 def pack_result_issues(pack: Pack, plan: ExperimentPlan, records: Sequence[RunRecord]) -> list[str]:
     """What the pack's own checks find in finished runs."""
     return [issue for ref in pack.result_checks for issue in _plan_check(pack.name, ref)(plan, records)]
+
+
+def pack_refusal(pack: Pack, *texts: str) -> str | None:
+    """Why rtool refuses these texts in this pack (the default rules and the pack's own), or None."""
+    return refusal_reason(texts, pack.refusals)

@@ -393,3 +393,54 @@ Files: `core/config.py`, `agents/coder/agent.py`, `tools/resources/{structures,c
 `schemas/plan.py`, `agents/planner/agent.py`, `packs/{protein,imaging,docking,md}/**`, `testing/samples.py`,
 `benchmarks/protein/**`, `frontend/src/api/*`, `web/static/build-stamp.json`, `tests/unit/test_gpu_packs.py`,
 `tests/integration/test_protein_pipeline.py`.
+
+---
+
+## Rules for every stage — what rtool refuses (local gate passed 2026-11-21)
+
+The roadmap's rules for every stage say rtool refuses pathogen enhancement, toxin or toxic-protein
+design, and controlled-access data. Stages 1–5 shipped the packs these rules exist for (omics, medicine,
+protein, docking) without them. This adds them, for every pack, built-in or installed.
+
+Built (`packs/refusals.py`):
+- Default rules, in every pack:
+  - work that makes a pathogen more dangerous: "gain of function", or raising transmissibility,
+    virulence, lethality or host range, with a pathogen named;
+  - designing a toxin, a toxic protein, a nerve agent, or a chemical or biological weapon, unless the
+    text is about neutralising, detecting, diagnosing, inhibiting or vaccinating against one;
+  - controlled-access human data, by accession: dbGaP (`phs`, `pht`, `phv`, `phd`, `phg`, `pha`, from
+    dbGaP's study submission guide) and EGA (`EGAS`, `EGAN`, `EGAX`, `EGAZ`, `EGAR`, `EGAC`, `EGAP`,
+    `EGAD`, from EGA's metadata schema page; it gives no digit count, so any run of digits matches).
+- Where they apply:
+  - `create_run` (CLI, web UI, demo) refuses the brief: topic, questions, constraints, search queries
+    and datasets. `create_case_run` also checks a case's hypothesis.
+  - The planner and the protocol agent stop their stage (it needs a person) when the selected
+    hypothesis or the design's objective is refused. It is not a plan issue someone could approve past.
+  - The resource check reports a controlled-access resource (by accession, or a dbGaP or EGA URL), so the
+    planner chooses again; the fetch refuses one.
+- A pack may add rules (`refuse:` in pack.yaml: a reason, `all` patterns that must all match, an
+  optional `unless`). The defaults always apply.
+
+Limits: these are regular expressions over the text. They stop requests written in plain words, not
+someone who rephrases to get past them. They also refuse some descriptive work, for example "which
+mutations increase transmissibility" (rephrased as "associated with higher transmissibility", it passes).
+
+Proved by:
+- `tests/unit/test_refusals.py`:
+  - 8 traps are refused and 9 near misses pass (among them "design antibodies that neutralise snake venom
+    toxins", "gain-of-function mutations in KRAS", "do not use dbGaP data").
+  - Controlled-access data is caught by accession, or as a resource by its URL. The resource check and
+    the fetch both refuse it before any request is made.
+  - A pack's own rules (with `unless`) are added to the defaults; a rule that does not compile, or has
+    no reason, fails when the pack loads.
+  - A refused brief creates no run, and a case with a refused hypothesis is refused.
+  - In a demo-model run, the planner stops at a refused objective: the stage fails and waits for a person.
+- `tests/integration/test_study_pipeline.py`: the protocol stage stops the same way.
+- Full suite exit 0, web tests exit 0, ruff clean, API schema unchanged.
+
+Waits for Barkla: a real model's plans checked against these rules. Not built: a check of generated
+hypotheses before one is selected (the plan stage checks the selected one), and a classifier.
+
+Files: `packs/refusals.py`, `packs/__init__.py`, `agents/common.py`, `agents/planner/agent.py`,
+`agents/study/protocol.py`, `service/runs.py`, `validity/runs.py`, `tools/resources/{checks,fetch}.py`,
+`docs/architecture.md`, `tests/unit/test_refusals.py`, `tests/integration/test_study_pipeline.py`.

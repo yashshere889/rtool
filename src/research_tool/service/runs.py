@@ -31,7 +31,7 @@ from ..core.run import RunHandle, RunSpec, is_valid_name
 from ..core.services import build_slurm
 from ..core.state import GateStatus, RunState, StageState, StageStatus, StateStore
 from ..hpc.episode import EpisodeTracker, submit_episode
-from ..packs import load_pack
+from ..packs import load_pack, pack_refusal
 from ..schemas.common import ResearchBrief
 
 # What a human can answer at each kind of gate (select gates also take an edit with the choice;
@@ -157,8 +157,7 @@ def create_run(
     """Create a run directory with its research brief; nothing runs until an episode is started."""
     spec = find_pipeline(pipeline)
     resolve_pipeline(spec)  # fail now, not in the first episode
-    load_pack(pack)  # a typo in the pack should not surface days later in the coder
-    run = RunHandle.create(config.paths.resolved_runs_root(), project, spec, config, run_id=run_id, pack=pack)
+    chosen = load_pack(pack)  # a typo in the pack should not surface days later in the coder
     brief = ResearchBrief(
         topic=topic,
         questions=list(questions),
@@ -169,6 +168,11 @@ def create_run(
         max_minutes_per_run=max_minutes_per_run,
         datasets=list(datasets),
     )
+    texts = [brief.topic, *brief.questions, *brief.constraints, *brief.seed_queries, *brief.datasets]
+    refused = pack_refusal(chosen, *texts)
+    if refused:
+        raise RToolError(f"rtool refuses this brief: {refused}")
+    run = RunHandle.create(config.paths.resolved_runs_root(), project, spec, config, run_id=run_id, pack=pack)
     ArtifactStore(run.artifacts_dir).put("research_brief", brief, producer=Producer(stage="user", agent=created_by))
     return run
 

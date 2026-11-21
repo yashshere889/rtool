@@ -6,11 +6,20 @@ from pathlib import Path
 
 from ..core.config import AppConfig
 from ..core.context import AgentContext
+from ..core.errors import StageFailed
 from ..knowledge.store import KnowledgeStore
+from ..packs import Pack, pack_refusal
 from ..schemas.literature import Corpus
 from ..tools.resources.fetch import local_models, tree_size
 
 SYSTEM = "You are a careful research assistant. Follow the instructions exactly and never invent facts or citations."
+
+
+def refuse(pack: Pack, what: str, *texts: str) -> None:
+    """Stop the stage if rtool refuses these texts: a person must look; it is not a plan issue to approve past."""
+    reason = pack_refusal(pack, *texts)
+    if reason:
+        raise StageFailed(f"rtool refuses to {what}: {reason}", needs_human=True)
 
 
 def compute_profile(config: AppConfig) -> str:

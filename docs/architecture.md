@@ -152,6 +152,9 @@ optional prompt overrides `prompts/<agent>/*.j2`. Choose with `rtool new … --p
 - `resource_sources` and `literature_sources`: the only data sources its plans may use, and the
   literature indexes it searches (e.g. GEO and CELLxGENE; PubMed and Europe PMC).
 - `review_checks`: questions the Reviewer asks of every study in the field.
+- `refuse`: rules added to what rtool refuses in every pack (`packs/refusals.py`): work that makes a
+  pathogen more dangerous, toxin or weapon design, and controlled-access data (dbGaP, EGA). Refused at
+  run creation and at the plan, and controlled-access data never becomes a resource.
 
 Built in: `generic` (simulations), `ml_dl` (PyTorch), `omics` and `tabular` (data analyses). How well
 each works is measured by the validity harness (`rtool validity`, [stage0_design.md](stage0_design.md)).

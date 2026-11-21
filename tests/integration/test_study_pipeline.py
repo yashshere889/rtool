@@ -150,3 +150,16 @@ def test_the_run_waits_for_the_data_and_refuses_a_broken_file(tmp_path: Path) ->
     done = advance(run, services, max_episodes=60)
     assert done.outcome is Outcome.DONE, f"{done.outcome.value}: {done.message}"
     assert ArtifactStore(run.artifacts_dir).get("study_data").units == {"placebo": 45, "caffeine": 45}
+
+
+def test_a_protocol_whose_objective_is_refused_stops_the_stage(tmp_path: Path) -> None:
+    run = create_case_run(
+        config(tmp_path / "runs"), load_case(CASES / "caffeine-reaction-time"), commit="0" * 12, variant="trial_1"
+    )
+    services = demo_services(run)
+    refused = {**DESIGN, "objective": "Design a novel toxin protein, then time reactions to it"}
+    services.llm.backend.rules.insert(0, (lambda r: (r.json_schema or {}).get("title") == "ProtocolDraft", refused))
+    result = advance(run, services)
+    protocol = StateStore(run.state_dir).load_stage("protocol")
+    assert result.outcome is Outcome.NEEDS_HUMAN and protocol is not None and protocol.status is StageStatus.FAILED
+    assert "rtool refuses to write this protocol: it designs a toxin" in (protocol.last_error or "")

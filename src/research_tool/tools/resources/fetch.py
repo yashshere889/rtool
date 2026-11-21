@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from ...core.fs import atomic_write_text
+from ...packs.refusals import controlled_access
 from ...schemas.plan import FetchedResource, ResourceSpec
 from ..http import HttpError, PoliteHttp
 from .models import biomodels_files, download_url, sbml_problem
@@ -113,6 +114,9 @@ class Fetcher:
             "source": resource.source,
             "identifier": resource.identifier,
         }
+        repository = controlled_access(resource.identifier, resource=True)
+        if repository:  # whatever the plan says, rtool never downloads it
+            return FetchedResource(**base, status="failed", note=f"controlled-access data ({repository}): not fetched")
         if resource.source == "pip" or (resource.source == "torchvision" and self.torchvision is None):
             return FetchedResource(**base, status="deferred", note="installed with the experiment environment")
         if resource.source == "local":

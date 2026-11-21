@@ -33,7 +33,7 @@ from ...schemas.plan import (
 )
 from ...tools.http import PoliteHttp
 from ...tools.resources.checks import HubChecker, ResourceChecker
-from ..common import SYSTEM, cached_models, compute_profile, open_corpus_kb
+from ..common import SYSTEM, cached_models, compute_profile, open_corpus_kb, refuse
 from .checks import (
     brief_issues,
     design_issues,
@@ -91,6 +91,7 @@ class PlannerAgent(Agent):
         km: KnowledgeMap = ctx.inputs.get("knowledge_map")
         hypothesis = Hypothesis.model_validate(selected.item)
         pack = load_pack(brief.domain_pack)
+        refuse(pack, "plan this hypothesis", hypothesis.statement)
         prompts = PromptLibrary.for_agent(__package__, "planner", pack=brief.domain_pack)
         provenance: dict[str, str] = {}
 
@@ -135,6 +136,7 @@ class PlannerAgent(Agent):
                     )
                 )
                 core = follow_brief(core, brief)  # what the researcher fixed is set, not asked for again
+                refuse(pack, "make this plan", core.objective)
                 if units:
                     core.n_seeds = 1  # one analysis per condition; the units are the repetitions
                 core_issues = design_issues(core, min(cfg.min_seeds, min_seeds), units=units) + brief_issues(
