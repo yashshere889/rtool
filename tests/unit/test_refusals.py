@@ -55,6 +55,12 @@ def test_near_misses_pass(text: str) -> None:
     assert refusal_reason([text]) is None
 
 
+def test_the_demo_texts_pass() -> None:  # the demo UI lets anyone pick any of its hypotheses
+    texts = [demo_data.TOPIC, demo_data.PLAN_CORE["objective"]]
+    texts += [h[k] for h in demo_data.HYPOTHESES for k in ("title", "statement") if h.get(k)]
+    assert refusal_reason(texts) is None
+
+
 def test_controlled_access_resources_by_accession_and_by_host() -> None:
     assert controlled_access("phs000424.v8.p2") == "dbGaP" and controlled_access("pht000001.v1") == "dbGaP"
     assert controlled_access("EGAS00001000001") == "EGA"

@@ -10,7 +10,7 @@ import pytest
 from research_tool.validity.card import build_card, render_markdown, wilson
 from research_tool.validity.cases import load_cases
 from research_tool.validity.provenance import code_hash, code_version
-from research_tool.validity.runs import generate_data
+from research_tool.validity.runs import case_refusal, generate_data
 from research_tool.validity.score import RunScore
 
 BENCHMARKS = Path(__file__).resolve().parents[2] / "benchmarks"
@@ -94,5 +94,6 @@ def test_the_shipped_cases_load_and_their_data_can_be_made(pack: str, tmp_path: 
     for case in cases:
         for variant in case.variant_names():
             case.expectation(variant), case.research_brief(variant)  # every variant is complete
+            assert case_refusal(case, variant) is None, f"{case.id}/{variant}: rtool submit would refuse it"
             for name, entry in generate_data(case, variant, tmp_path).items():
                 assert any(Path(entry["path"]).iterdir()), f"{case.id}/{variant}: {name} is empty"

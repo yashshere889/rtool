@@ -117,6 +117,14 @@ def case_run_id(case: Case, variant: str, repeat: int, commit: str) -> str:
     return f"{case.id}-{variant}-r{repeat}-{commit[:7]}"
 
 
+def case_refusal(case: Case, variant: str = MAIN_VARIANT) -> str | None:
+    """Why rtool refuses to run this case (its brief with the variant's changes, or its hypothesis), or None."""
+    brief = case.research_brief(variant)
+    texts = [brief.topic, *brief.questions, *brief.constraints, *brief.seed_queries, *brief.datasets]
+    hypothesis = [case.hypothesis.statement] if case.hypothesis else []
+    return pack_refusal(load_pack(case.pack), *texts, *hypothesis)
+
+
 def create_case_run(
     config: AppConfig,
     case: Case,
@@ -135,9 +143,7 @@ def create_case_run(
     """
     case.expectation(variant)  # an unknown variant fails here
     require_offered(case.pack, config.packs.allowed)
-    brief = case.research_brief(variant)
-    texts = [brief.topic, *brief.questions, *brief.constraints, *brief.seed_queries, *brief.datasets]
-    refused = pack_refusal(load_pack(case.pack), *texts, *([case.hypothesis.statement] if case.hypothesis else []))
+    refused = case_refusal(case, variant)
     if refused:
         raise CaseError(f"rtool refuses this case: {refused}")
     if repeat < 1:

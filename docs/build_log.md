@@ -455,7 +455,9 @@ Proved by:
 - Full suite exit 0, web tests exit 0, ruff clean, API schema unchanged.
 
 Waits for Barkla: a real model's plans checked against these rules. Not built: a check of generated
-hypotheses before one is selected (the plan stage checks the selected one), and a classifier.
+hypotheses before one is selected (the plan stage checks the selected one), a check of a researcher's
+hand edits of the plan (the plan editor does not call the rules), and a classifier. Every shipped case
+and the demo's texts are checked against the rules in the tests, so a submit is never refused by them.
 
 Files: `packs/refusals.py`, `packs/__init__.py`, `agents/common.py`, `agents/planner/agent.py`,
 `agents/study/protocol.py`, `service/runs.py`, `validity/runs.py`, `tools/resources/{checks,fetch}.py`,
@@ -488,8 +490,10 @@ Built:
   this deployment offers it, its GPU cap and pipeline, and broken or shadowed packs.
 - **Web UI:** `/api/settings` lists the packs this deployment offers, with a short title (new in every
   pack.yaml) and pipeline. The New research page's Field menu shows them, with the default first.
-  Before, it offered only `generic` and `ml_dl`, so the eleven packs and the two other pipelines could
-  not be reached from the UI.
+  Before, it offered only `generic` and `ml_dl`. Runs of every pack, and of the synthesis and study
+  pipelines, can now be started from the UI, but not every one can be finished there: a study run waits
+  at `data_upload` until `rtool add-data` uploads its data from the CLI (the UI has no upload control),
+  and the UI has no page for a synthesis review (see Stages 3 and 4, "Not done").
 
 Proved by:
 - `tests/unit/test_installed_packs.py`, with a pack installed the way pip would install it (a
