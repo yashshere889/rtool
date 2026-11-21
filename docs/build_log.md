@@ -444,3 +444,64 @@ hypotheses before one is selected (the plan stage checks the selected one), and 
 Files: `packs/refusals.py`, `packs/__init__.py`, `agents/common.py`, `agents/planner/agent.py`,
 `agents/study/protocol.py`, `service/runs.py`, `validity/runs.py`, `tools/resources/{checks,fetch}.py`,
 `docs/architecture.md`, `tests/unit/test_refusals.py`, `tests/integration/test_study_pipeline.py`.
+
+---
+
+## Stage 6 — many users, many fields (local gate passed 2026-11-21)
+
+The roadmap starts Stage 6 only after Stages 0–4 hold up. They have passed their local gates, not their
+exit tests on Barkla, so this is built ahead of that, because you asked for every stage. Nothing in it
+has been used for real yet. Not built: anything that needs to know who the user is (accounts, roles,
+per-user quotas or billing); the roadmap leaves those out.
+
+Built:
+- **Packs from installed packages:** an entry point in the group `research_tool.packs` names a package
+  whose folder holds a pack. `load_pack`, the prompt library and the Coder's skeleton find it like a
+  built-in one, and its checks are named by module path. An installed pack cannot take a built-in
+  pack's name: it is listed as shadowed and never used, so a validity card always means the pack it
+  names. Pack names must be one path segment (they come from briefs and the web). A `pack.yaml` that is
+  not valid YAML is a config error naming the pack, not a crash.
+- **What a deployment offers** (site config):
+  - `packs.allowed`: new runs may use only these packs. Checked in `create_run` (CLI, web UI) and
+    `create_case_run`.
+  - `packs.max_gpu_hours`: a cap per pack that only lowers `budgets.run.max_gpu_hours`. It is applied
+    whenever a run's config is set, so it holds after an episode re-reads the site's config files.
+- **A pack's own pipeline:** `pipeline:` in pack.yaml (`medicine`: synthesis; `study`: study) is used
+  when nobody names one. `rtool new --pipeline` now defaults to it, else research.
+- **`rtool packs`:** every pack, where it comes from (built in, or the package and version), whether
+  this deployment offers it, its GPU cap and pipeline, and broken or shadowed packs.
+- **Web UI:** `/api/settings` lists the packs this deployment offers, with a short title (new in every
+  pack.yaml) and pipeline. The New research page's Field menu shows them, with the default first.
+  Before, it offered only `generic` and `ml_dl`, so the eleven packs and the two other pipelines could
+  not be reached from the UI.
+
+Proved by:
+- `tests/unit/test_installed_packs.py`, with a pack installed the way pip would install it (a
+  dist-info folder with an entry point on `sys.path`; nothing is downloaded):
+  - its template, hints, plan check and planner prompt are used;
+  - one named `omics` is shadowed and the built-in `omics` is used;
+  - `../generic` and similar names are refused;
+  - a `pack.yaml` that is not valid YAML is a config error naming the pack, and `rtool packs` lists the
+    pack as broken;
+  - a pack the deployment does not offer is refused, for a run and for a validity case;
+  - the GPU cap lowers 10 to 2 h for `md`, leaves 10 for a cap of 50, applies when there is no budget,
+    and still holds after the config is re-read with 100;
+  - `medicine` and `study` runs get their pipelines, and a named pipeline wins;
+  - the refusals apply to an installed pack;
+  - `rtool packs` lists origin, offer, cap, pipeline and the shadowed pack.
+- `tests/web/test_api.py`: the settings list every pack with title and pipeline, or only the offered
+  ones.
+- In the browser (local demo server): the Field menu lists the eleven packs, "Any field" first and
+  selected, with the synthesis and study pipelines named.
+- Full suite exit 0, web tests exit 0, frontend tests (36) pass, ruff clean. API types regenerated and
+  the bundle rebuilt.
+
+Waits for Barkla: installing a real pack package into the Barkla venv, and a deployment config with an
+allowlist. Not built: per-user access rules, usage accounting across runs, a pack registry or
+marketplace (the roadmap's "not building yet").
+
+Files: `packs/__init__.py`, `packs/*/pack.yaml` (titles; pipelines for medicine and study),
+`llm/prompts.py`, `core/config.py`, `core/run.py`, `service/runs.py`, `validity/runs.py`, `cli/main.py`,
+`web/api/session.py`, `testing/web.py`, `frontend/src/pages/{NewResearch,Overview}.tsx`,
+`frontend/src/api/*`, `web/static/**`, `docs/architecture.md`, `README.md`,
+`tests/unit/test_installed_packs.py`, `tests/web/test_api.py`.

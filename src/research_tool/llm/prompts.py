@@ -20,6 +20,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, StrictUndefined,
 
 from ..core.errors import RToolError
 from ..core.fs import sha256_text
+from ..packs import pack_folder
 
 
 class PromptError(RToolError):
@@ -69,9 +70,10 @@ class PromptLibrary:
     ) -> PromptLibrary:
         """Search order: extra dirs, then the pack's overrides, then the agent's own prompts."""
         paths: list[Path] = [Path(d) / agent_name for d in extra_dirs]
-        if pack:
-            pack_dir = _package_dir("research_tool.packs", pack, "prompts", agent_name)
-            if pack_dir:
+        folder = pack_folder(pack) if pack else None  # built in, or an installed package's
+        if folder is not None:
+            pack_dir = Path(str(folder.joinpath("prompts", agent_name)))
+            if pack_dir.is_dir():
                 paths.append(pack_dir)
         own = _package_dir(agent_package, "prompts")
         if own:

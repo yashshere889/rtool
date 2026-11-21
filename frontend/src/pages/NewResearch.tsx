@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { runPath } from "@/api/client";
 import { useCreateRun, useSettings } from "@/api/hooks";
-import type { NewRun } from "@/api/types";
+import type { NewRun, ServerSettings } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
@@ -37,10 +37,8 @@ const REVIEW_MODES: { value: NewRun["review"]; title: string; text: string }[] =
   },
 ];
 
-const PACKS = [
-  { value: "generic", title: "Any field" },
-  { value: "ml_dl", title: "Machine learning / deep learning (PyTorch)" },
-];
+// until the server's list arrives: the server sends the packs this deployment offers
+const FALLBACK_PACKS: ServerSettings["packs"] = [{ name: "generic", title: "Any field", pipeline: "research" }];
 
 export function NewResearch() {
   const navigate = useNavigate();
@@ -183,9 +181,9 @@ export function NewResearch() {
                   value={pack}
                   onChange={(e) => setPack(e.target.value)}
                 >
-                  {PACKS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.title}
+                  {(settings.data?.packs?.length ? settings.data.packs : FALLBACK_PACKS).map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.pipeline === "research" ? p.title : `${p.title} (${p.pipeline} pipeline)`}
                     </option>
                   ))}
                 </select>

@@ -1,4 +1,5 @@
 name: ml_dl
+title: "Machine learning / deep learning (PyTorch)"
 description: Machine-learning and deep-learning experiments with PyTorch.
 smoke: >-
   When smoke is True, use at most SMOKE_EXAMPLES examples, SMOKE_STEPS optimisation steps and

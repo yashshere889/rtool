@@ -1,4 +1,5 @@
 name: generic
+title: "Any field"
 description: Any computational experiment in Python (simulation, statistics, data analysis).
 smoke: >-
   When smoke is True, use a tiny problem (e.g. at most 50 data points or 2 simulation steps)

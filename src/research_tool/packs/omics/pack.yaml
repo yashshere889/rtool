@@ -1,4 +1,5 @@
 name: omics
+title: "Omics: bulk and single-cell data, across donors"
 description: >-
   Analysis of existing molecular and cellular data (bulk and single-cell transcriptomics and similar), with
   conditions compared across donors or samples.

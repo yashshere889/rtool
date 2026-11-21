@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeFloat, ValidationError
 
 from .errors import ConfigError
 
@@ -263,6 +263,13 @@ class ExperimentsConfig(_Section):
         return self.model_copy(update={"container": image.container, "packages": image.packages}) if image else self
 
 
+class PacksConfig(_Section):
+    """What a deployment offers: which domain packs new runs may use, and a GPU cap per pack."""
+
+    allowed: list[str] = Field(default_factory=list)  # the packs new runs may use; empty: every pack
+    max_gpu_hours: dict[str, NonNegativeFloat] = Field(default_factory=dict)  # pack -> cap on a run's budget
+
+
 class AppConfig(_Section):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
@@ -273,6 +280,16 @@ class AppConfig(_Section):
     budgets: BudgetsConfig = Field(default_factory=BudgetsConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     slurm: SlurmConfig = Field(default_factory=SlurmConfig)
+    packs: PacksConfig = Field(default_factory=PacksConfig)
+
+    def with_pack_limits(self, pack: str) -> AppConfig:
+        """These settings with the pack's GPU cap applied: a cap only ever lowers ``budgets.run.max_gpu_hours``."""
+        cap = self.packs.max_gpu_hours.get(pack)
+        budget = self.budgets.run.max_gpu_hours
+        if cap is None or (budget is not None and budget <= cap):
+            return self
+        run = self.budgets.run.model_copy(update={"max_gpu_hours": cap})
+        return self.model_copy(update={"budgets": self.budgets.model_copy(update={"run": run})})
 
 
 _ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")

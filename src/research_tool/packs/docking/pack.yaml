@@ -1,4 +1,5 @@
 name: docking
+title: "Molecular docking and virtual screening"
 description: >-
   Molecular docking and virtual screening (protein-ligand poses and scores), compared across seeds.
 smoke: >-

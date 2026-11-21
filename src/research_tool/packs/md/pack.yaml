@@ -1,4 +1,5 @@
 name: md
+title: "Molecular dynamics"
 description: >-
   Molecular dynamics (OpenMM-style simulations of proteins and small molecules), compared across seeds,
   usually on GPUs.

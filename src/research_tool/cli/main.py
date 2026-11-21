@@ -49,6 +49,7 @@ from ..hpc.episode import SAFETY_MARGIN_S, llm_needed, run_episode, schedule_nex
 from ..hpc.fake_slurm import FakeSlurm
 from ..hpc.jobspec import parse_time_limit
 from ..llm.server import VLLMServer
+from ..packs import load_pack, pack_sources
 from ..service import check_edit, create_run, kick, load_app_config, queue_action, replay_run, run_status, stop_run
 from ..service import list_runs as list_all_runs
 from .stats import print_stats
@@ -223,7 +224,9 @@ def main(
 def new(
     project: str = typer.Argument(..., help="Project name; runs are grouped under it."),
     topic: str = typer.Option(..., "--topic", "-t", help="The research topic or question."),
-    pipeline: str = typer.Option("research", "--pipeline", "-p", help="Built-in pipeline name or a YAML path."),
+    pipeline: str | None = typer.Option(
+        None, "--pipeline", "-p", help="Built-in pipeline name or a YAML path (default: the pack's, else research)."
+    ),
     question: list[str] = typer.Option([], "--question", "-q", help="A specific research question (repeatable)."),
     constraint: list[str] = typer.Option([], "--constraint", help="A constraint, e.g. 'max 24 GPU-hours'."),
     seed_query: list[str] = typer.Option([], "--seed-query", help="A search query to start from (repeatable)."),
@@ -828,6 +831,31 @@ def stats(
             typer.echo(report.model_dump_json(indent=2))
         else:
             print_stats(report, console)
+
+
+@app.command()
+def packs(
+    config: list[Path] = typer.Option([], "--config", "-c", help="Extra config YAML (repeatable)."),
+    set_: list[str] = typer.Option([], "--set", help="Override config, e.g. --set packs.allowed=[generic]."),
+) -> None:
+    """List the domain packs: built in or installed, and which this deployment offers."""
+    with _guard():
+        cfg = _app_config(config, set_, None)
+        allowed = cfg.packs.allowed
+        for source in pack_sources():
+            if source.shadowed:
+                typer.echo(f"{source.name:<10} shadowed     {source.origin}: another pack has this name, so never used")
+                continue
+            try:
+                pack = load_pack(source.name)
+            except RToolError as exc:
+                typer.echo(f"{source.name:<10} broken       {source.origin}: {exc}")
+                continue
+            offered = "offered" if not allowed or source.name in allowed else "not offered"
+            cap = cfg.packs.max_gpu_hours.get(source.name)
+            limit = f"max {cap:g} GPU-h" if cap is not None else ""
+            pipeline = f"pipeline {pack.pipeline}" if pack.pipeline else ""
+            typer.echo(f"{source.name:<10} {offered:<12} {source.origin:<24} {limit:<14} {pipeline:<18} {pack.title}")
 
 
 @app.command()

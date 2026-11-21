@@ -1,4 +1,6 @@
 name: study
+title: "A study a person carries out: lab, clinic or field"
+pipeline: study  # unless the researcher picks another
 description: >-
   Studies a person carries out (lab, clinic or field): rtool writes the protocol with its sample size and
   randomised allocation, then analyses the data brought back, compared across units (pipeline study).

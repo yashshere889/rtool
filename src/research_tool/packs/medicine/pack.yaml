@@ -1,4 +1,6 @@
 name: medicine
+title: "Medicine and public health: literature reviews"
+pipeline: synthesis  # unless the researcher picks another
 description: >-
   Medicine and public health: mostly literature reviews (pipeline synthesis) over clinical and biomedical
   studies, searched in PubMed and Europe PMC.

@@ -2732,6 +2732,29 @@
     "title": "OpenProblemView",
     "type": "object"
    },
+   "PackChoice": {
+    "properties": {
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "pipeline": {
+      "title": "Pipeline",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "pipeline",
+     "title"
+    ],
+    "title": "PackChoice",
+    "type": "object"
+   },
    "PaperCard": {
     "properties": {
      "abstract": {
@@ -4681,6 +4704,14 @@
       "title": "Mode",
       "type": "string"
      },
+     "packs": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/PackChoice"
+      },
+      "title": "Packs",
+      "type": "array"
+     },
      "runs_locally": {
       "title": "Runs Locally",
       "type": "boolean"
@@ -4703,6 +4734,7 @@
     },
     "required": [
      "mode",
+     "packs",
      "runs_locally",
      "runs_root",
      "secrets",

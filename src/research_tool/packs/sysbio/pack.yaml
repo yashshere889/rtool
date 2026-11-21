@@ -1,4 +1,5 @@
 name: sysbio
+title: "Systems biology and epidemic models"
 description: >-
   Simulation and modelling of biological systems (kinetic ODE and stochastic models, epidemics, metabolic
   networks), compared across seeds.

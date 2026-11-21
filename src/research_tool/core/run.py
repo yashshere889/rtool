@@ -58,6 +58,15 @@ class RunHandle:
         self.config = AppConfig.model_validate(self.spec.config)
 
     @property
+    def config(self) -> AppConfig:
+        return self._config
+
+    @config.setter
+    def config(self, value: AppConfig) -> None:
+        # the site's cap for this run's pack holds over any config file an episode layers on later
+        self._config = value.with_pack_limits(self.spec.pack)
+
+    @property
     def run_id(self) -> str:
         return self.spec.run_id
 
@@ -116,7 +125,7 @@ class RunHandle:
             tool_version=__version__,
             pack=pack,
             pipeline=pipeline,
-            config=config.model_dump(mode="json"),
+            config=config.with_pack_limits(pack).model_dump(mode="json"),
         )
         atomic_write_json(root / "run.json", spec.model_dump(mode="json"))
         return cls(root)

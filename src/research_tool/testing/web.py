@@ -31,9 +31,12 @@ class StubRunner:
         return WorkerState()
 
 
-def web_client(runs_root: Path, runner: Any = None, *, signed_in: bool = True) -> TestClient:
+def web_client(
+    runs_root: Path, runner: Any = None, *, signed_in: bool = True, config_files: list[Path] | None = None
+) -> TestClient:
     """A test client for a local-mode server over ``runs_root``, signed in unless asked otherwise."""
-    app = create_app(UISettings(runs_root=runs_root, token=TOKEN, mode="local"), runner=runner or StubRunner())
+    settings = UISettings(runs_root=runs_root, token=TOKEN, mode="local", config_files=config_files or [])
+    app = create_app(settings, runner=runner or StubRunner())
     client = TestClient(app, base_url=BASE)
     if signed_in:
         assert client.post("/api/session", json={"token": TOKEN}, headers=WRITE).status_code == 204

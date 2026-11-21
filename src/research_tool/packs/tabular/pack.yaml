@@ -1,4 +1,5 @@
 name: tabular
+title: "Tabular data: surveys, registries, tables"
 description: >-
   Statistical analysis of existing tabular data (surveys, registries, economic or experimental tables), with
   conditions compared across independent units such as people, firms or countries.

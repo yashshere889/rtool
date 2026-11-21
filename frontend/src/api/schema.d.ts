@@ -1762,6 +1762,15 @@ export interface components {
             /** Why Open */
             why_open: string;
         };
+        /** PackChoice */
+        PackChoice: {
+            /** Name */
+            name: string;
+            /** Pipeline */
+            pipeline: string;
+            /** Title */
+            title: string;
+        };
         /** PaperCard */
         PaperCard: {
             /** Abstract */
@@ -2461,6 +2470,11 @@ export interface components {
         ServerSettings: {
             /** Mode */
             mode: string;
+            /**
+             * Packs
+             * @default []
+             */
+            packs: components["schemas"]["PackChoice"][];
             /** Runs Locally */
             runs_locally: boolean;
             /** Runs Root */

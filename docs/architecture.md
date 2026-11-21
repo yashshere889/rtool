@@ -140,24 +140,57 @@ The model is good but small, so every step is narrow and checked by code:
 
 ## Domain packs
 
-`src/research_tool/packs/<name>/`: `pack.yaml` (hints, what a smoke run is,
-usual packages), `templates/experiment.py.j2` (the Coder's skeleton) and
-optional prompt overrides `prompts/<agent>/*.j2`. Choose with `rtool new … --pack ml_dl`.
-`pack.yaml` can also set:
+A pack is a folder: `pack.yaml` (a title, a description, hints, what a smoke run is, usual packages),
+`templates/experiment.py.j2` (the Coder's skeleton) and optional prompt overrides `prompts/<agent>/*.j2`.
+Choose one with `rtool new … --pack ml_dl`; `rtool packs` lists them. `pack.yaml` can also set:
 
 - `replicates: units`: a data analysis. Each condition runs once and reports one value per independent
   unit (donor, sample); conditions are compared across units, paired by unit id when the same units
   appear in both (`results.aggregate_units`). Batch confounding becomes `results.issues`.
-- `plan_checks`: `"module:function"` checks run on every plan (e.g. pseudoreplication).
+- `plan_checks` and `result_checks`: `"module:function"` checks run on every plan (`(plan, brief)`, e.g.
+  pseudoreplication) and on finished runs (`(plan, records)`, e.g. mass balance), reported as
+  `plan.issues` and `results.issues`.
 - `resource_sources` and `literature_sources`: the only data sources its plans may use, and the
   literature indexes it searches (e.g. GEO and CELLxGENE; PubMed and Europe PMC).
 - `review_checks`: questions the Reviewer asks of every study in the field.
+- `pipeline`: the pipeline its runs use unless the researcher picks one (`medicine`: synthesis;
+  `study`: study).
 - `refuse`: rules added to what rtool refuses in every pack (`packs/refusals.py`): work that makes a
   pathogen more dangerous, toxin or weapon design, and controlled-access data (dbGaP, EGA). Refused at
   run creation and at the plan, and controlled-access data never becomes a resource.
 
-Built in: `generic` (simulations), `ml_dl` (PyTorch), `omics` and `tabular` (data analyses). How well
-each works is measured by the validity harness (`rtool validity`, [stage0_design.md](stage0_design.md)).
+Built in: `generic` (simulations), `ml_dl` (PyTorch), `omics` and `tabular` (data analyses), `sysbio`
+(models and simulations), `medicine` (literature reviews), `study` (studies a person carries out), and
+the GPU-heavy `protein`, `imaging`, `docking` and `md`, which a site can give their own image
+(`experiments.pack_images`). How well each works is measured by the validity harness (`rtool validity`,
+[stage0_design.md](stage0_design.md)).
+
+### Sharing a pack
+
+A pack can live in its own Python package, installed into rtool's environment (the same venv serves
+the login node and every job). The package's folder holds the pack (`pack.yaml` and the rest), and an
+entry point in the group `research_tool.packs` names it:
+
+```toml
+[project.entry-points."research_tool.packs"]
+fieldx = "rtool_pack_fieldx"
+```
+
+Its checks are named by module path (`rtool_pack_fieldx.checks:issues`). An installed pack cannot take a
+built-in pack's name: `rtool packs` lists it as shadowed and it is never used, so a validity card always
+means the pack it names. The default refusals apply to installed packs too.
+
+### What a deployment offers
+
+```yaml
+packs:
+  allowed: [generic, omics, tabular]   # new runs may use only these; empty: every pack
+  max_gpu_hours: {md: 20}              # a cap on each run's GPU budget in this pack
+```
+
+Both are checked when a run is created (CLI, web UI, validity cases). A pack's cap only ever lowers a
+run's `budgets.run.max_gpu_hours`, and it holds however the run's config is loaded later (episodes
+re-read the site's config files). The web UI's Field menu lists the packs the deployment offers.
 
 ## A run on disk
 

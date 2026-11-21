@@ -209,6 +209,16 @@ def test_starting_new_research(runs_root: Path) -> None:
     assert c.post("/api/runs", json={"topic": "x"}, headers=WRITE).status_code == 422
 
 
+def test_the_settings_list_the_packs_this_deployment_offers(runs_root: Path, tmp_path: Path) -> None:
+    every = {p["name"]: p for p in client(runs_root).get("/api/settings").json()["packs"]}
+    assert every["generic"]["title"] == "Any field" and every["medicine"]["pipeline"] == "synthesis"
+    assert every["omics"]["pipeline"] == "research"
+    site = tmp_path / "site.yaml"
+    site.write_text("packs:\n  allowed: [generic, omics]\n", encoding="utf-8")
+    offered = client(runs_root, config_files=[site]).get("/api/settings").json()["packs"]
+    assert [p["name"] for p in offered] == ["generic", "omics"]
+
+
 def test_the_app_shell_and_unknown_api_paths(runs_root: Path) -> None:
     c = client(runs_root, signed_in=False)
     for path in ("/", "/runs/sleep-demo/1-literature/literature"):

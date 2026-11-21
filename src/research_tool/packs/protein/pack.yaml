@@ -1,4 +1,5 @@
 name: protein
+title: "Protein sequences and structures"
 description: >-
   Protein sequences and structures (language models such as ESM, variant-effect and stability prediction,
   structure analysis), compared across seeds, usually on GPUs.

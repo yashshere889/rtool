@@ -101,7 +101,7 @@ export function Overview() {
       <header>
         <p className="text-sm text-ink-soft">
           Started <span title={dateTime(run.created_at)}>{timeAgo(run.created_at)}</span> · {run.pipeline} pipeline ·{" "}
-          {run.pack === "ml_dl" ? "machine learning" : "any field"}
+          {run.pack === "generic" ? "any field" : `${run.pack} pack`}
         </p>
         <h1 className="mt-1 text-2xl leading-snug font-semibold">{run.topic || run.run_id}</h1>
       </header>

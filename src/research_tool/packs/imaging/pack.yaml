@@ -1,4 +1,5 @@
 name: imaging
+title: "Microscopy and cell images"
 description: >-
   Microscopy and cell images (segmentation with Cellpose-style models, image-based profiling), compared
   across seeds, usually on GPUs.

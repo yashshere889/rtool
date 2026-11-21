@@ -31,7 +31,7 @@ from ..core.run import RunHandle, RunSpec, is_valid_name
 from ..core.services import build_slurm
 from ..core.state import GateStatus, RunState, StageState, StageStatus, StateStore
 from ..hpc.episode import EpisodeTracker, submit_episode
-from ..packs import load_pack, pack_refusal
+from ..packs import load_pack, pack_refusal, require_offered
 from ..schemas.common import ResearchBrief
 
 # What a human can answer at each kind of gate (select gates also take an edit with the choice;
@@ -143,7 +143,7 @@ def create_run(
     project: str,
     topic: str,
     *,
-    pipeline: str = "research",
+    pipeline: str | None = None,
     questions: Iterable[str] = (),
     constraints: Iterable[str] = (),
     seed_queries: Iterable[str] = (),
@@ -154,10 +154,14 @@ def create_run(
     run_id: str | None = None,
     created_by: str = "rtool new",
 ) -> RunHandle:
-    """Create a run directory with its research brief; nothing runs until an episode is started."""
-    spec = find_pipeline(pipeline)
-    resolve_pipeline(spec)  # fail now, not in the first episode
+    """Create a run directory with its research brief; nothing runs until an episode is started.
+
+    The pipeline is the pack's own unless one is named (``medicine``: synthesis), else ``research``.
+    """
+    require_offered(pack, config.packs.allowed)
     chosen = load_pack(pack)  # a typo in the pack should not surface days later in the coder
+    spec = find_pipeline(pipeline or chosen.pipeline or "research")
+    resolve_pipeline(spec)  # fail now, not in the first episode
     brief = ResearchBrief(
         topic=topic,
         questions=list(questions),

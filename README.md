@@ -113,7 +113,8 @@ episodes, and a killed episode resumes where it stopped. More in
 - **New agent:** one class + one line of pipeline YAML, no engine changes:
   [docs/adding_an_agent.md](docs/adding_an_agent.md).
 - **New field:** a domain pack in `src/research_tool/packs/<name>/` (hints, code
-  skeleton, prompt overrides).
+  skeleton, prompt overrides, checks), or in a package of its own, installed into rtool's
+  environment ([docs/architecture.md](docs/architecture.md#sharing-a-pack)). `rtool packs` lists them.
 - **Change the flow:** edit the pipeline YAML; set any gate to `auto`.
 
 ## Development (on the Mac; nothing is downloaded)
