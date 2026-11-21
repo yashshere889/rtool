@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 
 from ..core.artifacts import artifact_type
 
-ResourceSource = Literal["huggingface", "url", "torchvision", "pip", "manual"]
+# "local": a dataset the researcher provides on disk (config experiments.local_data), named by its key
+ResourceSource = Literal["huggingface", "url", "torchvision", "pip", "local", "manual"]
 
 
 class Variable(BaseModel):
@@ -72,7 +73,9 @@ class ResourceChoice(BaseModel):
     kind: Literal["dataset", "model", "code", "other"]
     name: str
     source: ResourceSource
-    identifier: str = Field(description="Hugging Face repo id, URL, torchvision name or pip package")
+    identifier: str = Field(
+        description="Hugging Face repo id, URL, torchvision name, pip package, or the name of a local dataset"
+    )
     subset: str | None = Field(default=None, description="Hugging Face config name, if any")
     split: str | None = None
     purpose: str

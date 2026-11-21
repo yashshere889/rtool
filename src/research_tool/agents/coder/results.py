@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ...schemas.code import Comparison, MetricSummary, RunRecord
-from ...schemas.plan import ExperimentPlan
+from ...schemas.plan import ExperimentPlan, StatisticalTest
 from ...tools.report.numbers import fmt, fmt_ci, fmt_p
 from ...tools.report.svg import bar_chart
 from . import stats
@@ -122,6 +122,10 @@ def _family_of(text: str) -> str | None:
 
 
 def _test_family(plan: ExperimentPlan) -> tuple[str, Literal["holm", "bonferroni"]]:
+    return family_of_tests(plan.statistical_tests)
+
+
+def family_of_tests(tests: Sequence[StatisticalTest]) -> tuple[str, Literal["holm", "bonferroni"]]:
     """(test, correction) chosen from the plan's statistical tests (free text written by the planner).
 
     The first test rtool recognises decides (the plan's main analysis; later ones are often robustness checks).
@@ -131,9 +135,9 @@ def _test_family(plan: ExperimentPlan) -> tuple[str, Literal["holm", "bonferroni
     that never considered the question, and an uncorrected family of metrics x conditions is how false
     positives get reported. The raw p-values stay in the results next to the adjusted ones.
     """
-    test = next((f for t in plan.statistical_tests if (f := _family_of(t.test))), None)
-    test = test or _family_of(" ".join(t.comparison for t in plan.statistical_tests)) or "t"
-    corrections = " ".join(t.correction for t in plan.statistical_tests).lower()
+    test = next((f for t in tests if (f := _family_of(t.test))), None)
+    test = test or _family_of(" ".join(t.comparison for t in tests)) or "t"
+    corrections = " ".join(t.correction for t in tests).lower()
     return test, "bonferroni" if "bonferroni" in corrections and "holm" not in corrections else "holm"
 
 

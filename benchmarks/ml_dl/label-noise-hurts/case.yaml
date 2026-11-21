@@ -1,0 +1,28 @@
+# Replacing 40 % of the training labels by wrong classes lowers test accuracy.
+id: label-noise-hurts
+kind: planted
+pack: ml_dl
+confirmed_by: ""  # reference.py needs torch and MNIST: run it on Barkla, then fill this in
+brief:
+  topic: Do noisy training labels lower test accuracy on MNIST?
+  constraints:
+    - CPU only. MNIST from torchvision; download nothing else.
+    - Train on the first 10,000 training images and test on the full 10,000-image test set, pixels scaled to [0, 1].
+    - The model is a multilayer perceptron 784-256-10 with ReLU, trained with Adam (learning rate 0.001) for 3 epochs, batch size 128.
+    - In noisy_40, replace the label of 40 % of the training images, chosen with the run's seed, by a different class chosen uniformly at random; test labels stay clean.
+  seeds: 6
+  max_minutes_per_run: 10
+  datasets: [MNIST]
+  conditions:
+    - {name: clean, baseline: true, description: "training labels as given"}
+    - {name: noisy_40, description: "40 % of training labels replaced by another class"}
+  primary_metric: {name: test_accuracy, higher_is_better: true}
+hypothesis:
+  statement: Replacing 40 % of the training labels by wrong classes lowers the test accuracy of a small MLP on MNIST.
+  null_hypothesis: Test accuracy is the same with clean and with noisy training labels.
+  success_criteria: noisy_40 has a lower mean test_accuracy than clean, with p < 0.05 in a paired t-test over the 6 seeds.
+  independent_variables: [training label noise]
+  dependent_variables: [test_accuracy]
+expect:
+  significant: true
+  direction: worse

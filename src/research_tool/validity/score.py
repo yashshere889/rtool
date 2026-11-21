@@ -28,7 +28,7 @@ from ..core.state import RunState, StageState, StageStatus
 from ..schemas.code import CodeBundle, Comparison, ExperimentResults, MetricSummary
 from ..schemas.plan import ExperimentPlan
 from ..schemas.report import Report, Review
-from .cases import Case, CaseKind, Expectation
+from .cases import Case, CaseBrief, CaseKind, Expectation
 from .runs import MARKER
 
 LEVELS = ("L0 runs", "L1 code consistent", "L2 analysis sound", "L3 right answer")
@@ -52,6 +52,7 @@ class RunScore(BaseModel):
     commit: str
     finished: bool  # False: the run is still going (or stopped without failing); nothing is scored
     max_level: int = 3  # open cases fix no answer: only L0 and L1 are scored
+    confirmed: bool = True  # the case's expected outcome was confirmed (cards report unconfirmed cases apart)
     level: int = -1  # the highest level passed together with every level below it; -1: not even L0
     category: str = ""  # the first failed check's category; "" if every scored level passed
     false_claim: bool = False  # a null case whose final report says the hypothesis is supported
@@ -70,6 +71,7 @@ def score_run(run: RunHandle) -> RunScore:
     # rules reject cannot be scored; give such runs a category of their own once PR 3 scores across commits.
     case = Case.model_validate(marker["case"])
     expect = case.expectation(marker["variant"])
+    brief = case.brief_for(marker["variant"])  # the variant's conditions, metric and seeds
     run_state, stages, _ = load_status(run)
     score = RunScore(
         run_id=run.run_id,
@@ -80,6 +82,7 @@ def score_run(run: RunHandle) -> RunScore:
         commit=marker["commit"],
         finished=_at_rest(stages),
         max_level=1 if case.kind == "open" else 3,
+        confirmed=case.confirmed,
     )
     if not score.finished:
         return score
@@ -93,8 +96,8 @@ def score_run(run: RunHandle) -> RunScore:
     code: CodeBundle | None = head("code_bundle")
     final: Report | None = head("final_report")
     review: Review | None = head("review")
-    comparison = _comparison(case, expect, results)
-    summary = _summary(case, expect, results)
+    comparison = _comparison(brief, expect, results)
+    summary = _summary(brief, expect, results)
     score.facts = _facts(plan, comparison, summary, final, stages)
     if review is not None:
         score.audit = dict(Counter(f.state for f in review.code_audit))
@@ -102,8 +105,8 @@ def score_run(run: RunHandle) -> RunScore:
 
     levels = [
         lambda: _l0(stages, run_state),
-        lambda: _l1(case, plan, results, code),
-        lambda: _l2(case, expect, plan, comparison, summary),
+        lambda: _l1(brief, plan, results, code),
+        lambda: _l2(brief, expect, plan, comparison, summary),
         lambda: _l3(expect, comparison, summary, final),
     ]
     for level, checks in enumerate(levels[: score.max_level + 1]):
@@ -124,9 +127,13 @@ def _at_rest(stages: dict[str, StageState]) -> bool:
     return statuses == {StageStatus.DONE} or bool(statuses & {StageStatus.FAILED, StageStatus.AWAITING_GATE})
 
 
-def _comparison(case: Case, expect: Expectation, results: ExperimentResults | None) -> Comparison | None:
+def _baseline(brief: CaseBrief) -> str | None:
+    return next((c.name for c in brief.conditions if c.baseline), None)
+
+
+def _comparison(brief: CaseBrief, expect: Expectation, results: ExperimentResults | None) -> Comparison | None:
     """The confirmatory comparison that decides the case: its condition against the pinned baseline."""
-    metric = case.brief.primary_metric
+    metric = brief.primary_metric
     if results is None or metric is None or expect.condition is None:
         return None
     return next(
@@ -135,15 +142,15 @@ def _comparison(case: Case, expect: Expectation, results: ExperimentResults | No
             for c in results.comparisons
             if c.metric == metric.name
             and c.condition == expect.condition
-            and c.baseline == case.baseline
+            and c.baseline == _baseline(brief)
             and c.analysis == "confirmatory"
         ),
         None,
     )
 
 
-def _summary(case: Case, expect: Expectation, results: ExperimentResults | None) -> MetricSummary | None:
-    metric = case.brief.primary_metric
+def _summary(brief: CaseBrief, expect: Expectation, results: ExperimentResults | None) -> MetricSummary | None:
+    metric = brief.primary_metric
     if results is None or metric is None or expect.value is None:
         return None
     return results.summary(expect.value.condition, metric.name)
@@ -200,7 +207,7 @@ def _l0(stages: dict[str, StageState], run_state: RunState | None) -> list[Check
 
 
 def _l1(
-    case: Case, plan: ExperimentPlan | None, results: ExperimentResults | None, code: CodeBundle | None
+    brief: CaseBrief, plan: ExperimentPlan | None, results: ExperimentResults | None, code: CodeBundle | None
 ) -> list[Check]:
     if plan is None or results is None or code is None:
         return [Check(level=1, name="the experiment left results", ok=False, category="incomplete_runs")]
@@ -215,7 +222,7 @@ def _l1(
         )
     ]
     planned = [c.name for c in plan.run_conditions()]
-    for pinned in case.brief.conditions:
+    for pinned in brief.conditions:
         ok_runs = sum(1 for r in results.runs if r.condition == pinned.name and r.status == "ok")
         if pinned.name not in planned:
             checks.append(
@@ -257,14 +264,14 @@ def _l1(
 
 
 def _l2(
-    case: Case,
+    brief: CaseBrief,
     expect: Expectation,
     plan: ExperimentPlan | None,
     comparison: Comparison | None,
     summary: MetricSummary | None,
 ) -> list[Check]:
     assert plan is not None  # L1 passed, so there is a plan
-    pinned = case.brief.primary_metric
+    pinned = brief.primary_metric
     primary = plan.primary_metric()
     checks = [
         Check(
@@ -277,8 +284,8 @@ def _l2(
         Check(
             level=2,
             name="the plan uses the brief's seeds",
-            ok=len(plan.seeds) == case.brief.seeds,
-            detail=f"{len(plan.seeds)} seeds, the brief asks for {case.brief.seeds}",
+            ok=len(plan.seeds) == brief.seeds,
+            detail=f"{len(plan.seeds)} seeds, the brief asks for {brief.seeds}",
             category="plan_issue",
         ),
         Check(
@@ -296,7 +303,7 @@ def _l2(
         checks.append(
             Check(
                 level=2,
-                name=f"{expect.condition} was tested against {case.baseline}",
+                name=f"{expect.condition} was tested against {_baseline(brief)}",
                 ok=comparison is not None and comparison.p_value is not None,
                 detail="" if comparison is None else comparison.verdict(),
                 category="missing_comparison",
@@ -307,7 +314,7 @@ def _l2(
             Check(
                 level=2,
                 name=f"{expect.value.condition} was summarised on every seed",
-                ok=summary is not None and summary.n == case.brief.seeds,
+                ok=summary is not None and summary.n == brief.seeds,
                 detail="" if summary is None else f"{summary.n} seeds",
                 category="missing_comparison",
             )

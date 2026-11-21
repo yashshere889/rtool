@@ -17,42 +17,21 @@ from research_tool.core.errors import RToolError
 from research_tool.core.fs import atomic_write_json, read_json
 from research_tool.core.run import RunHandle
 from research_tool.core.state import GateState, StageStatus, StateStore
+from research_tool.llm.types import ChatRequest
 from research_tool.schemas.hypothesis import Hypothesis
 from research_tool.testing import demo_data
-from research_tool.testing.demo_run import CLUSTER, advance, demo_services
+from research_tool.testing.demo_run import CLUSTER, advance, demo_case_data, demo_services
 from research_tool.testing.harness import make_run
-from research_tool.validity.cases import Case, CaseError
-from research_tool.validity.runs import MARKER, NO_KNOWLEDGE_BASE, OVERLAY, create_case_run
+from research_tool.validity.cases import Case, CaseError, load_case
+from research_tool.validity.runs import DATA_FOLDER, MARKER, NO_KNOWLEDGE_BASE, OVERLAY, create_case_run, generate_data
 from research_tool.validity.score import RunScore, score_run
 
 COMMIT = "0123456789abcdef"
-DEMO_HYPOTHESIS = {
-    k: v
-    for k, v in demo_data.HYPOTHESES[0].items()
-    if k
-    in ("title", "statement", "null_hypothesis", "independent_variables", "dependent_variables", "success_criteria")
-}
 
 
 def demo_case(**changes: Any) -> Case:
     """A planted case the demo model answers: the demo plan's own conditions, metric and simulated effect."""
-    case = {
-        "id": "phase-locked-recall",
-        "kind": "planted",
-        "pack": "generic",
-        "brief": {
-            "topic": demo_data.TOPIC,
-            "seeds": 6,
-            "conditions": [
-                {"name": "sham", "baseline": True, "description": "no clicks"},
-                {"name": "phase_locked", "description": "clicks timed to the up-state"},
-            ],
-            "primary_metric": {"name": "recall_gain", "higher_is_better": True},
-        },
-        "hypothesis": DEMO_HYPOTHESIS,
-        "expect": {"significant": True, "direction": "better"},
-    }
-    return Case.model_validate(deep_merge(case, changes))
+    return Case.model_validate(demo_case_data(**changes))
 
 
 def demo_config(runs_root: Path) -> AppConfig:
@@ -91,9 +70,10 @@ def test_a_case_run_is_seeded_and_needs_nobody(runs_root: Path) -> None:
     assert set(store.heads()) == {"research_brief", "selected_hypothesis", "corpus", "knowledge_map"}
     assert store.envelope("research_brief").producer.agent == "rtool validity"
     brief = store.get("research_brief")
-    assert brief.seeds == 6 and any("`sham` (the baseline)" in line for line in brief.constraints)
+    assert brief.seeds == 6 and [c.name for c in brief.conditions] == ["sham", "phase_locked"]
+    assert any("`sham` (the baseline)" in line for line in brief.requirements())
     chosen = Hypothesis.model_validate(store.get("selected_hypothesis").item)
-    assert chosen.id == "phase-locked-recall" and chosen.statement == DEMO_HYPOTHESIS["statement"]
+    assert chosen.id == "phase-locked-recall" and chosen.statement == demo_data.HYPOTHESES[0]["statement"]
     corpus = store.get("corpus")
     assert corpus.papers == [] and corpus.kb_path == NO_KNOWLEDGE_BASE and not (run.root / NO_KNOWLEDGE_BASE).exists()
     # every gate the run can open decides itself, and the GPU budget is zero unless the caller sets one
@@ -119,7 +99,8 @@ def test_an_open_case_runs_the_whole_pipeline(runs_root: Path) -> None:
     ("make", "message"),
     [
         (lambda: demo_case(start_at="literature"), "where the pipeline still chooses the hypothesis"),
-        (lambda: demo_case(brief={"datasets": ["d"]}, data=[{"name": "d", "generator": "g.py"}]), "`local` resource"),
+        # its generators are found next to case.yaml, so a case with data must come from load_case
+        (lambda: demo_case(brief={"datasets": ["d"]}, data=[{"name": "d", "generator": "g.py"}]), "load it with"),
     ],
 )
 def test_case_runs_refuse_what_they_cannot_do(runs_root: Path, make: Callable[[], Case], message: str) -> None:
@@ -226,7 +207,7 @@ def test_a_replication_case_checks_the_known_value(
     # a replication case expects no conclusion unless it names one, so the report is not checked
     assert [c.name for c in score.checks if c.level == 3] == [f"the mean of phase_locked is between {band['low']:g} "
                                                               f"and {band['high']:g}"]  # fmt: skip
-    assert [c.name for c in score.checks if c.level == 2][-1] == "phase_locked was summarised on every seed"
+    assert "phase_locked was summarised on every seed" in [c.name for c in score.checks if c.level == 2]
 
 
 def test_a_difference_outside_its_band_is_a_wrong_analysis(finished: RunHandle, tmp_path: Path) -> None:
@@ -265,10 +246,98 @@ def test_a_run_still_going_is_not_scored(finished: RunHandle, tmp_path: Path) ->
     store.save_stage(stage)
     assert score_run(run) == RunScore(
         run_id=run.run_id, case="phase-locked-recall", kind="planted", variant="main", repeat=1, commit=COMMIT,
-        finished=False,
+        finished=False, confirmed=False,
     )  # fmt: skip
 
 
 def test_only_validity_runs_are_scored(runs_root: Path) -> None:
     with pytest.raises(RToolError, match="is not a validity run"):
         score_run(make_run(runs_root, "toy"))
+
+
+# ------------------------------------------------------------ case data
+# The demo experiment reads recordings.csv (night, n3_minutes) from its "Sleep-EDF" resource.
+RECORDINGS = """import csv, json, random, sys
+from pathlib import Path
+
+out, args = Path(sys.argv[1]), json.loads(sys.argv[2])
+if args.get("fail"):
+    sys.exit("generator says: no such cohort")
+rng = random.Random(args["seed"])
+with open(out / "recordings.csv", "w", newline="") as handle:
+    writer = csv.writer(handle)
+    writer.writerow(["night", "n3_minutes"])
+    for night in range(args["nights"]):
+        writer.writerow([night + 1, round(rng.uniform(70, 100), 1)])
+"""
+
+
+def case_with_data(root: Path, **changes: Any) -> Case:
+    """The demo case, written to a case folder with a generator for its "Sleep-EDF" recordings."""
+    recordings = {
+        "name": "Sleep-EDF",
+        "generator": "generate.py",
+        "args": {"seed": 1, "nights": 5},
+        "description": "minutes of N3 sleep per night",
+    }
+    variants = [{"name": "short"}, {"name": "long", "data_args": {"nights": 9}}]
+    data = demo_case_data(
+        **{"brief": {"datasets": ["Sleep-EDF"]}, "data": [recordings], "variants": variants, **changes}
+    )
+    folder = root / "cases" / "generic" / data["id"]
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "generate.py").write_text(RECORDINGS, encoding="utf-8")
+    (folder / "case.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+    return load_case(folder)
+
+
+def test_case_data_is_generated_once_for_each_content(tmp_path: Path) -> None:
+    case, root = case_with_data(tmp_path), tmp_path / "data"
+    short = generate_data(case, "short", root)
+    assert short == {"Sleep-EDF": {"path": short["Sleep-EDF"]["path"], "description": "minutes of N3 sleep per night"}}
+    folder = Path(short["Sleep-EDF"]["path"])
+    assert folder.parent == root and folder.name.startswith("Sleep-EDF-")
+    assert len((folder / "recordings.csv").read_text(encoding="utf-8").splitlines()) == 6  # header + 5 nights
+    assert generate_data(case, "short", root) == short  # the same arguments make the same data, kept once
+    long = generate_data(case, "long", root)["Sleep-EDF"]["path"]
+    assert long != str(folder) and len((Path(long) / "recordings.csv").read_text().splitlines()) == 10
+    assert sorted(p.name for p in root.iterdir()) == sorted([folder.name, Path(long).name])  # no partial folders
+    failing = case_with_data(
+        tmp_path / "other", data=[{"name": "Sleep-EDF", "generator": "generate.py", "args": {"fail": True}}]
+    )
+    with pytest.raises(CaseError, match="failed \\(exit 1\\): generator says: no such cohort"):
+        generate_data(failing, "short", root)
+
+
+def test_a_case_run_with_its_own_data_uses_it_as_a_local_resource(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    run = create_case_run(
+        demo_config(runs_root), case_with_data(tmp_path), commit=COMMIT, variant="long", budgets={"max_gpu_hours": 40}
+    )
+    provided = run.config.experiments.local_data["Sleep-EDF"]
+    assert Path(provided.path).parent == runs_root / DATA_FOLDER
+    overlay = yaml.safe_load((run.root / OVERLAY).read_text(encoding="utf-8"))
+    assert overlay["experiments"]["local_data"]["Sleep-EDF"]["path"] == provided.path  # episodes keep it
+    assert read_json(run.root / MARKER)["data"] == {"Sleep-EDF": provided.path}
+
+    services = demo_services(run)
+    local = {
+        "resources": [
+            {"kind": "dataset", "name": "Sleep-EDF", "source": "local", "identifier": "Sleep-EDF", "purpose": "nights"},
+            {"kind": "code", "name": "numpy", "source": "pip", "identifier": "numpy", "purpose": "maths"},
+        ]
+    }
+
+    def asks_for_resources(request: ChatRequest) -> bool:
+        return (request.json_schema or {}).get("title") == "ResourcePlan"
+
+    services.llm.backend.rules.insert(0, (asks_for_resources, local))  # the planner picks the provided data
+    result = advance(run, services, max_episodes=60)
+    assert result.outcome is Outcome.DONE, f"{result.outcome.value}: {result.message}"
+    store = ArtifactStore(run.artifacts_dir)
+    assert [r.source for r in store.get("experiment_plan").resources] == ["local", "pip"]
+    fetched = next(r for r in store.get("resource_manifest").resources if r.name == "Sleep-EDF")
+    assert fetched.status == "ready" and Path(fetched.path).parent.name == "local"  # type: ignore[arg-type]
+    assert (Path(fetched.path) / "recordings.csv").read_text() == (Path(provided.path) / "recordings.csv").read_text()  # type: ignore[arg-type]
+    score = score_run(run)
+    assert (score.level, score.category) == (3, ""), [c for c in score.checks if not c.ok]

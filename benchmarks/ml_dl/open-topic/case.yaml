@@ -1,0 +1,11 @@
+# An open case runs the whole pipeline from a topic; there is no known answer, so it is scored L0-L1.
+id: open-topic
+kind: open
+pack: ml_dl
+brief:
+  topic: Does label smoothing improve the calibration of small multilayer perceptrons on MNIST?
+  constraints:
+    - CPU only. MNIST from torchvision; download nothing else.
+  seeds: 6
+  max_minutes_per_run: 10
+  datasets: [MNIST]

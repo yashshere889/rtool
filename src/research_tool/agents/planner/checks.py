@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
 from ...core.config import AppConfig
 from ...hpc.jobspec import format_time_limit, parse_time_limit
+from ...packs import DEFAULT_PACK, Pack, load_pack, pack_plan_issues
 from ...schemas.common import ResearchBrief
-from ...schemas.plan import ComputeEstimate, ComputeRequest, Condition, ExperimentPlan, Metric, PlanCore, ResourceSpec
+from ...schemas.plan import (
+    ComputeEstimate,
+    ComputeRequest,
+    Condition,
+    ExperimentPlan,
+    Metric,
+    PlanCore,
+    ResourceSpec,
+    StatisticalTest,
+)
+from ..coder.results import family_of_tests
+from ..coder.stats import ALPHA
 
 SAFETY_FACTOR = 1.3  # runs take longer than estimated
 _SLUG = re.compile(r"[^a-z0-9]+")
@@ -111,6 +124,51 @@ def normalise_core(core: PlanCore) -> PlanCore:
     return core
 
 
+def follow_brief(core: PlanCore, brief: ResearchBrief | None) -> PlanCore:
+    """Set what the brief fixes instead of asking the model again: the seeds, the baseline, the primary metric.
+
+    Names stay the model's: a fixed condition or metric it did not name is left to ``brief_issues``.
+    """
+    if brief is None:
+        return core
+    if brief.seeds:
+        core.n_seeds = brief.seeds
+    baseline = next((c.name for c in brief.conditions if c.baseline), None)
+    if baseline and any(c.name == baseline for c in core.conditions):
+        for condition in core.conditions:
+            condition.is_baseline = condition.name == baseline
+    fixed = brief.primary_metric
+    if fixed and any(m.name == fixed.name for m in core.metrics):
+        for metric in core.metrics:
+            metric.primary = metric.name == fixed.name
+            if metric.primary:
+                metric.higher_is_better = fixed.higher_is_better
+    return core
+
+
+def _smallest_p(family: str, n: int) -> float | None:
+    """The smallest two-sided p-value an exact rank test can give with n seeds per condition (None: no limit)."""
+    if family == "wilcoxon":
+        return 2 / 2**n  # every difference positive: one sign pattern of 2^n, doubled for two sides
+    if family == "mann-whitney":
+        return 2 / math.comb(2 * n, n)  # complete separation of the two groups
+    return None
+
+
+def rank_test_issues(tests: list[StatisticalTest], n_seeds: int) -> list[str]:
+    """A rank test that cannot be significant with this many seeds, whatever the data (5 seeds, Wilcoxon: 0.0625)."""
+    family, _ = family_of_tests(tests)
+    smallest = _smallest_p(family, n_seeds)
+    if smallest is None or smallest < ALPHA:
+        return []
+    needed = next(n for n in range(n_seeds, 64) if (_smallest_p(family, n) or 0) < ALPHA)
+    name = "Wilcoxon signed-rank" if family == "wilcoxon" else "Mann-Whitney U"
+    return [
+        f"with {n_seeds} seeds the exact {name} test cannot give p < {ALPHA:g} whatever the results (its smallest "
+        f"p-value is {smallest:.3g}): use at least {needed} seeds, or a t-test"
+    ]
+
+
 def one_primary(metrics: list[Metric]) -> list[Metric]:
     """Exactly one primary outcome: the first metric marked primary (repair rounds may not have settled it)."""
     primary = next((m for m in metrics if m.primary), metrics[0])
@@ -172,6 +230,7 @@ def design_issues(core: PlanCore, min_seeds: int) -> list[str]:
         _design_issues(core.conditions, core.ablations, core.n_seeds, min_seeds)
         + primary_issues(core.metrics)
         + metric_issues(core.metrics)
+        + rank_test_issues(core.statistical_tests, core.n_seeds)
     )
 
 
@@ -255,6 +314,8 @@ def brief_issues(
     resources: list[ResourceSpec] | None = None,
     hours_per_run: float | None = None,
     n_seeds: int | None = None,
+    conditions: list[Condition] | None = None,
+    metrics: list[Metric] | None = None,
 ) -> list[str]:
     """Where a plan breaks the brief's fixed limits; pass only the parts to check."""
     if brief is None:
@@ -262,6 +323,33 @@ def brief_issues(
     issues = []
     if n_seeds is not None and brief.seeds and n_seeds != brief.seeds:
         issues.append(f"the researcher asked for exactly {brief.seeds} seeds per condition, not {n_seeds}")
+    if conditions is not None:
+        named = {c.name: c for c in conditions}
+        for fixed in brief.conditions:
+            found = named.get(fixed.name)
+            if found is None:
+                issues.append(
+                    f"the researcher fixed a condition named {fixed.name!r}"
+                    f"{' (' + fixed.description + ')' if fixed.description else ''}: add it under exactly that "
+                    f"name (the plan has {', '.join(named) or 'none'})"
+                )
+            elif found.is_baseline != fixed.baseline:
+                issues.append(
+                    f"{fixed.name} must {'' if fixed.baseline else 'not '}be the baseline, as the researcher set"
+                )
+    if metrics is not None and brief.primary_metric is not None:
+        fixed_metric = brief.primary_metric
+        primary = next((m for m in metrics if m.primary), None)
+        direction = "higher" if fixed_metric.higher_is_better else "lower"
+        if primary is None or primary.name != fixed_metric.name:
+            issues.append(
+                f"the researcher fixed the primary metric {fixed_metric.name!r} ({direction} is better): add it under "
+                f"exactly that name and mark it primary"
+            )
+        elif primary.higher_is_better != fixed_metric.higher_is_better:
+            issues.append(
+                f"the primary metric {fixed_metric.name} must have {direction} is better, as the researcher set"
+            )
     if resources is not None and brief.datasets:
         allowed = {_key(d) for d in brief.datasets}
         for r in resources:
@@ -315,17 +403,38 @@ def compute_issues(request: ComputeRequest, config: AppConfig) -> list[str]:
     return issues
 
 
+def source_issues(resources: list[ResourceSpec], pack: Pack) -> list[str]:
+    """Resources from a source the domain pack does not use (an empty list in the pack allows every source)."""
+    if not pack.resource_sources:
+        return []
+    allowed = ", ".join(pack.resource_sources)
+    return [
+        f"{r.name} comes from {r.source!r}, which the {pack.name} pack does not use: choose one of {allowed}"
+        for r in resources
+        if r.source not in pack.resource_sources
+    ]
+
+
 def plan_issues(
     plan: ExperimentPlan, config: AppConfig, min_seeds: int, max_dataset_gb: float, brief: ResearchBrief | None = None
 ) -> list[str]:
     """Everything the planner would warn about, for a whole plan."""
+    pack = load_pack(brief.domain_pack if brief else DEFAULT_PACK)
     return (
         _design_issues(plan.conditions, plan.ablations, len(plan.seeds), min_seeds)
         + primary_issues(plan.metrics)
         + metric_issues(plan.metrics)
+        + rank_test_issues(plan.statistical_tests, len(plan.seeds))
         + resource_issues(plan.resources, max_dataset_gb)
+        + source_issues(plan.resources, pack)
         + compute_issues(plan.compute, config)
         + brief_issues(
-            brief, resources=plan.resources, hours_per_run=plan.compute.hours_per_run, n_seeds=len(plan.seeds)
+            brief,
+            resources=plan.resources,
+            hours_per_run=plan.compute.hours_per_run,
+            n_seeds=len(plan.seeds),
+            conditions=plan.conditions,
+            metrics=plan.metrics,
         )
+        + pack_plan_issues(pack, plan, brief)
     )

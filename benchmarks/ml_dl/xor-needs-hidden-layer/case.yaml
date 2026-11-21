@@ -1,0 +1,35 @@
+# XOR is not linearly separable: a line gets at most three of the four corners (75 %), a hidden layer all four.
+id: xor-needs-hidden-layer
+kind: planted
+pack: ml_dl
+confirmed_by: "reference.py on the Mac (2026-11-21): noise 0.35 linear 0.729, mlp 0.994, difference 0.265; noise 0.7 linear 0.653, mlp 0.881, difference 0.228"
+brief:
+  topic: Does a hidden layer help a classifier on data that is not linearly separable?
+  constraints:
+    - CPU only. Use the provided xor_blobs data (train.csv and test.csv, columns x1, x2, label); download nothing.
+    - Train each model with Adam (learning rate 0.01) for 30 epochs with batch size 64, and report accuracy on test.csv.
+  seeds: 8
+  max_minutes_per_run: 5
+  datasets: [xor_blobs]
+  conditions:
+    - {name: linear, baseline: true, description: "logistic regression on x1 and x2"}
+    - {name: mlp, description: "one hidden layer of 16 tanh units, then a logistic output"}
+  primary_metric: {name: test_accuracy, higher_is_better: true}
+hypothesis:
+  statement: On XOR-labelled data, a network with one hidden layer reaches a higher test accuracy than logistic regression.
+  null_hypothesis: Test accuracy is the same for both models.
+  success_criteria: mlp has a higher mean test_accuracy than linear, with p < 0.05 in a paired t-test over the 8 seeds.
+  independent_variables: [model]
+  dependent_variables: [test_accuracy]
+data:
+  - name: xor_blobs
+    generator: generate.py
+    args: {n_train: 2000, n_test: 1000, noise: 0.35, seed: 7}
+    description: "Two inputs around the corners of a square, label 1 on one diagonal (XOR): train.csv and test.csv"
+expect:
+  significant: true
+  direction: better
+  difference: {low: 0.15, high: 0.35}
+variants:
+  - {name: clear}
+  - {name: noisy, data_args: {noise: 0.7}, expect: {difference: {low: 0.1, high: 0.33}}}

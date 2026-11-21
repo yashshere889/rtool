@@ -8,15 +8,19 @@
 * torchvision datasets: downloaded once by torchvision itself (``torchvision``, a callable that runs it in
   the experiment environment), so smoke tests and every run read the same local folder.
 * pip (and torchvision when no such callable is given): deferred — the Coder's environment handles them.
+* local: a dataset the researcher provides on disk (``experiments.local_data``), copied into the
+  resources folder under its content hash, so runs read a copy nobody changes under them.
 * manual: the human provides them (the manifest says where to put them).
 """
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 import re
-from collections.abc import Callable
+import shutil
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +57,19 @@ def local_models(hf_home: str | None) -> dict[str, str]:
     return found
 
 
+def content_hash(path: Path) -> str:
+    """sha256 over every file's relative path and bytes, in order: the same data gives the same hash."""
+    digest = hashlib.sha256()
+    files = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
+    for file in files:
+        digest.update((file.relative_to(path).as_posix() if path.is_dir() else file.name).encode() + b"\0")
+        with file.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def tree_size(path: Path) -> tuple[int, int]:
     total, count = 0, 0
     for root, _dirs, files in os.walk(path):
@@ -74,9 +91,11 @@ class Fetcher:
         max_url_bytes: int = 50 * 1024**3,
         torchvision: Torchvision | None = None,
         local: dict[str, str] | None = None,
+        provided: Mapping[str, Any] | None = None,
     ) -> None:
         self.root = Path(root)
         self.local = local or {}  # Hub model id -> a folder that already holds it
+        self.provided = dict(provided or {})  # local dataset name -> LocalDataset (its .path)
         self.http = http
         self.snapshot = snapshot if snapshot is not None else default_snapshot()
         self.hf_token = hf_token
@@ -92,6 +111,8 @@ class Fetcher:
         }
         if resource.source == "pip" or (resource.source == "torchvision" and self.torchvision is None):
             return FetchedResource(**base, status="deferred", note="installed with the experiment environment")
+        if resource.source == "local":
+            return self._provided(resource, base)
         if resource.source == "manual":
             target = self.root / "manual" / _SAFE.sub("_", resource.name)
             target.mkdir(parents=True, exist_ok=True)
@@ -106,6 +127,27 @@ class Fetcher:
             return self._url(resource, base)
         except (HttpError, OSError, RuntimeError, ValueError) as exc:
             return FetchedResource(**base, status="failed", note=str(exc)[:300])
+
+    def _provided(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
+        found = self.provided.get(resource.identifier)
+        source = Path(os.path.expandvars(os.path.expanduser(found.path))) if found is not None else None
+        if source is None or not source.exists():
+            return FetchedResource(**base, status="failed", note=f"no local dataset {resource.identifier!r} on disk")
+        digest = content_hash(source)
+        target = self.root / "local" / f"{_SAFE.sub('_', resource.identifier)}-{digest[:12]}"
+        if not target.exists():  # the same content is copied once; changed content gets a new folder
+            partial = target.with_name(target.name + ".partial")
+            shutil.rmtree(partial, ignore_errors=True)
+            if source.is_dir():
+                shutil.copytree(source, partial)
+            else:
+                partial.mkdir(parents=True)
+                shutil.copy2(source, partial / source.name)
+            partial.rename(target)
+        size, files = tree_size(target)
+        return FetchedResource(
+            **base, status="ready", path=str(target), bytes=size, files=files, note=f"provided locally, sha256 {digest}"
+        )
 
     def _huggingface(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
         if self.snapshot is None:

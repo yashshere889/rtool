@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, model_validator
 
 from ..core.config import deep_merge
 from ..core.errors import ConfigError, RToolError
 from ..core.run import is_valid_name
 from ..packs import load_pack
-from ..schemas.common import ResearchBrief
+from ..schemas.common import BriefCondition, BriefMetric, ResearchBrief
 from ..schemas.hypothesis import ComputeClass, Hypothesis
 
 CASE_FILE = "case.yaml"
@@ -39,15 +39,12 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")  # a misspelt key in case.yaml must fail, not be ignored
 
 
-class PinnedCondition(_Strict):
-    name: str = Field(pattern=_SLUG)
-    baseline: bool = False
-    description: str = ""
+class PinnedCondition(BriefCondition):
+    model_config = ConfigDict(extra="forbid")
 
 
-class PinnedMetric(_Strict):
-    name: str = Field(pattern=_SLUG)
-    higher_is_better: bool
+class PinnedMetric(BriefMetric):
+    model_config = ConfigDict(extra="forbid")
 
 
 class CaseBrief(_Strict):
@@ -62,28 +59,18 @@ class CaseBrief(_Strict):
     primary_metric: PinnedMetric | None = None
 
     def research_brief(self, pack: str) -> ResearchBrief:
-        """The brief a run of this case starts from."""
-        # shortcut: the pinned conditions and metric travel as requirement lines the plan checks do not
-        # enforce; Stage 0 PR 2 adds them to ResearchBrief, checked like seeds and datasets.
-        lines = list(self.constraints)
-        if self.conditions:
-            arms = "; ".join(
-                f"`{c.name}`{' (the baseline)' if c.baseline else ''}{': ' + c.description if c.description else ''}"
-                for c in self.conditions
-            )
-            lines.append(f"Use exactly these conditions, with exactly these names: {arms}.")
-        if self.primary_metric:
-            direction = "higher is better" if self.primary_metric.higher_is_better else "lower is better"
-            lines.append(f"The primary metric is `{self.primary_metric.name}` ({direction}).")
+        """The brief a run of this case starts from; the plan checks enforce what it pins."""
         return ResearchBrief(
             topic=self.topic,
             questions=self.questions,
-            constraints=lines,
+            constraints=self.constraints,
             notes=self.notes,
             domain_pack=pack,
             seeds=self.seeds,
             max_minutes_per_run=self.max_minutes_per_run,
             datasets=self.datasets,
+            conditions=list(self.conditions),
+            primary_metric=self.primary_metric,
         )
 
 
@@ -143,7 +130,8 @@ class Expectation(_Strict):
 
 class Variant(_Strict):
     name: str
-    data_args: dict[str, Any] = Field(default_factory=dict)
+    data_args: dict[str, Any] = Field(default_factory=dict)  # merged into every generator's arguments
+    brief: dict[str, Any] = Field(default_factory=dict)  # merged over the case's brief
     expect: dict[str, Any] = Field(default_factory=dict)  # merged over the case's expect
 
 
@@ -158,6 +146,10 @@ class Case(_Strict):
     expect: Expectation = Field(default_factory=Expectation)
     variants: list[Variant] = Field(default_factory=list)
     repeats: int = Field(default=1, ge=1)
+    # who or what confirmed the expected outcome: "analytic", "reference.py (date, where)"; "" not yet,
+    # so the case's runs are reported apart from the confirmed ones (docs/stage0_design.md, rule 2)
+    confirmed_by: str = ""
+    _folder: Path | None = PrivateAttr(default=None)  # set by load_case: where the generators are
 
     @model_validator(mode="after")
     def _consistent(self) -> Case:
@@ -172,30 +164,45 @@ class Case(_Strict):
         return self.start_at or ("literature" if self.kind == "open" else "plan")
 
     @property
-    def baseline(self) -> str | None:
-        return next((c.name for c in self.brief.conditions if c.baseline), None)
+    def confirmed(self) -> bool:
+        """Its expected outcome is confirmed; an open case expects nothing, so there is nothing to confirm."""
+        return bool(self.confirmed_by.strip()) or self.kind == "open"
 
     def variant_names(self) -> list[str]:
         return [v.name for v in self.variants] or [MAIN_VARIANT]
 
-    def expectation(self, variant: str = MAIN_VARIANT) -> Expectation:
-        """What this variant must show: the case's expectation with the variant's changes and the defaults."""
+    def _variant(self, variant: str) -> Variant | None:
         found = next((v for v in self.variants if v.name == variant), None)
         if found is None and variant != MAIN_VARIANT:
             raise CaseError(f"case {self.id!r} has no variant {variant!r}; it has {self.variant_names()}")
+        return found
+
+    def brief_for(self, variant: str = MAIN_VARIANT) -> CaseBrief:
+        """The case's brief with this variant's changes."""
+        found = self._variant(variant)
+        if found is None or not found.brief:
+            return self.brief
+        return CaseBrief.model_validate(deep_merge(self.brief.model_dump(exclude_none=True), found.brief))
+
+    def baseline(self, variant: str = MAIN_VARIANT) -> str | None:
+        return next((c.name for c in self.brief_for(variant).conditions if c.baseline), None)
+
+    def expectation(self, variant: str = MAIN_VARIANT) -> Expectation:
+        """What this variant must show: the case's expectation with the variant's changes and the defaults."""
+        found = self._variant(variant)
         merged = deep_merge(self.expect.model_dump(exclude_none=True), found.expect if found else {})
         expect = Expectation.model_validate(merged)
         updates: dict[str, Any] = {}
         if not expect.outcome and self.kind in DEFAULT_OUTCOMES:
             updates["outcome"] = DEFAULT_OUTCOMES[self.kind]
         if expect.condition is None:
-            treatments = [c.name for c in self.brief.conditions if not c.baseline]
+            treatments = [c.name for c in self.brief_for(variant).conditions if not c.baseline]
             if len(treatments) == 1:
                 updates["condition"] = treatments[0]
         return expect.model_copy(update=updates) if updates else expect
 
-    def research_brief(self) -> ResearchBrief:
-        return self.brief.research_brief(self.pack)
+    def research_brief(self, variant: str = MAIN_VARIANT) -> ResearchBrief:
+        return self.brief_for(variant).research_brief(self.pack)
 
     # ---------------------------------------------------------- validation
     def _problems(self) -> list[str]:
@@ -215,36 +222,39 @@ class Case(_Strict):
             if self.hypothesis or self.brief.conditions or self.brief.primary_metric:
                 problems.append("an open case fixes nothing: no hypothesis, conditions or primary metric")
             return problems
-        problems += self._design_problems()
+        if self.hypothesis is None:
+            problems.append(f"a {self.kind} case needs a hypothesis")
+        found: list[str] = []
         for variant in self.variant_names():
             try:
-                expect = self.expectation(variant)
+                brief, expect = self.brief_for(variant), self.expectation(variant)
             except (ValidationError, CaseError) as exc:
                 problems.append(f"variant {variant!r}: {exc}")
                 continue
-            problems += [f"{p} (variant {variant!r})" if self.variants else p for p in self._expect_problems(expect)]
+            for problem in self._design_problems(brief) + self._expect_problems(brief, expect):
+                if problem not in found:  # a problem of the case itself shows once, not once per variant
+                    found.append(problem)
+                    problems.append(f"{problem} (variant {variant!r})" if self.variants else problem)
         return problems
 
-    def _design_problems(self) -> list[str]:
+    def _design_problems(self, brief: CaseBrief) -> list[str]:
         problems = []
-        if self.hypothesis is None:
-            problems.append(f"a {self.kind} case needs a hypothesis")
-        conditions = [c.name for c in self.brief.conditions]
+        conditions = [c.name for c in brief.conditions]
         if len(conditions) < 2 or len(set(conditions)) != len(conditions):
             problems.append("brief.conditions needs at least two conditions with different names")
-        if sum(c.baseline for c in self.brief.conditions) != 1:
+        if sum(c.baseline for c in brief.conditions) != 1:
             problems.append("exactly one of brief.conditions must be the baseline")
-        if self.brief.primary_metric is None:
+        if brief.primary_metric is None:
             problems.append("brief.primary_metric is required")
         if self.brief.seeds is None:
             problems.append("brief.seeds is required, so every run of the case has the same number")
-        elif self.kind in ("planted", "null") and self.brief.seeds < MIN_SEEDS:
+        elif self.kind in ("planted", "null") and brief.seeds < MIN_SEEDS:
             problems.append(f"use at least {MIN_SEEDS} seeds: with fewer, an exact rank test cannot be significant")
         return problems
 
-    def _expect_problems(self, expect: Expectation) -> list[str]:
+    def _expect_problems(self, brief: CaseBrief, expect: Expectation) -> list[str]:
         problems = []
-        treatments = [c.name for c in self.brief.conditions if not c.baseline]
+        treatments = [c.name for c in brief.conditions if not c.baseline]
         compares = expect.significant is not None or expect.direction is not None or expect.difference is not None
         if expect.condition is not None and expect.condition not in treatments:
             problems.append(f"expect.condition {expect.condition!r} is not a non-baseline condition {treatments}")
@@ -255,7 +265,7 @@ class Case(_Strict):
         if self.kind == "null" and (expect.significant is not False or expect.direction or expect.difference):
             problems.append("a null case expects no effect: significant: false, and no direction or difference")
         if self.kind == "replication":
-            names = [c.name for c in self.brief.conditions]
+            names = [c.name for c in brief.conditions]
             if expect.value is None:
                 problems.append("a replication case needs expect.value: the known value and its condition")
             elif expect.value.condition not in names:
@@ -295,6 +305,7 @@ def load_case(folder: Path) -> Case:
         script = (folder / spec.generator).resolve()
         if not script.is_relative_to(root) or not script.is_file():
             raise CaseError(f"{path}: data {spec.name!r}: no generator {spec.generator!r} in the case folder")
+    case._folder = root
     return case
 
 

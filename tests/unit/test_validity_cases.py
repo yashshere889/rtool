@@ -48,12 +48,15 @@ def write(root: Path, case: dict[str, Any], folder: str | None = None) -> Path:
 
 def test_a_planted_case_becomes_a_brief_a_hypothesis_and_an_expectation(tmp_path: Path) -> None:
     case = load_case(write(tmp_path, planted()))
-    assert case.start == "plan" and case.baseline == "one_server" and case.variant_names() == ["main"]
+    assert case.start == "plan" and case.baseline() == "one_server" and case.variant_names() == ["main"]
     brief = case.research_brief()
-    assert brief.domain_pack == "generic" and brief.seeds == 8
-    assert brief.constraints[0] == "CPU only"
-    assert "`one_server` (the baseline): M/M/1, mu = 1; `two_servers`: M/M/2, mu = 1 each" in brief.constraints[1]
-    assert brief.constraints[2] == "The primary metric is `time_in_system` (lower is better)."
+    assert brief.domain_pack == "generic" and brief.seeds == 8 and brief.constraints == ["CPU only"]
+    # the pinned design is part of the brief, which the plan checks enforce
+    assert [(c.name, c.baseline) for c in brief.conditions] == [("one_server", True), ("two_servers", False)]
+    assert brief.primary_metric is not None and not brief.primary_metric.higher_is_better
+    lines = brief.requirements()
+    assert "`one_server` (the baseline): M/M/1, mu = 1; `two_servers`: M/M/2, mu = 1 each" in lines[2]
+    assert lines[3] == "The primary metric is `time_in_system` (lower is better)."
     hypothesis = case.hypothesis.hypothesis(case.id)  # type: ignore[union-attr]
     assert hypothesis.id == "two-servers" and hypothesis.title == hypothesis.statement and hypothesis.evidence == []
     expect = case.expectation()

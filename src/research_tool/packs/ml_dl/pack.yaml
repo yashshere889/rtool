@@ -13,3 +13,5 @@ hints:
   - Seeds are already set by the caller; also pass `seed` to data shuffling (torch.Generator).
   - Return plain Python floats (`float(tensor.item())`), never tensors.
   - Save checkpoints only under `workdir`, and only if the run needs them.
+plan_checks:
+  - research_tool.packs.ml_dl.checks:held_out_issues

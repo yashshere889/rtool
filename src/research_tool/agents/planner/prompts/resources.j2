@@ -10,6 +10,12 @@ Datasets mentioned in the collected literature: {{ known_datasets | join(", ") o
 {% if cached_models %}
 Models already on the cluster (no download, no token; prefer one of these when a model is needed): {{ cached_models | join(", ") }}
 {% endif %}
+{% if local_datasets %}
+Datasets the researcher provided on the cluster (use source "local" with exactly this name as the identifier):
+{% for name, dataset in local_datasets.items() %}
+- {{ name }}{{ (": " ~ dataset.description) if dataset.description else "" }}
+{% endfor %}
+{% endif %}
 {% if brief.requirements() %}
 
 The researcher's requirements (follow them exactly: use only the datasets and models they allow):
@@ -34,6 +40,6 @@ Problems with the previous list that you must fix:
 
 Rules:
 - Prefer public resources on the Hugging Face Hub: source "huggingface" with the exact repository id (for example "imdb" or "google-bert/bert-base-uncased").
-- Use source "url" only for a direct download link, "torchvision" for torchvision datasets, "pip" for software packages, and "manual" only if nothing public exists.
+- Use source "url" only for a direct download link, "torchvision" for torchvision datasets, "pip" for software packages, "local" only for a dataset the researcher provided (listed above), and "manual" only if nothing public exists.
 - Only give identifiers you are confident exist; prefer well-known resources.
 - Do not list the experiment's own code (pipelines, scripts, analysis): rtool writes it. List code only if it already exists, e.g. a pip package.

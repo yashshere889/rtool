@@ -18,6 +18,7 @@ from ...core.agent import Agent
 from ...core.context import AgentContext
 from ...core.registry import register_agent
 from ...llm.prompts import PromptLibrary
+from ...packs import load_pack, pack_plan_issues
 from ...schemas.common import ResearchBrief, SelectedItem
 from ...schemas.hypothesis import Hypothesis
 from ...schemas.literature import Corpus, KnowledgeMap
@@ -29,10 +30,12 @@ from .checks import (
     brief_issues,
     design_issues,
     fit_compute,
+    follow_brief,
     normalise_core,
     one_primary,
     resource_issues,
     results_schema,
+    source_issues,
 )
 
 
@@ -58,6 +61,7 @@ class PlannerAgent(Agent):
         corpus: Corpus = ctx.inputs.get("corpus")
         km: KnowledgeMap = ctx.inputs.get("knowledge_map")
         hypothesis = Hypothesis.model_validate(selected.item)
+        pack = load_pack(brief.domain_pack)
         prompts = PromptLibrary.for_agent(__package__, "planner", pack=brief.domain_pack)
         provenance: dict[str, str] = {}
 
@@ -98,9 +102,10 @@ class PlannerAgent(Agent):
                         system=SYSTEM,
                     )
                 )
-                if brief.seeds:  # a fixed number: set it rather than ask the model again
-                    core.n_seeds = brief.seeds
-                core_issues = design_issues(core, min(cfg.min_seeds, brief.seeds or cfg.min_seeds))
+                core = follow_brief(core, brief)  # what the researcher fixed is set, not asked for again
+                core_issues = design_issues(core, min(cfg.min_seeds, brief.seeds or cfg.min_seeds)) + brief_issues(
+                    brief, conditions=core.conditions, metrics=core.metrics
+                )
             if resources is None or res_issues:
                 plan = ctx.llm.structured(
                     ResourcePlan,
@@ -111,6 +116,7 @@ class PlannerAgent(Agent):
                         core=core,
                         known_datasets=known,
                         cached_models=cached,
+                        local_datasets=ctx.app_config.experiments.local_data,
                         feedback=feedback,
                         issues=res_issues,
                     ),
@@ -118,7 +124,11 @@ class PlannerAgent(Agent):
                     system=SYSTEM,
                 )
                 resources = [self.verify(checker, choice, cfg.check_resources) for choice in plan.resources]
-                res_issues = resource_issues(resources, cfg.max_dataset_gb) + brief_issues(brief, resources=resources)
+                res_issues = (
+                    resource_issues(resources, cfg.max_dataset_gb)
+                    + source_issues(resources, pack)
+                    + brief_issues(brief, resources=resources)
+                )
             runs = len(core.conditions + core.ablations) * core.n_seeds
             if estimate is None or cmp_issues:
                 estimate = ctx.llm.structured(
@@ -167,6 +177,7 @@ class PlannerAgent(Agent):
             results_schema=results_schema(conditions, core.metrics, seeds),
             issues=core_issues + res_issues + cmp_issues,
         )
+        plan_artifact.issues += pack_plan_issues(pack, plan_artifact, brief)  # recorded and shown, not repaired
         markdown = ctx.workspace.write_text("experiment_plan.md", render_markdown(plan_artifact, hypothesis.title))
         plan_artifact.markdown_path = ctx.relative(markdown)
         ctx.outputs.put(
@@ -198,7 +209,7 @@ class PlannerAgent(Agent):
         if injected is not None:
             return injected
         http = PoliteHttp(cache_path=ctx.workspace.path("http_cache.sqlite"), limits={"huggingface.co": 0.3})
-        return HubChecker(http, token=os.environ.get("HF_TOKEN"))
+        return HubChecker(http, token=os.environ.get("HF_TOKEN"), local=ctx.app_config.experiments.local_data)
 
     @staticmethod
     def verify(checker: ResourceChecker, choice: Any, enabled: bool) -> ResourceSpec:

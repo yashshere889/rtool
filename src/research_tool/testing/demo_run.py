@@ -490,6 +490,30 @@ def demo_llm() -> MockLLM:
     return llm
 
 
+# ------------------------------------------------------------ validity case
+def demo_case_data(**changes: Any) -> dict[str, Any]:
+    """case.yaml of a planted validity case the demo model answers: its plan's conditions, metric and effect."""
+    keys = ("title", "statement", "null_hypothesis", "independent_variables", "dependent_variables", "success_criteria")
+    case = {
+        "id": "phase-locked-recall",
+        "kind": "planted",
+        "pack": "generic",
+        "confirmed_by": "",
+        "brief": {
+            "topic": data.TOPIC,
+            "seeds": 6,
+            "conditions": [
+                {"name": "sham", "baseline": True, "description": "no clicks"},
+                {"name": "phase_locked", "description": "clicks timed to the up-state"},
+            ],
+            "primary_metric": {"name": "recall_gain", "higher_is_better": True},
+        },
+        "hypothesis": {k: v for k, v in data.HYPOTHESES[0].items() if k in keys},
+        "expect": {"significant": True, "direction": "better"},
+    }
+    return deep_merge(case, changes)
+
+
 # ---------------------------------------------------------------- resources
 class DemoChecker:
     def check(self, resource: Any) -> ResourceCheck:
@@ -527,7 +551,9 @@ def demo_services(run: RunHandle) -> Services:
         tools={
             "literature_toolkit": toolkit,
             "resource_checker": DemoChecker(),
-            "resource_fetcher": lambda root: Fetcher(root, snapshot=demo_snapshot),
+            "resource_fetcher": lambda root: Fetcher(
+                root, snapshot=demo_snapshot, provided=run.config.experiments.local_data
+            ),
         },
     )
 

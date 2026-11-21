@@ -1,0 +1,28 @@
+# The mean time a customer spends in an M/M/1 queue has a closed form, 1 / (mu - lambda): 5 here.
+id: mm1-time-in-system
+kind: replication
+pack: generic
+confirmed_by: "formula: 1 / (1 - 0.8) = 5; reference.py on the Mac (2026-11-21): 4.989 over 8 seeds, sd 0.105"
+brief:
+  topic: The mean time in system of an M/M/1 queue, by simulation
+  questions:
+    - What is the mean time a customer spends in an M/M/1 queue with arrival rate 0.8 and service rate 1?
+  constraints:
+    - CPU only. Use the Python standard library or numpy; there is nothing to download.
+    - Simulate 200,000 customers per run, served first come first served, and leave the first 20,000 out as warm-up.
+    - Draw times between arrivals and service times from exponential distributions with the rates given.
+  seeds: 8
+  max_minutes_per_run: 5
+  conditions:
+    - {name: mm1, baseline: true, description: "one server, arrival rate 0.8, service rate 1"}
+    - {name: mm1_fast_server, description: "the same queue with service rate 1.25"}
+  primary_metric: {name: time_in_system, higher_is_better: false}
+hypothesis:
+  statement: In an M/M/1 queue with arrival rate 0.8 and service rate 1, the mean time in system is 5.
+  null_hypothesis: The simulation does not reproduce the closed-form mean of 5.
+  success_criteria: The mean time_in_system of mm1 over its 8 seeds lies between 4.5 and 5.5.
+  independent_variables: [service rate]
+  dependent_variables: [time_in_system]
+expect:
+  value: {condition: mm1, low: 4.5, high: 5.5}
+  outcome: [supported]

@@ -163,3 +163,35 @@ for sites without ssh to nodes, and `rtool ui --mode login` as a session-bound l
 from the UI's API: Resume submitted a GPU episode from inside the UI job (nested sbatch,
 gpu-l40s-low, started within a minute), the checkpoint was approved through the UI, the CPU
 episode ran the stage's Slurm job, and the last GPU episode finished the run.
+
+## Validity baseline (Stage 0, PR 4)
+
+Not run yet: it needs your approval for the GPU time of the LLM episodes. Design:
+[stage0_design.md](stage0_design.md); cases: [benchmarks/](../benchmarks/README.md).
+
+**Before:**
+1. The default model's container and weights are on Barkla (Qwen3.6-35B-A3B: on 2026-11-20 both were
+   still missing).
+2. Barkla's code is a clean commit. Sync it with `scripts/sync_to_barkla.sh`, after a dry run with
+   `--delete --checksum` against what other sessions patched there. The hash `submit` prints must match
+   `python -m research_tool.validity.provenance` on the Mac at that commit.
+3. The references that need torch run in the experiment image and match their cases. Then fill in their
+   `confirmed_by`:
+   ```
+   python benchmarks/ml_dl/label-noise-hurts/reference.py <torchvision MNIST folder>
+   python benchmarks/ml_dl/softmax-mnist-accuracy/reference.py <torchvision MNIST folder>
+   ```
+
+**Run** (from the code folder; every gate decides itself, and experiments get no GPU-hours):
+```
+rtool validity submit generic --repeats 1
+rtool validity submit ml_dl --repeats 1
+rtool validity score generic        # any time; it scores the runs that have finished
+rtool validity score ml_dl
+```
+Start with one run per case to learn the cost (the card's `cost` section), then `--repeats 3`.
+Cards land in `<runs root>/.validity-cards/<pack>-<code>.md` and `.json`. Copy the baseline cards to
+`benchmarks/<pack>/CARD.md` and commit them.
+
+**Live probes** of the outside services the parsers were written against (deselected on the Mac):
+`pytest -m barkla`.

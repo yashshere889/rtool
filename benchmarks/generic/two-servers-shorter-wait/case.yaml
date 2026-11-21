@@ -1,0 +1,27 @@
+# Two servers of rate 1 against one, at arrival rate 0.8: Erlang C gives 1.19 against 5.0.
+id: two-servers-shorter-wait
+kind: planted
+pack: generic
+confirmed_by: "formula (Erlang C): 1.19 with two servers, 5.0 with one; reference.py on the Mac (2026-11-21): 4.989 and 1.191, difference -3.798, paired t -105.8"
+brief:
+  topic: Do two servers shorten the time customers spend in a queue?
+  constraints:
+    - CPU only. Use the Python standard library or numpy; there is nothing to download.
+    - Simulate 200,000 customers per run, served first come first served from one shared queue, and leave the first 20,000 out as warm-up.
+    - Draw times between arrivals (rate 0.8) and service times (rate 1 per server) from exponential distributions.
+  seeds: 8
+  max_minutes_per_run: 5
+  conditions:
+    - {name: one_server, baseline: true, description: "M/M/1: arrival rate 0.8, one server with service rate 1"}
+    - {name: two_servers, description: "M/M/2: arrival rate 0.8, two servers with service rate 1 each"}
+  primary_metric: {name: time_in_system, higher_is_better: false}
+hypothesis:
+  statement: At arrival rate 0.8, two servers of rate 1 give a shorter mean time in system than one server of rate 1.
+  null_hypothesis: The mean time in system is the same with one and with two servers.
+  success_criteria: two_servers has a lower mean time_in_system than one_server, with p < 0.05 in a paired t-test over the 8 seeds.
+  independent_variables: [number of servers]
+  dependent_variables: [time_in_system]
+expect:
+  significant: true
+  direction: better
+  difference: {low: -4.4, high: -3.2}

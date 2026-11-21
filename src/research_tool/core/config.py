@@ -226,6 +226,13 @@ class KnowledgeConfig(_Section):
     cache_dir: str | None = None  # where fastembed keeps the model
 
 
+class LocalDataset(_Section):
+    """A dataset the researcher provides on disk; plans use it as source "local" with its name."""
+
+    path: str  # a folder (or file) on the cluster
+    description: str = ""
+
+
 class ExperimentsConfig(_Section):
     """How the Coder's experiment code runs: smoke tests inside the episode, full runs as Slurm jobs."""
 
@@ -240,6 +247,7 @@ class ExperimentsConfig(_Section):
     smoke_timeout_s: float = Field(default=900, gt=0)  # one smoke run (CPU, tiny data)
     install_timeout_s: float = Field(default=1200, gt=0)  # pip install of extra requirements
     max_parallel_runs: int = Field(default=4, ge=1)  # array throttle: GPUs used at once
+    local_data: dict[str, LocalDataset] = Field(default_factory=dict)  # name -> a dataset provided on disk
 
 
 class AppConfig(_Section):

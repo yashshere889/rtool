@@ -3741,7 +3741,7 @@
    "ResourceSpec": {
     "properties": {
      "identifier": {
-      "description": "Hugging Face repo id, URL, torchvision name or pip package",
+      "description": "Hugging Face repo id, URL, torchvision name, pip package, or the name of a local dataset",
       "title": "Identifier",
       "type": "string"
      },
@@ -3790,6 +3790,7 @@
        "url",
        "torchvision",
        "pip",
+       "local",
        "manual"
       ],
       "title": "Source",

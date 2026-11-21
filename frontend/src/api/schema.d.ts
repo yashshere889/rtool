@@ -2073,7 +2073,7 @@ export interface components {
         ResourceSpec: {
             /**
              * Identifier
-             * @description Hugging Face repo id, URL, torchvision name or pip package
+             * @description Hugging Face repo id, URL, torchvision name, pip package, or the name of a local dataset
              */
             identifier: string;
             /**
@@ -2101,7 +2101,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "huggingface" | "url" | "torchvision" | "pip" | "manual";
+            source: "huggingface" | "url" | "torchvision" | "pip" | "local" | "manual";
             /** Split */
             split: string | null;
             /**

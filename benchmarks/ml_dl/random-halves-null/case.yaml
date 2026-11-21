@@ -1,0 +1,30 @@
+# Two halves of one seeded shuffle are exchangeable, so training on either gives the same accuracy on average.
+id: random-halves-null
+kind: "null"  # quoted: a bare null is YAML for "nothing"
+pack: ml_dl
+confirmed_by: "construction: under the seed's shuffle the two halves are exchangeable, so the mean difference is 0"
+brief:
+  topic: Does it matter which random half of the training data a model sees?
+  constraints:
+    - CPU only. MNIST from torchvision; download nothing else.
+    - Take the first training images (as many as the notes say), shuffle them with the run's seed and split them into two equal halves; half_a trains on the first half, half_b on the second. Test on the full test set, pixels scaled to [0, 1].
+    - The model is a multilayer perceptron 784-256-10 with ReLU, trained with Adam (learning rate 0.001) for 3 epochs, batch size 128, initialised with the run's seed in both conditions.
+  notes: Use the first 10,000 training images (two halves of 5,000).
+  seeds: 8
+  max_minutes_per_run: 10
+  datasets: [MNIST]
+  conditions:
+    - {name: half_a, baseline: true, description: "the first half of the seeded shuffle"}
+    - {name: half_b, description: "the second half of the seeded shuffle"}
+  primary_metric: {name: test_accuracy, higher_is_better: true}
+hypothesis:
+  statement: A model trained on the second half of a seeded shuffle of the training data reaches a different test accuracy than one trained on the first half.
+  null_hypothesis: Both halves give the same mean test accuracy.
+  success_criteria: half_b differs from half_a in mean test_accuracy with p < 0.05 in a paired t-test over the 8 seeds; otherwise the hypothesis is refuted.
+  independent_variables: [which half of the training data]
+  dependent_variables: [test_accuracy]
+expect:
+  significant: false
+variants:
+  - {name: halves_5000}
+  - {name: halves_1000, brief: {notes: "Use the first 2,000 training images (two halves of 1,000)."}}

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+import tempfile
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -18,6 +23,7 @@ from ..core.pipeline import find_pipeline, pipeline_from
 from ..core.run import RunHandle, is_valid_name
 from ..schemas.common import SelectedItem
 from ..schemas.literature import Corpus, KnowledgeMap
+from ..tools.resources.fetch import content_hash
 from .cases import MAIN_VARIANT, Case, CaseError
 
 MARKER = "validity.json"  # in the run folder: the case as it was, and which variant and repeat this run is
@@ -30,6 +36,10 @@ DEFAULT_BUDGETS: dict[str, Any] = {"max_gpu_hours": 0.0, "max_llm_calls": 3000, 
 # The seeded corpus has no knowledge base. This path must not exist: open_corpus_kb takes any existing
 # path for the knowledge base, and an empty kb_path would resolve to the run folder itself.
 NO_KNOWLEDGE_BASE = "seeded/no-knowledge-base"
+# Case data, generated at submit time: one folder per content hash, under the runs root (the leading
+# dot keeps it out of run listings), so runs on compute nodes can read it.
+DATA_FOLDER = ".validity-data"
+GENERATE_TIMEOUT_S = 600
 
 
 def case_overlay(gate_ids: Iterable[str], budgets: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -43,9 +53,9 @@ def case_overlay(gate_ids: Iterable[str], budgets: Mapping[str, Any] | None = No
     }
 
 
-def seeded_artifacts(case: Case) -> dict[str, BaseModel]:
-    """What the stages before the case's start would have made, as the case fixes it."""
-    brief = case.research_brief()
+def seeded_artifacts(case: Case, variant: str = MAIN_VARIANT) -> dict[str, BaseModel]:
+    """What the stages before the case's start would have made, as the case (and this variant) fixes it."""
+    brief = case.research_brief(variant)
     seeded: dict[str, BaseModel] = {
         "research_brief": brief,
         "corpus": Corpus(
@@ -57,6 +67,48 @@ def seeded_artifacts(case: Case) -> dict[str, BaseModel]:
         item = case.hypothesis.hypothesis(case.id).model_dump(mode="json")
         seeded["selected_hypothesis"] = SelectedItem(index=0, item=item)
     return seeded
+
+
+def generate_data(case: Case, variant: str, data_root: Path) -> dict[str, dict[str, str]]:
+    """Run each of the case's generators with this variant's arguments; the run's ``local_data`` entries.
+
+    A generator is ``python -I <script> <output folder> <arguments as JSON>``, standard library only. Its
+    output is kept under its content hash: the same data is shared, and changed data never overwrites a
+    folder an earlier run read.
+    """
+    folder = case._folder
+    if case.data and folder is None:
+        raise CaseError(f"case {case.id!r} provides data: load it with load_case, which finds its generators")
+    found = next((v for v in case.variants if v.name == variant), None)
+    entries: dict[str, dict[str, str]] = {}
+    for spec in case.data:
+        assert folder is not None
+        args = {**spec.args, **(found.data_args if found else {})}
+        data_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=data_root, prefix=".partial-") as scratch:
+            out = Path(scratch) / "data"
+            out.mkdir()
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-I", str(folder / spec.generator), str(out), json.dumps(args, sort_keys=True)],
+                    cwd=scratch,
+                    capture_output=True,
+                    text=True,
+                    timeout=GENERATE_TIMEOUT_S,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                raise CaseError(f"case {case.id!r}: {spec.generator} ran over {GENERATE_TIMEOUT_S} s") from None
+            if result.returncode != 0:
+                last = (result.stderr.strip().splitlines() or ["no error output"])[-1]
+                raise CaseError(f"case {case.id!r}: {spec.generator} failed (exit {result.returncode}): {last}")
+            if not any(out.iterdir()):
+                raise CaseError(f"case {case.id!r}: {spec.generator} wrote nothing into its output folder")
+            target = data_root / f"{spec.name}-{content_hash(out)[:12]}"
+            if not target.exists():
+                out.rename(target)
+        entries[spec.name] = {"path": str(target), "description": spec.description}
+    return entries
 
 
 def case_run_id(case: Case, variant: str, repeat: int, commit: str) -> str:
@@ -72,14 +124,13 @@ def create_case_run(
     repeat: int = 1,
     budgets: Mapping[str, Any] | None = None,
     project: str | None = None,
+    provenance: Mapping[str, Any] | None = None,
 ) -> RunHandle:
     """A run of ``case`` that needs nobody: seeded with what the case fixes, every gate auto, hard budgets.
 
     Nothing runs until an episode is started. The run folder keeps the case as it was (``validity.json``),
     so the run is scored against that, whatever happens to ``case.yaml`` later.
     """
-    if case.data:
-        raise CaseError(f"case {case.id!r} provides data, which needs the `local` resource source (Stage 0 PR 2)")
     case.expectation(variant)  # an unknown variant fails here
     if repeat < 1:
         raise CaseError(f"repeat must be 1 or more, not {repeat}")
@@ -89,7 +140,7 @@ def create_case_run(
             f"case {case.id!r} starts at {case.start!r}, where the pipeline still chooses the hypothesis; "
             f"a {case.kind} case must fix it, so it starts at 'plan' or later"
         )
-    seeded = seeded_artifacts(case)
+    seeded = seeded_artifacts(case, variant)
     missing = [name for name in spec.initial_artifacts if name not in seeded]
     if missing:
         raise CaseError(f"a case starting at {case.start!r} would have to provide {missing}, which cases cannot")
@@ -100,6 +151,9 @@ def create_case_run(
 
     overlay = case_overlay([*config.gates.modes, *spec.gates, *IN_STAGE_GATES], budgets)
     runs_root = config.paths.resolved_runs_root()
+    data = generate_data(case, variant, runs_root / DATA_FOLDER) if case.data else {}
+    if data:
+        overlay["experiments"] = {"local_data": {**config.experiments.model_dump(mode="json")["local_data"], **data}}
     overlay_path = runs_root.resolve() / project / run_id / OVERLAY
     settings = apply_overrides(config, overlay, env={})
     # episodes re-read their config files over the run's snapshot: the overlay must come last, or a file
@@ -113,6 +167,13 @@ def create_case_run(
         store.put(name, seeded[name], producer=producer)
     atomic_write_json(
         run.root / MARKER,
-        {"case": case.model_dump(mode="json"), "variant": variant, "repeat": repeat, "commit": commit},
+        {
+            "case": case.model_dump(mode="json"),
+            "variant": variant,
+            "repeat": repeat,
+            "commit": commit,
+            "data": {name: entry["path"] for name, entry in data.items()},
+            "provenance": dict(provenance or {}),  # which code made the run (validity.provenance)
+        },
     )
     return run

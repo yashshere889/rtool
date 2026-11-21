@@ -134,6 +134,7 @@ class FetchResources(Task):
                 hf_token=os.environ.get("HF_TOKEN"),
                 torchvision=torchvision_downloader(ctx.app_config.experiments, root, ctx.workspace.path("logs")),
                 local=local_models(ctx.app_config.llm.server.hf_home),
+                provided=ctx.app_config.experiments.local_data,
             )
         )
         done: dict[str, dict] = ctx.state.setdefault("fetched", {})

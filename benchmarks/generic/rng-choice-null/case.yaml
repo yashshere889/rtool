@@ -1,0 +1,30 @@
+# Both bit generators draw from the same exponential distributions, so the true difference is 0.
+id: rng-choice-null
+kind: "null"  # quoted: a bare null is YAML for "nothing"
+pack: generic
+confirmed_by: "construction: MT19937 and PCG64 sample the same distributions, so the means are equal"
+brief:
+  topic: Does the random number generator change the result of a queue simulation?
+  constraints:
+    - CPU only, with numpy (installed); there is nothing to download.
+    - Simulate an M/M/1 queue with service rate 1 and the arrival rate given in the notes, 200,000 customers per run, first come first served, leaving the first 20,000 out as warm-up.
+    - In mt19937 draw every random number from numpy.random.Generator(numpy.random.MT19937(seed)); in pcg64 from numpy.random.Generator(numpy.random.PCG64(seed)).
+  notes: Use arrival rate 0.8.
+  seeds: 8
+  max_minutes_per_run: 5
+  conditions:
+    - {name: mt19937, baseline: true, description: "numpy's Mersenne Twister bit generator"}
+    - {name: pcg64, description: "numpy's PCG64 bit generator"}
+  primary_metric: {name: time_in_system, higher_is_better: false}
+hypothesis:
+  statement: Simulating with the PCG64 bit generator instead of MT19937 changes the mean time in system.
+  null_hypothesis: Both bit generators give the same mean time in system.
+  success_criteria: pcg64 differs from mt19937 in mean time_in_system with p < 0.05 in a paired t-test over the 8 seeds; otherwise the hypothesis is refuted.
+  independent_variables: [bit generator]
+  dependent_variables: [time_in_system]
+expect:
+  significant: false
+variants:
+  - {name: load_80}
+  - {name: load_50, brief: {notes: Use arrival rate 0.5.}}
+  - {name: load_95, brief: {notes: Use arrival rate 0.95.}}

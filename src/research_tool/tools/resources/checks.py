@@ -8,12 +8,17 @@ public was named, so someone has to provide it (or the experiment code build it)
 
 from __future__ import annotations
 
+import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
+from ...core.config import LocalDataset
 from ...schemas.plan import ResourceChoice
 from ..http import HttpError, PoliteHttp
+from .fetch import tree_size
 
 HF_API = "https://huggingface.co/api"
 PYPI_API = "https://pypi.org/pypi"
@@ -49,14 +54,32 @@ def _hf_license(info: dict[str, Any]) -> str:
     return licence if isinstance(licence, str) else ",".join(licence)
 
 
-class HubChecker:
-    """Checks resources against the Hugging Face Hub API and plain URLs."""
+def local_check(resource: ResourceChoice, local: Mapping[str, LocalDataset]) -> ResourceCheck:
+    """A local dataset exists if the researcher provided it under this name and its files are there."""
+    found = local.get(resource.identifier)
+    if found is None:
+        known = ", ".join(sorted(local)) or "none"
+        return ResourceCheck(False, note=f"no local dataset {resource.identifier!r}; the researcher provided: {known}")
+    path = Path(os.path.expandvars(os.path.expanduser(found.path)))
+    if not path.exists():
+        return ResourceCheck(False, note=f"the local dataset {resource.identifier!r} is missing: {path} does not exist")
+    size, files = tree_size(path) if path.is_dir() else (path.stat().st_size, 1)
+    return ResourceCheck(True, size_gb=round(size / 1e9, 3), note=f"provided locally ({files} files)")
 
-    def __init__(self, http: PoliteHttp, token: str | None = None) -> None:
+
+class HubChecker:
+    """Checks resources against the Hugging Face Hub API and plain URLs, and local datasets on disk."""
+
+    def __init__(
+        self, http: PoliteHttp, token: str | None = None, local: Mapping[str, LocalDataset] | None = None
+    ) -> None:
         self.http = http
         self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+        self.local = dict(local or {})
 
     def check(self, resource: ResourceChoice) -> ResourceCheck:
+        if resource.source == "local":
+            return local_check(resource, self.local)
         try:
             if resource.source == "huggingface":
                 kind = "models" if resource.kind == "model" else "datasets"

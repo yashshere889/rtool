@@ -1,0 +1,27 @@
+# Multinomial logistic regression on raw MNIST pixels is usually reported at about 92 % test accuracy.
+id: softmax-mnist-accuracy
+kind: replication
+pack: ml_dl
+confirmed_by: ""  # the band is from published results; reference.py on Barkla confirms it at this budget
+brief:
+  topic: The test accuracy of multinomial logistic regression on MNIST
+  constraints:
+    - CPU only. MNIST from torchvision; all 60,000 training images and the 10,000 test images, pixels scaled to [0, 1].
+    - softmax is a single linear layer 784-10 trained with cross-entropy, Adam (learning rate 0.001), 5 epochs, batch size 128.
+    - mlp adds one hidden layer of 256 ReLU units and is trained the same way.
+  seeds: 6
+  max_minutes_per_run: 10
+  datasets: [MNIST]
+  conditions:
+    - {name: softmax, baseline: true, description: "a single linear layer"}
+    - {name: mlp, description: "one hidden layer of 256 ReLU units"}
+  primary_metric: {name: test_accuracy, higher_is_better: true}
+hypothesis:
+  statement: Multinomial logistic regression on raw MNIST pixels reaches between 90 % and 94 % test accuracy.
+  null_hypothesis: Its test accuracy lies outside 90-94 %.
+  success_criteria: The mean test_accuracy of softmax over its 6 seeds lies between 0.90 and 0.94.
+  independent_variables: [model]
+  dependent_variables: [test_accuracy]
+expect:
+  value: {condition: softmax, low: 0.9, high: 0.94}
+  outcome: [supported]

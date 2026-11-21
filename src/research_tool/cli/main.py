@@ -1036,3 +1036,113 @@ def add_paper(
             _queue(run, action, now=False, simulate_jobs=False)
         else:
             console.print("it is ingested the next time the literature stage runs (or pass --rerun)")
+
+
+# ---------------------------------------------------------------- validity
+validity_app = typer.Typer(
+    help="Validity cases: questions with known answers, run through rtool and scored (docs/stage0_design.md).",
+    no_args_is_help=True,
+)
+app.add_typer(validity_app, name="validity")
+
+
+@validity_app.command("submit")
+def validity_submit(
+    pack: str = typer.Argument(..., help="The domain pack whose cases to run, e.g. generic."),
+    cases_dir: Path = typer.Option(Path("benchmarks"), "--cases", help="Folder holding <pack>/<case>/case.yaml."),
+    case: list[str] = typer.Option([], "--case", help="Only this case (repeatable)."),
+    repeats: int | None = typer.Option(None, "--repeats", min=1, help="Runs per case variant (default: the case's)."),
+    max_gpu_hours: float = typer.Option(0.0, "--max-gpu-hours", min=0, help="Experiment GPU-hours per run."),
+    allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Run code git has not committed (the card says so)."),
+    config: list[Path] = typer.Option([], "--config", "-c"),
+    set_: list[str] = typer.Option([], "--set"),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Create a run for every case, variant and repeat that has none yet, and start it. Nobody is asked at gates."""
+    from ..validity.cases import load_cases
+    from ..validity.provenance import code_version
+    from ..validity.runs import MARKER, case_run_id, create_case_run
+
+    with _guard():
+        cfg = _app_config(config, set_, runs_root)
+        version = code_version()
+        if version.dirty and not allow_dirty:
+            raise RToolError(
+                "the code has changes git has not committed, so the card could not say which code it measured: "
+                "commit them, or pass --allow-dirty"
+            )
+        cases = [c for c in load_cases(cases_dir, pack) if not case or c.id in case]
+        unknown = sorted(set(case) - {c.id for c in cases})
+        if unknown:
+            raise RToolError(f"no such case under {cases_dir / pack}: {', '.join(unknown)}")
+        project = cfg.paths.resolved_runs_root() / f"validity-{pack}"
+        created = 0
+        for one in cases:
+            for variant in one.variant_names():
+                for repeat in range(1, (repeats or one.repeats) + 1):
+                    run_id = case_run_id(one, variant, repeat, version.code)
+                    if (project / run_id / MARKER).is_file():
+                        console.print(f"exists   {run_id}")
+                        continue
+                    if (project / run_id).exists():
+                        console.print(
+                            f"[yellow]broken   {run_id}: no {MARKER} (an interrupted submit); remove it[/yellow]"
+                        )
+                        continue
+                    run = create_case_run(
+                        cfg,
+                        one,
+                        commit=version.code,
+                        variant=variant,
+                        repeat=repeat,
+                        budgets={"max_gpu_hours": max_gpu_hours},
+                        provenance=version.model_dump(),
+                    )
+                    created += 1
+                    console.print(f"created  {run_id}")
+                    _kick(run, "rtool validity submit", needs_llm=llm_needed(run))
+        console.print(f"{created} new run(s) of code {version.label}; score them with: rtool validity score {pack}")
+
+
+@validity_app.command("score")
+def validity_score(
+    pack: str = typer.Argument(..., help="The domain pack whose runs to score."),
+    version: str | None = typer.Option(
+        None, "--version", help="Code version (a prefix of its hash) to score; default: this code; 'all': every run."
+    ),
+    out: Path | None = typer.Option(None, "--out", help="Folder for the card (default: <runs root>/.validity-cards)."),
+    config: list[Path] = typer.Option([], "--config", "-c"),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Score every finished run and write the validity card (JSON and Markdown). Changes no run."""
+    from ..validity.card import build_card, render_markdown, score_runs
+    from ..validity.provenance import code_version
+
+    with _guard():
+        cfg = _app_config(config, [], runs_root)
+        current = code_version()
+        prefix = None if version == "all" else (version or current.code)
+        scored = score_runs(cfg.paths.resolved_runs_root(), pack, prefix)
+        if not scored:
+            raise RToolError(
+                f"no validity runs of {pack} for code {prefix or 'any'}: start them with rtool validity submit"
+            )
+        markers = [json.loads((run.root / "validity.json").read_text(encoding="utf-8")) for run, _ in scored]
+        versions = sorted({m["commit"] for m in markers})
+        provenance = dict(markers[0].get("provenance") or {}) if len(versions) == 1 else {"code": "mixed"}
+        provenance["versions"] = versions
+        provenance["model"] = scored[0][0].config.llm.model
+        card = build_card(pack, scored, provenance=provenance)
+        folder = out or cfg.paths.resolved_runs_root() / ".validity-cards"
+        folder.mkdir(parents=True, exist_ok=True)
+        name = f"{pack}-{versions[0][:12] if len(versions) == 1 else 'mixed'}"
+        atomic_write_json(folder / f"{name}.json", card.model_dump(mode="json"))
+        (folder / f"{name}.md").write_text(render_markdown(card), encoding="utf-8")
+        table = Table("kind", "reached top level", "95 % interval")
+        for kind, r in card.headline.items():
+            table.add_row(kind, f"{r.k} / {r.n}", f"{100 * r.low:.0f}–{100 * r.high:.0f} %")
+        console.print(table)
+        console.print(f"false claims on null cases: {card.false_claims.k} / {card.false_claims.n}")
+        if card.unfinished:
+            console.print(f"still running, not scored: {len(card.unfinished)}")
+        console.print(f"card: {folder / name}.md")
