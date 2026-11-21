@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel
 
 from ..agents.coder.agent import GATE as GPU_RUNS_GATE
+from ..agents.study.tasks import GATE as DATA_UPLOAD_GATE
 from ..agents.tasks.fetch_resources import GATE as MANUAL_RESOURCES_GATE
 from ..core.artifacts import ArtifactStore, Producer
 from ..core.config import AppConfig, apply_overrides
@@ -30,7 +31,7 @@ MARKER = "validity.json"  # in the run folder: the case as it was, and which var
 OVERLAY = "validity-overlay.yaml"  # in the run folder; every episode applies it last
 AGENT = "rtool validity"
 # Gates opened inside a stage or by the engine; the pipeline's own gates come from its spec.
-IN_STAGE_GATES = (MANUAL_RESOURCES_GATE, GPU_RUNS_GATE, REVISION_LIMIT_GATE)
+IN_STAGE_GATES = (MANUAL_RESOURCES_GATE, GPU_RUNS_GATE, DATA_UPLOAD_GATE, REVISION_LIMIT_GATE)
 # Stage 0 cases are CPU-only, so experiments get no GPU-hours; the LLM's own episodes are not charged here.
 DEFAULT_BUDGETS: dict[str, Any] = {"max_gpu_hours": 0.0, "max_llm_calls": 3000, "max_jobs": 40}
 # The seeded corpus has no knowledge base. This path must not exist: open_corpus_kb takes any existing

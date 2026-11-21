@@ -1,0 +1,34 @@
+# The same trial with no effect. Each dataset is one whose own Welch test is not significant (reference.py).
+id: placebo-null
+kind: "null"  # quoted: a bare null is YAML for "nothing"
+pack: study
+pipeline: study
+start_at: protocol
+confirmed_by: "construction (no effect) and reference.py on the Mac (2026-11-21): Welch t -0.13, 0.09, 0.77, 1.07 for seeds 2-5"
+brief:
+  topic: Does caffeine change simple reaction time?
+  constraints:
+    - Participants are randomised to one condition each; the outcome is the mean simple reaction time in milliseconds.
+  datasets: [study_data]
+  conditions:
+    - {name: placebo, baseline: true, description: "a decaffeinated drink"}
+    - {name: caffeine, description: "the same drink with 200 mg caffeine"}
+  primary_metric: {name: reaction_time_ms, higher_is_better: false}
+hypothesis:
+  statement: Caffeine changes simple reaction time compared with placebo.
+  null_hypothesis: Reaction time is the same after caffeine and after placebo.
+  success_criteria: caffeine differs from placebo in mean reaction_time_ms with p < 0.05 in a Welch t-test; otherwise the hypothesis is refuted.
+  independent_variables: [drink]
+  dependent_variables: [reaction_time_ms]
+data:
+  - name: study_data
+    generator: generate.py
+    args: {per_arm: 45, effect_ms: 0, sd_ms: 40, seed: 2}
+    description: "The trial's data.csv: one row per participant (unit, condition, reaction_time_ms, batch)"
+expect:
+  significant: false
+variants:
+  - {name: trial_2}
+  - {name: trial_3, data_args: {seed: 3}}
+  - {name: trial_4, data_args: {seed: 4}}
+  - {name: trial_5, data_args: {seed: 5}}

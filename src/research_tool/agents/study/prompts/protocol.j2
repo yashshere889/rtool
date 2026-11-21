@@ -1,0 +1,38 @@
+Design a study that a person will carry out to test this hypothesis; rtool analyses the data they bring back.
+
+Hypothesis: {{ h.statement }}
+Null hypothesis: {{ h.null_hypothesis }}
+Why it is plausible: {{ h.rationale }}
+Independent variables: {{ h.independent_variables | join(", ") }}
+Dependent variables: {{ h.dependent_variables | join(", ") }}
+Success criteria: {{ h.success_criteria }}
+{% if brief.requirements() %}
+
+The researcher's requirements: follow every one exactly.
+{% for c in brief.requirements() %}
+- {{ c }}
+{% endfor %}
+{% endif %}
+{% if feedback %}
+
+Feedback from the researcher (follow it):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
+{% if issues %}
+
+Problems with the previous version that you must fix:
+{% for i in issues %}
+- {{ i }}
+{% endfor %}
+{% endif %}
+
+Requirements:
+- Compare at least one control condition (is_baseline = true) with the treatment condition(s); short snake_case names.
+- Name the unit of analysis (unit_of_analysis): the independent unit that is assigned to a condition and measured, such as a participant, patient, animal, plot or sample. Repeated measurements of one unit (visits, cells, technical replicates) are not independent units.
+- Mark exactly one metric as the primary outcome (primary = true), fixed before any data exist, and say for every metric which way is better.
+- Statistics: name "Welch t-test" or "Mann-Whitney U" if each unit is in one condition, "paired t-test" or "Wilcoxon signed-rank" if every unit is measured under every condition.
+- expected_effect_size: Cohen's d of the smallest effect on the primary metric that would matter; rtool computes the sample size from it.
+- List the materials and say who is blinded. Write the procedure as steps a person in a lab or in the field can follow, ending with recording one row per unit and condition.
+- n_seeds is ignored: units are the repetitions.

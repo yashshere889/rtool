@@ -304,3 +304,55 @@ shows the synthesis checks instead. The web report page has no review artifact t
 Files: `agents/synthesis/**`, `pipelines/synthesis.yaml`, `core/registry.py`, `validity/{cases,runs,score}.py`,
 `packs/medicine/pack.yaml`, `benchmarks/medicine/**`, `tests/integration/test_synthesis_pipeline.py`,
 `tests/unit/test_validity_cases.py`, `tests/unit/test_validity_card.py`.
+
+---
+
+## Stage 4 — study design with a person in the loop (local gate passed 2026-11-21)
+
+Built:
+- **Pipeline `study`**: literature → hypotheses → protocol (gate `protocol_review`) → collect (in-stage
+  gate `data_upload`) → analyse → report → review (gate `final_report`).
+- **Protocol agent** (`agents/study/protocol.py`):
+  - One model call designs the study (conditions, unit of analysis, primary outcome, the smallest
+    effect worth detecting, materials, blinding).
+  - Computed, not asked: the sample size (normal approximation with a small-sample correction; alpha
+    split across the comparisons with the control), a seeded block-randomised allocation (paired: a
+    random order per unit), and the data format.
+  - Checklist: a control, a primary outcome fixed before data, a computed sample size, an independent
+    unit, materials, blinding. Its failures become plan issues.
+- **Collect** (`collect_data`): waits at `data_upload` until `data.csv` is uploaded (`rtool add-data`),
+  or finds it among the run's local data (as validity cases provide it). It checks the file against the
+  protocol (header, known conditions, numeric metrics, units unique per condition, at least two per
+  condition). A file that fails stops the stage with each problem listed; fix it, upload again, `rtool retry`.
+- **Analyse** (`analyse_table`): rtool writes its own analysis script (`experiment.py`, so it can be
+  reread, rerun and audited) and executes it. The results are analysed like any data analysis (units
+  mode, confounding and pack checks), so Writer, Reviewer and scorer work unchanged.
+- **`rtool add-data <run> data.csv`**: copies the file and approves the open data checkpoint.
+- **`study` pack**: four review questions (randomisation, blinding, attrition, analysis fixed in
+  advance). Two shipped cases: `caffeine-reaction-time` (planted) and `placebo-null`.
+- Sample-size check: 64 per group for d = 0.5, 34 paired, 26 for d = 0.8, and 78 with two comparisons.
+  These are the textbook values.
+
+References (standard library, Mac, 2026-11-21), Welch t:
+- Planted trials: −5.06 (seed 1), −2.95 (seed 2).
+- Null trials: −0.13, 0.09, 0.77, 1.07 (seeds 2–5). Seed 1 (−1.89) is left out as too close to the threshold.
+
+Proved by `tests/integration/test_study_pipeline.py`:
+- The shipped planted trial through the real engine. The protocol computes 45 per arm for d = 0.6 and
+  a 90-row allocation in blocks of two, with every checklist item passing. The uploaded 90 participants
+  are analysed (Welch, difference −39.8 ms, the reference's figure), and the run scores L3.
+- A second run waits at `data_upload`. A broken upload (an unknown condition, a non-number) is refused
+  with both problems named. After the correct file and `rtool retry`, the run finishes.
+- Full suite exit 0, web tests exit 0, ruff clean, API schema unchanged.
+
+Waits for Barkla, or you:
+- A real model writing protocols.
+- Running a real study (people or lab work).
+- The exit test's "uploaded data of a defined format flows through without manual repair" is shown
+  locally; a real lab's file will be the true test.
+
+Not done: the web UI has no upload button (the CLI does it) and no protocol view (`protocol.md` is in the run).
+
+Files: `agents/study/**`, `pipelines/study.yaml`, `packs/study/pack.yaml`, `core/registry.py`,
+`cli/main.py` (add-data), `validity/runs.py` (data_upload in the auto gates), `benchmarks/study/**`,
+`tests/integration/test_study_pipeline.py`.

@@ -1146,3 +1146,32 @@ def validity_score(
         if card.unfinished:
             console.print(f"still running, not scored: {len(card.unfinished)}")
         console.print(f"card: {folder / name}.md")
+
+
+@app.command("add-data")
+def add_data(
+    run_ref: str = typer.Argument(..., help="A run of the study pipeline."),
+    file: Path = typer.Argument(
+        ..., exists=True, dir_okay=False, help="The study's data.csv (format: see the protocol)."
+    ),
+    runs_root: Path | None = typer.Option(None, "--runs-root"),
+) -> None:
+    """Upload a study's data and approve the data checkpoint, if it is open."""
+    import shutil
+
+    with _guard():
+        run = _open_run(run_ref, runs_root)
+        stage = next((s.id for s in run.spec.pipeline.stages if s.agent == "collect_data"), None)
+        if stage is None:
+            raise RToolError("this run's pipeline has no data collection stage (use the study pipeline)")
+        inbox = run.work_dir(stage) / "inbox"
+        inbox.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(file, inbox / "data.csv")
+        console.print(f"copied {file.name} to {inbox / 'data.csv'}")
+        if any(g.gate == "data_upload" for g in run_status(run).open_gates):
+            action = Action(
+                kind=ActionKind.APPROVE, gate="data_upload", stage=stage, payload={"note": f"uploaded {file.name}"}
+            )
+            _queue(run, action, now=False, simulate_jobs=False)
+        else:
+            console.print("the collect stage reads it when it runs")

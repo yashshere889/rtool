@@ -1,0 +1,53 @@
+# A study a person carries out, from a topic to an analysed, reviewed report:
+#   literature -> hypotheses -> protocol -> collect (the researcher runs the study and uploads data.csv)
+#   -> analyse -> report -> review
+# Human gates: literature_review, hypothesis_selection, protocol_review (approve before running the study),
+# data_upload (inside the collect stage, until the data arrive: `rtool add-data`) and final_report.
+name: study
+description: From a topic to a study protocol, the analysis of the data a person brings back, and a reviewed report.
+initial_artifacts: [research_brief]
+
+gates:
+  literature_review:
+    kind: approve
+    prompt: Review the papers and the literature map. Approve to continue, or request changes with feedback.
+  hypothesis_selection:
+    kind: select
+    prompt: Choose the hypothesis to test (or reject with feedback to get new ones).
+    options_artifact: hypothesis_set
+    options_path: hypotheses
+    selection_artifact: selected_hypothesis
+  protocol_review:
+    kind: approve
+    prompt: >-
+      Review the protocol: conditions, unit of analysis, primary outcome, sample size, allocation,
+      materials and blinding, and its checklist. Approve, then carry out the study as written.
+  final_report:
+    kind: approve
+    prompt: Read the final report and the review. Approve to finish, or reject with feedback.
+
+stages:
+  - id: literature
+    agent: literature
+    gate: literature_review
+
+  - id: hypotheses
+    agent: hypothesis
+    gate: hypothesis_selection
+
+  - id: protocol
+    agent: protocol
+    gate: protocol_review
+
+  - id: collect
+    agent: collect_data
+
+  - id: analyse
+    agent: analyse_table
+
+  - id: report
+    agent: writer
+
+  - id: review
+    agent: reviewer
+    gate: final_report

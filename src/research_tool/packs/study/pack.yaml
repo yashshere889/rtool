@@ -1,0 +1,20 @@
+name: study
+description: >-
+  Studies a person carries out (lab, clinic or field): rtool writes the protocol with its sample size and
+  randomised allocation, then analyses the data brought back, compared across units (pipeline study).
+replicates: units
+smoke: >-
+  When smoke is True, use at most SMOKE_UNITS units per condition through the same code path, so the run
+  takes seconds on a CPU.
+packages: [numpy]
+resource_sources: [local]
+literature_sources: [pubmed, europe_pmc, openalex, semantic_scholar]
+plan_checks:
+  - research_tool.packs.units:pseudoreplication_issues
+review_checks:
+  - Were units allocated at random as the protocol says, and is the allocation reported?
+  - Who was blinded, and could the lack of blinding explain the result?
+  - How many units dropped out or were excluded, from which conditions, and why?
+  - Does the analysis follow the protocol (the primary outcome and the test fixed before the data), or was it changed after seeing the data?
+hints:
+  - The data come from the researcher's upload (data.csv); rtool analyses it with its own script.

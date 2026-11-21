@@ -1,0 +1,34 @@
+# A two-arm trial a person ran, its data uploaded: caffeine is planted to shorten reaction time by 25 ms.
+id: caffeine-reaction-time
+kind: planted
+pack: study
+pipeline: study
+start_at: protocol
+confirmed_by: "reference.py on the Mac (2026-11-21): seed 1 difference -39.8 ms, Welch t -5.06; seed 2 -26.2 ms, t -2.95"
+brief:
+  topic: Does caffeine shorten simple reaction time?
+  constraints:
+    - Participants are randomised to one condition each; the outcome is the mean simple reaction time in milliseconds.
+  datasets: [study_data]
+  conditions:
+    - {name: placebo, baseline: true, description: "a decaffeinated drink"}
+    - {name: caffeine, description: "the same drink with 200 mg caffeine"}
+  primary_metric: {name: reaction_time_ms, higher_is_better: false}
+hypothesis:
+  statement: Caffeine shortens simple reaction time compared with placebo.
+  null_hypothesis: Reaction time is the same after caffeine and after placebo.
+  success_criteria: caffeine has a lower mean reaction_time_ms than placebo, with p < 0.05 in a Welch t-test.
+  independent_variables: [drink]
+  dependent_variables: [reaction_time_ms]
+data:
+  - name: study_data
+    generator: generate.py
+    args: {per_arm: 45, effect_ms: -25, sd_ms: 40, seed: 1}
+    description: "The trial's data.csv: one row per participant (unit, condition, reaction_time_ms, batch)"
+expect:
+  significant: true
+  direction: better
+  difference: {low: -55, high: -10}
+variants:
+  - {name: trial_1}
+  - {name: trial_2, data_args: {seed: 2}}
