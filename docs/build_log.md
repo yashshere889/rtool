@@ -525,3 +525,20 @@ Files: `packs/__init__.py`, `packs/*/pack.yaml` (titles; pipelines for medicine 
 `web/api/session.py`, `testing/web.py`, `frontend/src/pages/{NewResearch,Overview}.tsx`,
 `frontend/src/api/*`, `web/static/**`, `docs/architecture.md`, `README.md`,
 `tests/unit/test_installed_packs.py`, `tests/web/test_api.py`.
+
+---
+
+## On Barkla (2026-11-21, with your OK)
+
+Set-up, apart from what other sessions use there: this branch's commit copied to `~/rtool-roadmap`,
+with its own light venv (`rtool/roadmap-venv` on fastscratch: Python only; it reuses the main venv's
+installed packages and puts this code first; nothing was downloaded), its own runs root
+(`rtool/roadmap/projects` on scratch), and `configs/roadmap-site.yaml` (on Barkla only) pointing episodes
+at both. `~/"Research tool"`, its venv and its projects were not touched. The code hash on Barkla equals
+the Mac's at `1220bbb` (`1abc7339e8ab`), so cards name that commit. The default model's image and weights
+(Qwen3.6-35B-A3B, 26 shards, 67 GB) are now on Barkla.
+
+**Live probes, `pytest -m barkla`: 8 passed.** PubMed, Europe PMC, GEO, CELLxGENE and BioModels, and
+three new probes for UniProt, AlphaFold DB and RCSB PDB (each checked and fetched). So the formats
+written from memory hold: the ESearch JSON keys, PubMed's XML elements, Europe PMC's year syntax, NCBI's
+folder listings, and AlphaFold's `/api` prefix.

@@ -6,6 +6,8 @@ Each probe makes a few small requests and checks that the fields the client read
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from research_tool.tools.http import PoliteHttp
@@ -51,3 +53,20 @@ def test_biomodels(http: PoliteHttp, tmp_path_factory: pytest.TempPathFactory) -
     model = ResourceSpec(kind="model", name="m", source="biomodels", identifier="BIOMD0000000012", purpose="")
     fetched = Fetcher(tmp_path_factory.mktemp("biomodels"), http=http).fetch(model)  # Elowitz's repressilator
     assert fetched.status == "ready", fetched.note  # an SBML file with a model in it
+
+
+@pytest.mark.parametrize(
+    ("source", "identifier", "name"),
+    [("uniprot", "P69905", "P69905.fasta"), ("alphafold", "P69905", "AF-P69905-F1"), ("pdb", "4HHB", "4hhb.cif")],
+)
+def test_structures(http: PoliteHttp, tmp_path: Path, source: str, identifier: str, name: str) -> None:
+    from research_tool.schemas.plan import ResourceChoice, ResourceSpec  # noqa: PLC0415
+    from research_tool.tools.resources.checks import HubChecker  # noqa: PLC0415
+    from research_tool.tools.resources.fetch import Fetcher  # noqa: PLC0415
+
+    choice = ResourceChoice(kind="other", name="s", source=source, identifier=identifier, purpose="")  # type: ignore[arg-type]
+    checked = HubChecker(http).check(choice)
+    assert checked.exists, checked.note
+    fetched = Fetcher(tmp_path, http=http).fetch(ResourceSpec(**choice.model_dump()))
+    assert fetched.status == "ready" and name in (fetched.path or ""), fetched.note
+    assert Path(fetched.path or "").stat().st_size > 100  # a real record (hemoglobin alpha: 233 bytes)
