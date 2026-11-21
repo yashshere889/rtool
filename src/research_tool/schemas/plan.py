@@ -8,8 +8,9 @@ from pydantic import BaseModel, Field
 
 from ..core.artifacts import artifact_type
 
-# "local": a dataset the researcher provides on disk (config experiments.local_data), named by its key
-ResourceSource = Literal["huggingface", "url", "torchvision", "pip", "local", "manual"]
+# "local": a dataset the researcher provides on disk (config experiments.local_data), named by its key;
+# "geo": a GEO series (accession GSE...); "cellxgene": a CELLxGENE Discover dataset (its dataset id)
+ResourceSource = Literal["huggingface", "url", "torchvision", "pip", "local", "geo", "cellxgene", "manual"]
 
 
 class Variable(BaseModel):
@@ -32,6 +33,9 @@ class Metric(BaseModel):
         default=False,
         description="True for exactly one metric: the primary outcome that decides the hypothesis (pre-registered)",
     )
+
+
+Replicates = Literal["seeds", "units"]  # what the independent repetitions are (see ExperimentPlan.replicates)
 
 
 class MetricChoice(Metric):
@@ -69,12 +73,22 @@ class PlanCore(BaseModel):
     risks: list[str] = Field(default_factory=list)
 
 
+class PlanCoreUnits(PlanCore):
+    """The design of an analysis of existing data, where each condition is a group of independent units."""
+
+    unit_of_analysis: str = Field(
+        description="What one independent unit is, e.g. donor, patient, sample, mouse or country: the level at "
+        "which conditions are compared. Never a cell, read or spot: those repeat within one unit"
+    )
+
+
 class ResourceChoice(BaseModel):
     kind: Literal["dataset", "model", "code", "other"]
     name: str
     source: ResourceSource
     identifier: str = Field(
-        description="Hugging Face repo id, URL, torchvision name, pip package, or the name of a local dataset"
+        description="Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE "
+        "dataset id, or the name of a local dataset"
     )
     subset: str | None = Field(default=None, description="Hugging Face config name, if any")
     split: str | None = None
@@ -133,6 +147,11 @@ class ExperimentPlan(BaseModel):
     expected_results: str
     risks: list[str] = Field(default_factory=list)
     results_schema: dict[str, Any]  # JSON Schema the Coder's results.json must satisfy
+    # "seeds": every condition runs once per seed, compared across seeds (simulations, training runs).
+    # "units": data analysis: each condition is one run that reports a value per independent unit (donor,
+    # sample), compared across units; seeds are [0].
+    replicates: Replicates = "seeds"
+    unit: str = ""  # units: what one unit is, e.g. "donor"
     issues: list[str] = Field(default_factory=list)  # problems the checks could not fix (shown at the gate)
     markdown_path: str = ""
 

@@ -1,0 +1,23 @@
+"""Analysis: {{ hypothesis }}
+
+Written by the rtool Coder from the approved plan. Edit freely; then run
+`rtool retry <run> --resume`. run.py calls run(...) once per condition.
+"""
+
+# requirements:
+
+from __future__ import annotations
+
+SMOKE_UNITS = 3  # units (donors, samples) per condition when smoke=True
+
+CONDITIONS = {{ conditions }}  # name -> description: each condition is a group of donors or samples
+METRICS = {{ metrics }}  # every unit gets a float for each
+
+
+def run(condition: str, seed: int, resources: dict[str, str], smoke: bool, workdir: str) -> dict:
+    """Analyse one condition: {"units": [{"unit": id, <metric>: value, ..., "batch": label}, ...]}.
+
+    One entry per donor or sample: aggregate cells or reads within it first (pseudobulk).
+    smoke=True: at most SMOKE_UNITS units, the same code path.
+    """
+    raise NotImplementedError("the rtool Coder implements the analysis here")

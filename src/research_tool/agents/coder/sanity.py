@@ -154,7 +154,12 @@ def results_warnings(plan: ExperimentPlan, records: Sequence[RunRecord]) -> list
         groups = [g for g in groups if len(g) >= 2]
         if groups and all(constant(g) for g in groups):
             flat.append(f"`{metric.name}`")
-    if flat:
+    if flat and plan.replicates == "units":
+        warnings.append(
+            f"every unit has exactly the same {', '.join(flat)} in every condition: the analysis may not read the "
+            "units' data (is the value computed rather than measured?)"
+        )
+    elif flat:
         warnings.append(
             f"every seed gave exactly the same {', '.join(flat)} in every condition: the seeds had no effect, so "
             "confidence intervals and tests are not meaningful (is the value computed rather than measured?)"

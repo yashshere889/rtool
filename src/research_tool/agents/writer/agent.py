@@ -412,7 +412,14 @@ class Drafting:
                 "Coder; where the code and the plan's procedure differ (prompts, token limits and the like), the "
                 "code is what ran."
             )
-        if len(self.plan.seeds) < 5:
+        primary = self.plan.primary_metric().name
+        smallest = min((s.n for s in self.results.summaries if s.metric == primary), default=0)
+        if self.plan.replicates == "units" and smallest < 5:
+            lines.append(
+                f"- Only {smallest} {self.plan.unit or 'unit'}s in the smallest condition: the tests have little "
+                "statistical power, so small effects can be missed."
+            )
+        elif self.plan.replicates == "seeds" and len(self.plan.seeds) < 5:
             lines.append(
                 f"- Only {len(self.plan.seeds)} seeds per condition: the tests have little statistical power, so "
                 "small effects can be missed."
@@ -422,6 +429,9 @@ class Drafting:
     # ---------------------------------------------------- rtool's sections
     def methods(self) -> str:
         p, c = self.plan, self.plan.compute
+        unit = p.unit or "unit"
+        counts = {x.condition: x.n for x in self.results.summaries if x.metric == p.primary_metric().name}
+        sizes = ", ".join(f"{n} under {name}" for name, n in counts.items()) or "none"
         comparisons = self.results.comparisons
         test = " / ".join(sorted({x.test for x in comparisons})) if comparisons else p.statistical_tests[0].test
         corrections = sorted({x.correction.capitalize() for x in comparisons if x.correction != "none"})
@@ -450,9 +460,16 @@ class Drafting:
             "",
             "**Procedure.** " + " ".join(f"({i}) {step}" for i, step in enumerate(p.procedure, 1)),
             "",
-            f"**Statistics.** Every condition ran with {len(p.seeds)} seeds ({', '.join(map(str, p.seeds))}). Each "
-            f"condition is compared with the baseline using the {test} (paired by seed where all seeds succeeded); "
-            "means are reported with 95% confidence intervals from the t distribution and effect sizes as Cohen's d"
+            (
+                f"**Statistics.** Each condition was analysed once, with one value per {unit} ({sizes}). Each "
+                f"condition is compared with the baseline across {unit}s using the {test} (paired by {unit} where "
+                f"the same {unit}s appear under both); "
+                if p.replicates == "units"
+                else f"**Statistics.** Every condition ran with {len(p.seeds)} seeds ({', '.join(map(str, p.seeds))}). "
+                f"Each condition is compared with the baseline using the {test} (paired by seed where all seeds "
+                "succeeded); "
+            )
+            + "means are reported with 95% confidence intervals from the t distribution and effect sizes as Cohen's d"
             + (
                 f"; p-values are corrected for multiple comparisons ({', '.join(corrections)}) within the "
                 "confirmatory and within the exploratory comparisons"
@@ -518,6 +535,7 @@ class Drafting:
     def reproducibility(self) -> str:
         b, r = self.bundle, self.results
         seeds = ", ".join(map(str, self.plan.seeds))
+        r_unit = self.plan.unit or "unit"
         produced = list(dict.fromkeys(run.job_id for run in r.runs if run.status == "ok" and run.job_id))
         lines = [
             f"- Code: `{b.root}` (entry point `{b.entry_point}`, domain pack `{b.pack}`, "
@@ -525,7 +543,12 @@ class Drafting:
             f"- Environment: {f'`{b.container}`' if b.container else 'local Python'}"
             + (f"; extra packages: {', '.join(b.requirements)}" if b.requirements else "")
             + ".",
-            f"- Seeds: {seeds}; every run writes its metrics to `runs/<condition>__<seed>.json`.",
+            (
+                f"- Units: one analysis per condition; each writes its per-{r_unit} results to "
+                "`runs/<condition>__0.json`."
+                if self.plan.replicates == "units"
+                else f"- Seeds: {seeds}; every run writes its metrics to `runs/<condition>__<seed>.json`."
+            ),
             f"- Results: `{r.results_path}` (validated against the plan's results schema); tables: `{r.tables_path}`.",
             f"- Slurm jobs the results came from: {', '.join(produced) or 'none'}"
             + (f" (all jobs: {', '.join(r.jobs)})" if set(r.jobs) - set(produced) else "")

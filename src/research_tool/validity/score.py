@@ -106,7 +106,7 @@ def score_run(run: RunHandle) -> RunScore:
     levels = [
         lambda: _l0(stages, run_state),
         lambda: _l1(brief, plan, results, code),
-        lambda: _l2(brief, expect, plan, comparison, summary),
+        lambda: _l2(brief, expect, plan, results, comparison, summary),
         lambda: _l3(expect, comparison, summary, final),
     ]
     for level, checks in enumerate(levels[: score.max_level + 1]):
@@ -222,6 +222,7 @@ def _l1(
         )
     ]
     planned = [c.name for c in plan.run_conditions()]
+    units = plan.replicates == "units"
     for pinned in brief.conditions:
         ok_runs = sum(1 for r in results.runs if r.condition == pinned.name and r.status == "ok")
         if pinned.name not in planned:
@@ -232,6 +233,16 @@ def _l1(
                     ok=False,
                     detail=f"the plan's conditions are {planned}",
                     category="missing_condition",
+                )
+            )
+        elif units:  # a data analysis: one run per condition, results per unit
+            checks.append(
+                Check(
+                    level=1,
+                    name=f"condition {pinned.name} has results for at least two units",
+                    ok=ok_runs >= 2,
+                    detail=f"{ok_runs} {plan.unit or 'unit'}s",
+                    category="incomplete_runs",
                 )
             )
         else:
@@ -267,10 +278,12 @@ def _l2(
     brief: CaseBrief,
     expect: Expectation,
     plan: ExperimentPlan | None,
+    results: ExperimentResults | None,
     comparison: Comparison | None,
     summary: MetricSummary | None,
 ) -> list[Check]:
-    assert plan is not None  # L1 passed, so there is a plan
+    assert plan is not None and results is not None  # L1 passed, so there are both
+    units = plan.replicates == "units"
     pinned = brief.primary_metric
     primary = plan.primary_metric()
     checks = [
@@ -284,7 +297,7 @@ def _l2(
         Check(
             level=2,
             name="the plan uses the brief's seeds",
-            ok=len(plan.seeds) == brief.seeds,
+            ok=len(plan.seeds) == (1 if units else brief.seeds),
             detail=f"{len(plan.seeds)} seeds, the brief asks for {brief.seeds}",
             category="plan_issue",
         ),
@@ -314,11 +327,20 @@ def _l2(
             Check(
                 level=2,
                 name=f"{expect.value.condition} was summarised on every seed",
-                ok=summary is not None and summary.n == brief.seeds,
-                detail="" if summary is None else f"{summary.n} seeds",
+                ok=summary is not None and (summary.n >= 2 if units else summary.n == brief.seeds),
+                detail="" if summary is None else f"{summary.n} {'units' if units else 'seeds'}",
                 category="missing_comparison",
             )
         )
+    checks.append(
+        Check(
+            level=2,
+            name="the data show no design problem",
+            ok=not results.issues,
+            detail=results.issues[0] if results.issues else "",
+            category="design_problem",
+        )
+    )
     return checks
 
 

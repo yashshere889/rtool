@@ -87,8 +87,17 @@ def value_table(plan: ExperimentPlan, results: ExperimentResults) -> dict[str, V
     values["runs_ok"] = Value(str(ok), "experiment runs that produced results")
     values["runs_total"] = Value(str(len(results.runs)), "experiment runs planned")
     # counts carry their noun, so a bare placeholder still reads "across 2 conditions", not "across 2."
-    n = len(plan.seeds)
-    values["seeds"] = Value(f"{n} seed{'s' * (n != 1)}", "seeds (independent repetitions) per condition, with the word")
+    if plan.replicates == "units":  # a data analysis: the repetitions are units (donors, samples), per condition
+        sizes = sorted({s.n for s in results.summaries if s.metric == plan.primary_metric().name})
+        count = (f"{sizes[0]}" if len(sizes) == 1 else f"{sizes[0]} to {sizes[-1]}") if sizes else "no"
+        values["seeds"] = Value(
+            f"{count} {plan.unit or 'unit'}s per condition", "independent units per condition, with the word"
+        )
+    else:
+        n = len(plan.seeds)
+        values["seeds"] = Value(
+            f"{n} seed{'s' * (n != 1)}", "seeds (independent repetitions) per condition, with the word"
+        )
     n = len(plan.run_conditions())
     values["conditions"] = Value(f"{n} condition{'s' * (n != 1)}", "conditions, ablations included, with the word")
     return values
@@ -112,7 +121,8 @@ def plan_numbers(plan: ExperimentPlan) -> str:
         parts += [c.name.replace("_", " "), c.description]
     for v in plan.independent_variables:
         parts += [" ".join(value.strip("./ ") for value in v.values)]
-    parts += [f"{len(plan.seeds)} seeds", *(f"alpha {t.alpha:g}" for t in plan.statistical_tests)]
+    parts += [f"{len(plan.seeds)} seeds"] if plan.replicates == "seeds" else []
+    parts += [f"alpha {t.alpha:g}" for t in plan.statistical_tests]
     return "\n".join(parts)
 
 

@@ -17,6 +17,12 @@ result reported in the wrong direction), statistics that are invalid, missing va
 from results that may not come from a real experiment. Keep "minor" for wording and small omissions, and make
 your summary agree with the severities you give.
 Do not ask for things the automated checks already confirm.
+{% if field_questions %}
+
+## Questions this field asks of every study
+Answer each one that applies, in your issues (a problem that breaks a conclusion is major):
+{% for q in field_questions %}- {{ q }}
+{% endfor %}{% endif %}
 
 ## Automated checks (computed, reliable)
 {% for c in checks %}- {{ c.name }}: {{ "ok" if c.ok else "PROBLEM" }}{% if c.detail %} — {{ c.detail }}{% endif %}

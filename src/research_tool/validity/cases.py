@@ -237,6 +237,13 @@ class Case(_Strict):
                     problems.append(f"{problem} (variant {variant!r})" if self.variants else problem)
         return problems
 
+    def _units(self) -> bool:
+        """Its pack analyses data, compared across units (donors, samples) rather than seeds."""
+        try:
+            return load_pack(self.pack).replicates == "units"
+        except ConfigError:
+            return False  # an unknown pack is reported by load_case
+
     def _design_problems(self, brief: CaseBrief) -> list[str]:
         problems = []
         conditions = [c.name for c in brief.conditions]
@@ -246,7 +253,10 @@ class Case(_Strict):
             problems.append("exactly one of brief.conditions must be the baseline")
         if brief.primary_metric is None:
             problems.append("brief.primary_metric is required")
-        if self.brief.seeds is None:
+        if self._units():
+            if brief.seeds not in (None, 1):
+                problems.append(f"the {self.pack} pack analyses data across units: leave brief.seeds out")
+        elif brief.seeds is None:
             problems.append("brief.seeds is required, so every run of the case has the same number")
         elif self.kind in ("planted", "null") and brief.seeds < MIN_SEEDS:
             problems.append(f"use at least {MIN_SEEDS} seeds: with fewer, an exact rank test cannot be significant")

@@ -142,8 +142,19 @@ The model is good but small, so every step is narrow and checked by code:
 
 `src/research_tool/packs/<name>/`: `pack.yaml` (hints, what a smoke run is,
 usual packages), `templates/experiment.py.j2` (the Coder's skeleton) and
-optional prompt overrides `prompts/<agent>/*.j2`. Built in: `generic` and
-`ml_dl` (PyTorch). Choose with `rtool new … --pack ml_dl`.
+optional prompt overrides `prompts/<agent>/*.j2`. Choose with `rtool new … --pack ml_dl`.
+`pack.yaml` can also set:
+
+- `replicates: units`: a data analysis. Each condition runs once and reports one value per independent
+  unit (donor, sample); conditions are compared across units, paired by unit id when the same units
+  appear in both (`results.aggregate_units`). Batch confounding becomes `results.issues`.
+- `plan_checks`: `"module:function"` checks run on every plan (e.g. pseudoreplication).
+- `resource_sources` and `literature_sources`: the only data sources its plans may use, and the
+  literature indexes it searches (e.g. GEO and CELLxGENE; PubMed and Europe PMC).
+- `review_checks`: questions the Reviewer asks of every study in the field.
+
+Built in: `generic` (simulations), `ml_dl` (PyTorch), `omics` and `tabular` (data analyses). How well
+each works is measured by the validity harness (`rtool validity`, [stage0_design.md](stage0_design.md)).
 
 ## A run on disk
 

@@ -19,6 +19,7 @@ from ...core.config import LocalDataset
 from ...schemas.plan import ResourceChoice
 from ..http import HttpError, PoliteHttp
 from .fetch import tree_size
+from .omics import cellxgene_latest, geo_files, h5ad_asset
 
 HF_API = "https://huggingface.co/api"
 PYPI_API = "https://pypi.org/pypi"
@@ -81,6 +82,19 @@ class HubChecker:
         if resource.source == "local":
             return local_check(resource, self.local)
         try:
+            if resource.source == "geo":
+                files = geo_files(self.http, resource.identifier)
+                return ResourceCheck(bool(files), note=f"GEO series with {len(files)} supplementary and matrix files")
+            if resource.source == "cellxgene":
+                version = cellxgene_latest(self.http, resource.identifier)
+                asset = h5ad_asset(version)
+                size = asset.get("filesize") if asset else None
+                return ResourceCheck(
+                    asset is not None,
+                    size_gb=round(size / 1e9, 3) if isinstance(size, int | float) else None,
+                    note=f"{version.get('title') or 'untitled'}: {version.get('cell_count') or '?'} cells"
+                    + ("" if asset else "; no H5AD file"),
+                )
             if resource.source == "huggingface":
                 kind = "models" if resource.kind == "model" else "datasets"
                 info = self.http.get_json(

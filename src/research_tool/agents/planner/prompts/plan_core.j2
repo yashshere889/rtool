@@ -51,7 +51,12 @@ Requirements:
 - Use short snake_case names for conditions and metrics.
 - Mark exactly one metric as the primary outcome (primary = true): the one whose comparison with the baseline decides the hypothesis. It is fixed before the experiment runs; every other metric is reported as exploratory.
 - For every metric say which way is better: higher_is_better is false when smaller values are better (errors, losses, collisions, latency, cost), and the definition must match the name (a count of messages is not an "efficiency").
+{% if units %}
+- This is an analysis of existing data: each condition is a group of independent units (donors, patients, samples), and rtool compares the conditions unit by unit. Name the unit of analysis (unit_of_analysis). Measurements repeated within one unit (cells, reads, spots, visits) are not independent: aggregate them to one value per unit (for single-cell data, a pseudobulk per donor) before comparing. n_seeds is ignored: one analysis runs per condition.
+- Statistics: rtool compares every condition with the baseline across units, so name one of the tests it runs: "Welch t-test" or "Mann-Whitney U" for independent groups, "paired t-test" or "Wilcoxon signed-rank" when the same units appear in both conditions. With several comparisons it corrects the p-values with Holm's method (or Bonferroni, if you name it), within the primary outcome's comparisons and within the exploratory ones.
+{% else %}
 - Use at least {{ min_seeds }} seeds (independent runs) per condition.
 - Statistics: rtool compares every condition with the baseline, so name one of the tests it runs: "paired t-test" (the same seeds in every condition), "Welch t-test", "Wilcoxon signed-rank" or "Mann-Whitney U". With several comparisons it corrects the p-values with Holm's method (or Bonferroni, if you name it), within the primary outcome's comparisons and within the exploratory ones.
+{% endif %}
 - Write the procedure as concrete steps a programmer can implement: loading data, preprocessing, training or analysis, evaluation, saving results.
 - Keep it achievable with the compute above within a few days.

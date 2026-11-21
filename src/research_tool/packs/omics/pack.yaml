@@ -1,0 +1,25 @@
+name: omics
+description: >-
+  Analysis of existing molecular and cellular data (bulk and single-cell transcriptomics and similar), with
+  conditions compared across donors or samples.
+replicates: units
+smoke: >-
+  When smoke is True, analyse at most SMOKE_UNITS units per condition and at most 200 genes, through the
+  same code path, so the run takes seconds on a CPU.
+packages: [numpy]
+resource_sources: [geo, cellxgene, url, local, pip]
+literature_sources: [pubmed, europe_pmc, openalex, semantic_scholar]
+plan_checks:
+  - research_tool.packs.units:pseudoreplication_issues
+review_checks:
+  - Are cells, reads or spots treated as independent samples anywhere? Conclusions must rest on donors or samples (for example a pseudobulk per donor).
+  - Is the condition confounded with batch, sex, age or sequencing run, and is that adjusted for or discussed?
+  - Are many genes or pathways tested in the exploratory analyses without a false discovery rate correction (Benjamini-Hochberg)?
+  - Are genes named by official symbols (HGNC for human, MGI for mouse), and are the expression units (counts, CPM, TPM, log-transformed) stated?
+hints:
+  - Load data only from the local paths in `resources` (h5ad with anndata or scanpy, count tables with the csv module or pandas); never download.
+  - pandas, scipy, anndata and scanpy are not in the image; list the ones you import on the `# requirements:` line.
+  - Single-cell data: sum raw counts to one pseudobulk profile per donor (and cell type, if the plan compares cell types) before comparing conditions; never treat cells as independent.
+  - Normalise counts before comparing (counts per million, or DESeq2 size factors) and say which transform you use (for example log2 of CPM + 1).
+  - Use official gene symbols; if a gene the plan names is missing from the data, raise an error naming it instead of skipping it.
+  - Return one entry per donor or sample in "units", with its "batch" when the data record one.

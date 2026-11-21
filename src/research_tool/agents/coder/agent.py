@@ -48,6 +48,7 @@ from .results import (
     aggregate,
     analysis_notes,
     collect,
+    confounding_issues,
     correction_used,
     output_name,
     planned_runs,
@@ -460,6 +461,7 @@ class CoderSession:
             },
             "seeds": self.plan.seeds,
             "resources": self.resources,
+            "replicates": self.plan.replicates,
         }
         atomic_write_json(self.code / "config.json", config)
 
@@ -595,7 +597,9 @@ class CoderSession:
         smoke_dir = self.ctx.workspace.mkdir("smoke")
         results: list[SmokeResult] = []
         failure = None
-        for condition, s in [*((c, seed) for c in conditions), (baseline, second)]:
+        # a data analysis does not depend on the seed, so a second seed would only show the same numbers again
+        again = [] if self.plan.replicates == "units" else [(baseline, second)]
+        for condition, s in [*((c, seed) for c in conditions), *again]:
             name = condition if s == seed else f"{condition}__{s}"
             out = smoke_dir / f"{name}.json"
             out.unlink(missing_ok=True)
@@ -978,6 +982,9 @@ class CoderSession:
         notes += variation_notes(self.plan, records, comparisons)
         warnings = self.warnings() + sanity.results_warnings(self.plan, records)
         notes += [f"Warning: {w}" for w in warnings]
+        # design problems the data show; the Writer and Reviewer read them in the notes
+        issues = confounding_issues(self.plan, records)
+        notes += [f"Design problem: {i}" for i in issues]
         payload = results_payload(records, notes)
         problems = validate(payload, self.plan.results_schema)
         if problems:
@@ -1017,6 +1024,7 @@ class CoderSession:
                 code_fingerprint=bundle.fingerprint,
                 notes=notes,
                 warnings=warnings,
+                issues=issues,
                 correction=correction_used(self.plan, comparisons),
             ),
             meta={"review": ctx.relative(tables)},

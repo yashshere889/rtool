@@ -14,9 +14,16 @@ Null hypothesis: {{ plan.null_hypothesis }}
 ## Conditions — run() receives one of these names
 {% for c in conditions %}- `{{ c.name }}`{% if c.is_baseline %} (baseline){% endif %}: {{ c.description }}
 {% endfor %}
+{% if plan.replicates == "units" %}
+## What run() returns — one entry per {{ plan.unit or "unit" }}
+This is an analysis of existing data: run() analyses one condition, a group of independent units ({{ plan.unit or "units" }}), and returns `{"units": [{"unit": <id>, <metric>: <float>, ..., "batch": <label>}, ...]}` with one entry per {{ plan.unit or "unit" }} (at least two). "batch" is optional: give it if the data record batches (sequencing run, site, plate). rtool compares the conditions across these entries, so aggregate repeated measurements within a unit (cells, reads, spots, visits) to one value per unit first (for single-cell data, a pseudobulk per donor); never return one entry per cell. The metrics of every entry:
+{% for m in plan.metrics %}- `{{ m.name }}` ({{ "higher" if m.higher_is_better else "lower" }} is better): {{ m.definition }}
+{% endfor %}
+{% else %}
 ## Metrics — run() returns a dict with exactly these keys, as floats
 {% for m in plan.metrics %}- `{{ m.name }}` ({{ "higher" if m.higher_is_better else "lower" }} is better): {{ m.definition }}
 {% endfor %}
+{% endif %}
 ## Procedure
 {% for step in plan.procedure %}{{ loop.index }}. {{ step }}
 {% endfor %}
@@ -36,7 +43,11 @@ Null hypothesis: {{ plan.null_hypothesis }}
 {% for hint in pack.hints %}- {{ hint }}
 {% endfor %}
 ## Contract (checked automatically)
+{% if plan.replicates == "units" %}
+- Keep the signature exactly: `def run(condition: str, seed: int, resources: dict[str, str], smoke: bool, workdir: str) -> dict` returning `{"units": [...]}` as above; use `seed` only where the analysis itself is random.
+{% else %}
 - Keep the signature exactly: `def run(condition: str, seed: int, resources: dict[str, str], smoke: bool, workdir: str) -> dict[str, float]`.
+{% endif %}
 - {{ pack.smoke }}
 - Write files only under `workdir`. Print a few short progress lines, nothing large.
 - Measure every metric by really carrying out the procedure inside run() (training, simulation, evaluation). Never hard-code metric values, never compute them from the condition name alone, and never write mock, placeholder or "hypothetical" results: the results must be able to come out against the hypothesis.

@@ -39,7 +39,14 @@ Problems with the previous list that you must fix:
 {% endif %}
 
 Rules:
+{% if source_rules %}
+- Use only these sources:
+{% for rule in source_rules %}
+  - {{ rule }}
+{% endfor %}
+{% else %}
 - Prefer public resources on the Hugging Face Hub: source "huggingface" with the exact repository id (for example "imdb" or "google-bert/bert-base-uncased").
 - Use source "url" only for a direct download link, "torchvision" for torchvision datasets, "pip" for software packages, "local" only for a dataset the researcher provided (listed above), and "manual" only if nothing public exists.
+{% endif %}
 - Only give identifiers you are confident exist; prefer well-known resources.
 - Do not list the experiment's own code (pipelines, scripts, analysis): rtool writes it. List code only if it already exists, e.g. a pip package.

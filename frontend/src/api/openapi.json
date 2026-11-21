@@ -1422,6 +1422,15 @@
       "title": "Procedure",
       "type": "array"
      },
+     "replicates": {
+      "default": "seeds",
+      "enum": [
+       "seeds",
+       "units"
+      ],
+      "title": "Replicates",
+      "type": "string"
+     },
      "resources": {
       "items": {
        "$ref": "#/components/schemas/ResourceSpec"
@@ -1454,6 +1463,11 @@
       },
       "title": "Statistical Tests",
       "type": "array"
+     },
+     "unit": {
+      "default": "",
+      "title": "Unit",
+      "type": "string"
      }
     },
     "required": [
@@ -1473,11 +1487,13 @@
      "null_hypothesis",
      "objective",
      "procedure",
+     "replicates",
      "resources",
      "results_schema",
      "risks",
      "seeds",
-     "statistical_tests"
+     "statistical_tests",
+     "unit"
     ],
     "title": "ExperimentPlan",
     "type": "object"
@@ -1516,6 +1532,13 @@
       "default": 0.0,
       "title": "Gpu Hours Requested",
       "type": "number"
+     },
+     "issues": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Issues",
+      "type": "array"
      },
      "jobs": {
       "items": {
@@ -1569,6 +1592,7 @@
      "correction",
      "figures",
      "gpu_hours_requested",
+     "issues",
      "jobs",
      "notes",
      "results_path",
@@ -3741,7 +3765,7 @@
    "ResourceSpec": {
     "properties": {
      "identifier": {
-      "description": "Hugging Face repo id, URL, torchvision name, pip package, or the name of a local dataset",
+      "description": "Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE dataset id, or the name of a local dataset",
       "title": "Identifier",
       "type": "string"
      },
@@ -3791,6 +3815,8 @@
        "torchvision",
        "pip",
        "local",
+       "geo",
+       "cellxgene",
        "manual"
       ],
       "title": "Source",
@@ -4275,6 +4301,11 @@
    },
    "RunRecord": {
     "properties": {
+     "batch": {
+      "default": "",
+      "title": "Batch",
+      "type": "string"
+     },
      "condition": {
       "title": "Condition",
       "type": "string"
@@ -4319,16 +4350,23 @@
       ],
       "title": "Status",
       "type": "string"
+     },
+     "unit": {
+      "default": "",
+      "title": "Unit",
+      "type": "string"
      }
     },
     "required": [
+     "batch",
      "condition",
      "error",
      "job_id",
      "metrics",
      "seconds",
      "seed",
-     "status"
+     "status",
+     "unit"
     ],
     "title": "RunRecord",
     "type": "object"

@@ -1,0 +1,20 @@
+name: tabular
+description: >-
+  Statistical analysis of existing tabular data (surveys, registries, economic or experimental tables), with
+  conditions compared across independent units such as people, firms or countries.
+replicates: units
+smoke: >-
+  When smoke is True, use at most SMOKE_UNITS units per condition through the same code path, so the run
+  takes seconds on a CPU.
+packages: [numpy]
+resource_sources: [local, url, huggingface, pip]
+plan_checks:
+  - research_tool.packs.units:pseudoreplication_issues
+review_checks:
+  - Could a confounder (selection, age, time, place) explain the difference between the groups, and is it adjusted for or discussed?
+  - Are repeated rows of one unit (visits, waves, measurements) treated as independent anywhere?
+  - Is missing data handled and reported (how many rows were dropped, and why)?
+hints:
+  - Read the data only from the local paths in `resources`; never download. pandas and scipy are not in the image; list them on the `# requirements:` line if you use them.
+  - Each condition is a group of independent units (people, firms, countries): return one entry per unit, after aggregating its repeated rows.
+  - Print how many rows you dropped for missing values, and why.

@@ -26,6 +26,7 @@ from typing import Any
 
 from ...schemas.plan import FetchedResource, ResourceSpec
 from ..http import HttpError, PoliteHttp
+from .omics import cellxgene_latest, geo_files, h5ad_asset
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 Snapshot = Callable[..., str]
@@ -120,6 +121,10 @@ class Fetcher:
                 **base, status="manual", path=str(target), note=f"place the files for '{resource.name}' in {target}"
             )
         try:
+            if resource.source == "geo":
+                return self._geo(resource, base)
+            if resource.source == "cellxgene":
+                return self._cellxgene(resource, base)
             if resource.source == "huggingface":
                 return self._huggingface(resource, base)
             if resource.source == "torchvision":
@@ -127,6 +132,38 @@ class Fetcher:
             return self._url(resource, base)
         except (HttpError, OSError, RuntimeError, ValueError) as exc:
             return FetchedResource(**base, status="failed", note=str(exc)[:300])
+
+    def _geo(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
+        if self.http is None:
+            return FetchedResource(**base, status="failed", note="no HTTP client configured")
+        urls = geo_files(self.http, resource.identifier)
+        if not urls:
+            return FetchedResource(**base, status="failed", note="the GEO series has no supplementary or matrix files")
+        target = self.root / "geo" / resource.identifier.strip().upper()
+        for url in urls:  # suppl/ and matrix/ keep their names; a file already there is not fetched again
+            sub, name = url.rstrip("/").rsplit("/", 2)[-2:]
+            dest = target / sub / name
+            if not dest.exists():
+                self.http.download(url, dest, max_bytes=self.max_url_bytes, accept=())
+        size, files = tree_size(target)
+        return FetchedResource(
+            **base, status="ready", path=str(target), bytes=size, files=files, note=f"{files} GEO files"
+        )
+
+    def _cellxgene(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
+        if self.http is None:
+            return FetchedResource(**base, status="failed", note="no HTTP client configured")
+        version = cellxgene_latest(self.http, resource.identifier)
+        asset = h5ad_asset(version)
+        if asset is None:
+            return FetchedResource(**base, status="failed", note="the CELLxGENE dataset has no H5AD file")
+        dataset = resource.identifier.strip().lower()
+        dest = self.root / "cellxgene" / dataset / f"{dataset}.h5ad"
+        if not dest.exists():
+            self.http.download(asset["url"], dest, max_bytes=self.max_url_bytes, accept=())
+        size, files = tree_size(dest.parent)
+        note = f"{version.get('title') or 'CELLxGENE dataset'}, version {version.get('dataset_version_id', '?')}"
+        return FetchedResource(**base, status="ready", path=str(dest.parent), bytes=size, files=files, note=note)
 
     def _provided(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
         found = self.provided.get(resource.identifier)

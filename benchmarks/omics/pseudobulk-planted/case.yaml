@@ -1,0 +1,33 @@
+# IFI27 is planted 2-fold higher in disease donors; donors vary, so only a donor-level test is valid.
+id: pseudobulk-planted
+kind: planted
+pack: omics
+confirmed_by: "reference.py on the Mac (2026-11-21): fold 2 with 6+6 donors, log2 difference 1.106, permutation p 0.015; fold 1.5 with 10+10 donors, 0.630, p 0.013"
+brief:
+  topic: Is IFI27 expressed more highly in disease donors than in control donors?
+  constraints:
+    - CPU only. Use the provided cells data (cells.csv, one row per cell with its donor, condition and batch, then one count column per gene; donors.csv lists the donors); download nothing.
+    - Sum the counts of each donor's cells into one pseudobulk profile, normalise it to counts per million, and use log2(CPM + 1) of IFI27 as that donor's value.
+  datasets: [cells]
+  conditions:
+    - {name: control, baseline: true, description: "the control donors (condition control in cells.csv)"}
+    - {name: disease, description: "the disease donors (condition disease in cells.csv)"}
+  primary_metric: {name: ifi27_log_cpm, higher_is_better: true}
+hypothesis:
+  statement: IFI27 has a higher pseudobulk expression in disease donors than in control donors.
+  null_hypothesis: IFI27 pseudobulk expression does not differ between disease and control donors.
+  success_criteria: disease has a higher mean ifi27_log_cpm than control across donors, with p < 0.05 in a Welch t-test.
+  independent_variables: [condition]
+  dependent_variables: [ifi27_log_cpm]
+data:
+  - name: cells
+    generator: generate.py
+    args: {donors: 6, cells: 100, genes: 40, fold: 2.0, donor_sd: 0.3, seed: 1}
+    description: "Single-cell counts of control and disease donors, 100 cells each: cells.csv and donors.csv"
+expect:
+  significant: true
+  direction: better
+  difference: {low: 0.6, high: 1.6}
+variants:
+  - {name: fold_2}
+  - {name: fold_1_5, data_args: {donors: 10, fold: 1.5}, expect: {difference: {low: 0.25, high: 1.0}}}

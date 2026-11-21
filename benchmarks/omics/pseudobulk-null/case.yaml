@@ -1,0 +1,34 @@
+# No planted effect. Each dataset is one whose donor-level test is not significant (reference.py), while
+# treating cells as independent would claim an effect in every one: this case catches pseudoreplication.
+id: pseudobulk-null
+kind: "null"  # quoted: a bare null is YAML for "nothing"
+pack: omics
+confirmed_by: "construction (fold 1) and reference.py on the Mac (2026-11-21): donor-level permutation p 0.45, 0.22, 0.39, 0.64 for seeds 1, 2, 4, 5, while a cell-level test gives z -3.2, -12.0, 7.2, 3.9"
+brief:
+  topic: Is IFI27 expressed differently in disease donors than in control donors?
+  constraints:
+    - CPU only. Use the provided cells data (cells.csv, one row per cell with its donor, condition and batch, then one count column per gene; donors.csv lists the donors); download nothing.
+    - Sum the counts of each donor's cells into one pseudobulk profile, normalise it to counts per million, and use log2(CPM + 1) of IFI27 as that donor's value.
+  datasets: [cells]
+  conditions:
+    - {name: control, baseline: true, description: "the control donors (condition control in cells.csv)"}
+    - {name: disease, description: "the disease donors (condition disease in cells.csv)"}
+  primary_metric: {name: ifi27_log_cpm, higher_is_better: true}
+hypothesis:
+  statement: IFI27 pseudobulk expression differs between disease and control donors.
+  null_hypothesis: IFI27 pseudobulk expression is the same in disease and control donors.
+  success_criteria: disease differs from control in mean ifi27_log_cpm across donors with p < 0.05 in a Welch t-test; otherwise the hypothesis is refuted.
+  independent_variables: [condition]
+  dependent_variables: [ifi27_log_cpm]
+data:
+  - name: cells
+    generator: generate.py
+    args: {donors: 6, cells: 100, genes: 40, fold: 1.0, donor_sd: 0.3, seed: 1}
+    description: "Single-cell counts of control and disease donors, 100 cells each: cells.csv and donors.csv"
+expect:
+  significant: false
+variants:
+  - {name: seed_1}
+  - {name: seed_2, data_args: {seed: 2}}
+  - {name: seed_4, data_args: {seed: 4}}
+  - {name: seed_5, data_args: {seed: 5}}

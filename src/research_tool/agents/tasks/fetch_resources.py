@@ -130,7 +130,7 @@ class FetchResources(Task):
             if factory
             else Fetcher(
                 root,
-                http=PoliteHttp(),
+                http=PoliteHttp(limits={"ftp.ncbi.nlm.nih.gov": 0.34}),
                 hf_token=os.environ.get("HF_TOKEN"),
                 torchvision=torchvision_downloader(ctx.app_config.experiments, root, ctx.workspace.path("logs")),
                 local=local_models(ctx.app_config.llm.server.hf_home),

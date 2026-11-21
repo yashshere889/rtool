@@ -59,6 +59,8 @@ class RunRecord(BaseModel):
     seconds: float | None = None
     job_id: str = ""
     error: str = ""
+    unit: str = ""  # units mode: the independent unit (donor, sample) this record is about
+    batch: str = ""  # units mode: the unit's batch, if the data have batches
 
 
 class MetricSummary(BaseModel):
@@ -130,6 +132,9 @@ class ExperimentResults(BaseModel):
     correction: str = ""  # "holm" or "bonferroni" if the comparisons' p-values were corrected
     # signs that nothing real was measured (e.g. every seed gave the same value): for people to check
     warnings: list[str] = Field(default_factory=list)
+    # problems the data show in the design, e.g. a condition confounded with batch: its comparisons cannot
+    # separate the two, whatever their p-values
+    issues: list[str] = Field(default_factory=list)
 
     def summary(self, condition: str, metric: str) -> MetricSummary | None:
         return next((s for s in self.summaries if s.condition == condition and s.metric == metric), None)

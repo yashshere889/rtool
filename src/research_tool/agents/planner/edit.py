@@ -115,7 +115,9 @@ def edit_plan(value: dict[str, Any], ctx: EditContext) -> EditResult:
             )
 
     plan.compute = _compute(plan, previous, ctx)
-    plan.results_schema = results_schema(plan.run_conditions(), plan.metrics, plan.seeds)
+    plan.results_schema = results_schema(
+        plan.run_conditions(), plan.metrics, plan.seeds, units=plan.replicates == "units"
+    )
     cfg = ctx.config if isinstance(ctx.config, PlannerConfig) else PlannerConfig()
     plan.issues = plan_issues(plan, ctx.app_config, cfg.min_seeds, cfg.max_dataset_gb, _brief(ctx))
     files = {}

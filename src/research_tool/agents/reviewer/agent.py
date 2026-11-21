@@ -42,6 +42,7 @@ from ...core.registry import register_agent
 from ...core.state import FeedbackKind
 from ...llm.client import LLMOutputError
 from ...llm.prompts import PromptLibrary
+from ...packs import load_pack
 from ...schemas.code import CodeBundle, ExperimentResults
 from ...schemas.common import ResearchBrief
 from ...schemas.literature import Corpus, KnowledgeMap
@@ -222,6 +223,7 @@ class Reviewing:
         self.keys = set(bib_keys(self.corpus))
         self.paper_key = {p.id: p.bib_key for p in self.corpus.papers if p.bib_key}
         self.prompts = PromptLibrary.for_agent(__package__, "reviewer", pack=brief.domain_pack)
+        self.field_questions = load_pack(brief.domain_pack).review_checks  # what the field asks of every study
         self.provenance: dict[str, str] = {}
         self.audit_omitted = 0  # lines of experiment.py the code audit did not see
 
@@ -344,7 +346,11 @@ class Reviewing:
         repro = [
             ("code README", readme is not None and readme.exists()),
             ("results.json", results_file.exists()),
-            ("at least two seeds", len(self.plan.seeds) >= 2),
+            (
+                ("at least two units per condition", min((s.n for s in self.results.summaries), default=0) >= 2)
+                if self.plan.replicates == "units"
+                else ("at least two seeds", len(self.plan.seeds) >= 2)
+            ),
         ]
         absent = [name for name, present in repro if not present]
         found.append(Check(name="reproducible", ok=not absent, detail=f"missing: {absent}" if absent else ""))
@@ -454,6 +460,7 @@ class Reviewing:
             facts=self.facts(),
             section_ids=[s.id for s in self.report.sections],
             report=render("\n\n".join(f"### {s.id}\n{s.template}" for s in self.report.sections), self.values),
+            field_questions=self.field_questions,
         )
         replies = self.ctx.llm.parallel(
             lambda _i: self.ctx.llm.structured(ReviewDraft, prompt, profile="judge", system=SYSTEM),

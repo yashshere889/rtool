@@ -114,3 +114,88 @@ Files: `cli/main.py` (validity commands), `validity/{card,provenance,cases,runs,
 This needs your OK for the LLM episodes' GPU time, the Qwen container and weights on Barkla, and a
 clean deploy. The exact steps are in [barkla_runbook.md](barkla_runbook.md#validity-baseline-stage-0-pr-4).
 Nothing was run on Barkla.
+
+---
+
+## Stage 1 — analyse existing data (local gate passed 2026-11-21)
+
+Built:
+- **Units mode** (`replicates: units` in a pack):
+  - A data analysis runs once per condition. Its `run()` returns `{"units": [{"unit", <metric>,
+    "batch"?}, ...]}`, one entry per donor or sample. The harness checks the shape and stores the
+    per-unit values and their means.
+  - `collect` expands the entries into per-unit records. `results.aggregate_units` compares conditions
+    across units: unpaired (Welch, Mann–Whitney), or paired by unit id when the same units appear in both.
+  - `confounding_issues` reports a condition that shares no batch with the baseline, as `results.issues`
+    and a results note.
+  - The planner asks for `PlanCoreUnits` (with `unit_of_analysis`), sets one seed, skips the seed checks,
+    and uses a units-mode prompt.
+  - The Coder gets the units contract. Writer, Reviewer, report placeholders and tables say "donors",
+    not "seeds".
+- **Packs:**
+  - `omics`: pseudobulk hints, GEO, CELLxGENE, url, local and pip sources, PubMed and Europe PMC first,
+    and four review questions.
+  - `tabular`: surveys, registries and other tables.
+  - Both use `packs/units.py:pseudoreplication_issues`, which flags a unit of analysis that repeats within
+    a donor or sample (cells, reads, visits...).
+- **Pack hooks:** `literature_sources` (validated against the Literature agent's sources) and
+  `review_checks` (the questions go into the review prompt).
+- **Sources:** `PubMedSource` (E-utilities: ESearch JSON, then EFetch XML) and `EuropePMCSource` (REST
+  search, `resultType=core`), plus GEO (series folders on NCBI's HTTPS FTP) and CELLxGENE (newest
+  dataset version, its H5AD asset) as `geo` and `cellxgene` resource sources. The planner gets
+  per-source rules for packs that limit their sources.
+- **Validity:**
+  - Units packs need no seeds.
+  - The scorer counts units in L1 and L2, and adds the L2 check "the data show no design problem".
+  - Two omics cases, `pseudobulk-planted` (fold 2 and fold 1.5) and `pseudobulk-null` (4 seeds). Both use
+    synthetic single-cell counts in which donors vary.
+
+References (standard library, Mac, 2026-11-21): donor-level permutation tests:
+- Planted fold 2 (6+6 donors): log2 difference 1.106, p 0.015.
+- Planted fold 1.5 (10+10 donors): 0.630, p 0.013.
+- Null seeds 1, 2, 4 and 5: p 0.45, 0.22, 0.39 and 0.64.
+
+Seeds 3 and 6 were left out: their donor-level tests are significant by chance (p 0.022, 0.011), so they
+would fault a correct tool. Treating cells as independent gives z = −3.2, −12.0, 7.2 and 3.9 on the
+nulls, so a run that pseudoreplicates makes false claims.
+
+Checked against the services' own documentation, read in the browser:
+- Europe PMC search: endpoint, `resultType`, `pageSize` ≤ 1000, `cursorMark`, and the
+  `resultList.result[]` fields used.
+- NCBI E-utilities: ESearch and EFetch base URLs, `retmax` ≤ 10,000, `retmode=json` for ESearch, XML for
+  PubMed EFetch, `tool`/`email`/`api_key`, and 3 requests per second without a key.
+- GEO README: the `nnn` bucket rule and the `suppl/` and `matrix/` folders.
+- CELLxGENE OpenAPI spec: `/v1/datasets/{id}/versions`, and `assets` with `filetype`, `url` and `filesize`.
+
+From memory, not checked: the ESearch JSON keys (`esearchresult.idlist`), the PubMed XML element
+names (they follow PubMed's DTD), Europe PMC's `PUB_YEAR:[a TO b]` syntax, and the HTML of NCBI's
+folder listings. The live probes in `tests/barkla/test_live_sources.py` check all of these.
+
+Proved by:
+- `tests/integration/test_units_pipeline.py`: the shipped `pseudobulk-planted` case through the real
+  engine with the demo model. Its plan is a donor-level analysis with no issues, and its results are 12
+  donor records. The Welch test gives the reference's difference, 1.106 (p 0.0105). The report's methods
+  describe donors, and the run scores L3.
+- `tests/unit/test_units_analysis.py`: harness contract, collection, paired and unpaired, confounding,
+  pseudoreplication.
+- `tests/unit/test_bio_sources.py`: the four clients on fixtures in the documented formats.
+- Full suite exit 0, web tests exit 0, ruff clean. API types regenerated and the bundle rebuilt (only
+  its stamp changed).
+
+Waits for Barkla, or for you:
+- `pytest -m barkla` (the live probes).
+- Real runs of both omics cases.
+- The roadmap's three published reanalyses, which need a domain expert to choose datasets and known findings.
+- A real Coder writing a units-mode analysis (the demo model's analysis was written by hand).
+
+Not done: the web UI shows unit records like seed runs (seed 0 for every unit); it needs no change to
+work, but a units-aware results table would read better.
+
+Files: `schemas/{plan,code}.py`, `packs/__init__.py`, `packs/units.py`, `packs/omics/**`, `packs/tabular/**`,
+`agents/coder/{agent,results,sanity}.py`, `agents/coder/harness/run.py`, `agents/coder/prompts/implement.j2`,
+`agents/planner/{agent,checks,edit}.py`, `agents/planner/prompts/{plan_core,resources}.j2`,
+`agents/writer/agent.py`, `agents/reviewer/agent.py`, `agents/reviewer/prompts/review.j2`,
+`agents/literature/{agent,toolkit}.py`, `tools/scholarly/sources.py`, `tools/resources/{omics,checks,fetch}.py`,
+`agents/tasks/fetch_resources.py`, `tools/report/render.py`, `validity/{cases,score}.py`, `benchmarks/omics/**`,
+`docs/architecture.md`, `frontend/src/api/*`, `web/static/build-stamp.json`, `tests/unit/test_units_analysis.py`,
+`tests/unit/test_bio_sources.py`, `tests/integration/test_units_pipeline.py`, `tests/barkla/test_live_sources.py`.

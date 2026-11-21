@@ -39,7 +39,20 @@ def read_output(path: Path, metrics: list[str]) -> tuple[dict[str, Any] | None, 
     missing = [m for m in metrics if m not in values or not math.isfinite(values[m])]
     if missing:
         return None, f"missing or non-finite metrics {missing}"
-    return {"metrics": values, "seconds": data.get("seconds"), "job_id": str(data.get("job_id") or "")}, ""
+    found = {"metrics": values, "seconds": data.get("seconds"), "job_id": str(data.get("job_id") or "")}
+    if "units" in data:  # a data analysis: one value per independent unit (see harness/run.py)
+        try:
+            found["units"] = [
+                {
+                    "unit": str(u["unit"]),
+                    "batch": str(u.get("batch") or ""),
+                    "metrics": {m: float(u["metrics"][m]) for m in metrics},
+                }
+                for u in data["units"]
+            ]
+        except (KeyError, TypeError, ValueError) as exc:
+            return None, f"unreadable units: {exc}"
+    return found, ""
 
 
 def collect(
@@ -56,8 +69,26 @@ def collect(
         key = output_name(condition, seed)
         data, problem = read_output(runs_dir / key, names)
         job = (job_of or {}).get(key, "")
+        if data is not None and plan.replicates == "units" and not data.get("units"):
+            data, problem = None, "no per-unit results (a data analysis returns {'units': [...]})"
         if data is not None:  # the job the run file names beats the one rtool submitted
             data["job_id"] = data["job_id"] or job
+            units = data.pop("units", None)
+            if plan.replicates == "units" and units:
+                records += [
+                    RunRecord(
+                        condition=condition,
+                        seed=seed,
+                        status="ok",
+                        unit=u["unit"],
+                        batch=u["batch"],
+                        metrics=u["metrics"],
+                        seconds=data["seconds"],
+                        job_id=data["job_id"],
+                    )
+                    for u in units
+                ]
+                continue
             records.append(RunRecord(condition=condition, seed=seed, status="ok", **data))
             continue
         status = "missing" if problem == "no output file" and not job else "failed"
@@ -188,6 +219,8 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
     all others exploratory. The correction is applied within each of the two analyses, so exploratory
     metrics never dilute the primary test, and exploratory results are still corrected among themselves.
     """
+    if plan.replicates == "units":
+        return aggregate_units(plan, records)
     ok = [r for r in records if r.status == "ok"]
     conditions = [c.name for c in plan.run_conditions()]
     summaries: list[MetricSummary] = []
@@ -263,9 +296,114 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
     return summaries, comparisons
 
 
+def aggregate_units(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[MetricSummary], list[Comparison]]:
+    """A data analysis: each condition is a group of independent units (donors, samples), compared unit by unit.
+
+    The same units under both conditions (each donor measured twice) are paired by their id; otherwise the
+    groups are independent and the test is unpaired. Seeds play no part. Kept apart from ``aggregate``,
+    whose seed pairing is a separate question.
+    """
+    ok = [r for r in records if r.status == "ok" and r.unit]
+    conditions = [c.name for c in plan.run_conditions()]
+    summaries: list[MetricSummary] = []
+    for metric in plan.metrics:
+        for condition in conditions:
+            values = [r.metrics[metric.name] for r in ok if r.condition == condition]
+            if values:
+                low, high = stats.mean_ci(values)
+                summaries.append(
+                    MetricSummary(
+                        condition=condition,
+                        metric=metric.name,
+                        n=len(values),
+                        mean=stats.mean(values),
+                        std=stats.stdev(values),
+                        ci_low=low,
+                        ci_high=high,
+                    )
+                )
+    baseline = next((c.name for c in plan.conditions if c.is_baseline), plan.conditions[0].name)
+    family, correction = _test_family(plan)
+    primary = plan.primary_metric().name
+    comparisons: list[Comparison] = []
+    for metric in plan.metrics:
+        base = {r.unit: r.metrics[metric.name] for r in ok if r.condition == baseline}
+        for condition in conditions:
+            other = {r.unit: r.metrics[metric.name] for r in ok if r.condition == condition}
+            if condition == baseline or not other or not base:
+                continue
+            paired = len(base) >= 2 and set(base) == set(other)
+            units = sorted(base) if paired else []
+            a = [other[u] for u in units] if paired else list(other.values())
+            b = [base[u] for u in units] if paired else list(base.values())
+            if family == "wilcoxon" and paired:
+                result = stats.wilcoxon_signed_rank(a, b)
+            elif family in ("wilcoxon", "mann-whitney"):
+                result = stats.mann_whitney(a, b)
+            else:
+                result = stats.paired_t(a, b) if paired else stats.welch_t(a, b)
+            comparisons.append(
+                Comparison(
+                    metric=metric.name,
+                    condition=condition,
+                    baseline=baseline,
+                    difference=result.difference,
+                    ci_low=result.ci_low,
+                    ci_high=result.ci_high,
+                    test=result.test,
+                    statistic=result.statistic,
+                    p_value=result.p_value,
+                    effect_size=result.effect_size,
+                    n=result.n,
+                    no_seed_variation=result.no_variation,
+                    constant_difference=result.constant_difference,
+                    analysis="confirmatory" if metric.name == primary else "exploratory",
+                )
+            )
+    _correct(plan, comparisons, correction)
+    return summaries, comparisons
+
+
+def _correct(plan: ExperimentPlan, comparisons: list[Comparison], correction: str) -> None:
+    """Holm or Bonferroni within the confirmatory and within the exploratory comparisons, then significance.
+
+    shortcut: the same steps as the end of ``aggregate``, kept separate while branch claude/charming-perlman-0ad53e
+    changes aggregate's pairing; let aggregate call this once the two are merged.
+    """
+    tested = sum(1 for c in comparisons if c.p_value is not None)
+    adjust = {"holm": stats.holm, "bonferroni": stats.bonferroni}[correction] if tested > 1 else None
+    direction = {m.name: m.higher_is_better for m in plan.metrics}
+    for analysis in ("confirmatory", "exploratory"):
+        members = [c for c in comparisons if c.analysis == analysis]
+        adjusted = adjust([c.p_value for c in members]) if adjust else [c.p_value for c in members]
+        for comparison, p in zip(members, adjusted, strict=True):
+            if adjust and p is not None:
+                comparison.p_adjusted, comparison.correction = p, correction  # type: ignore[assignment]
+            comparison.significant = p is not None and p < stats.ALPHA
+            if comparison.significant:
+                comparison.better = (comparison.difference > 0) == direction[comparison.metric]
+
+
+def confounding_issues(plan: ExperimentPlan, records: list[RunRecord]) -> list[str]:
+    """A condition whose units share no batch with the baseline's cannot be told apart from a batch effect."""
+    ok = [r for r in records if r.status == "ok" and r.batch]
+    if plan.replicates != "units" or not ok:
+        return []
+    baseline = next((c.name for c in plan.conditions if c.is_baseline), plan.conditions[0].name)
+    batches = {c.name: sorted({r.batch for r in ok if r.condition == c.name}) for c in plan.run_conditions()}
+    return [
+        f"`{condition}` and the baseline `{baseline}` share no batch ({', '.join(found)} against "
+        f"{', '.join(batches[baseline])}): any difference between them may be a batch effect, so their comparison "
+        "cannot support the hypothesis on its own"
+        for condition, found in batches.items()
+        if condition != baseline and found and batches[baseline] and not set(found) & set(batches[baseline])
+    ]
+
+
 def variation_notes(plan: ExperimentPlan, records: list[RunRecord], comparisons: list[Comparison]) -> list[str]:
     """Notes on results, or differences, that do not vary across seeds (they reach the Writer and the Reviewer)."""
     ok = [r for r in records if r.status == "ok"]
+    across = "units" if plan.replicates == "units" else "seeds"
     fixed = []
     for condition in (c.name for c in plan.run_conditions()):
         same = [m.name for m in plan.metrics if stats.flat([r.metrics[m.name] for r in ok if r.condition == condition])]
@@ -274,8 +412,8 @@ def variation_notes(plan: ExperimentPlan, records: list[RunRecord], comparisons:
     notes = []
     if fixed:
         notes.append(
-            f"no variation across seeds for {', '.join(fixed)}: the experiment may ignore the seed or return "
-            "fixed values"
+            f"no variation across {across} for {', '.join(fixed)}: the experiment may ignore the "
+            f"{'units' if across == 'units' else 'seed'} or return fixed values"
         )
     untested = [f"`{c.condition}` vs `{c.baseline}` on {c.metric}" for c in comparisons if c.no_seed_variation]
     if untested:
@@ -313,8 +451,12 @@ def render_tables(
     lines = [
         "# Experiment results",
         "",
-        f"{ok} of {len(records)} planned runs succeeded "
-        f"({len(plan.run_conditions())} conditions x {len(plan.seeds)} seeds).",
+        (
+            f"{ok} units have results across {len(plan.run_conditions())} conditions (unit: {plan.unit or 'unit'})."
+            if plan.replicates == "units"
+            else f"{ok} of {len(records)} planned runs succeeded "
+            f"({len(plan.run_conditions())} conditions x {len(plan.seeds)} seeds)."
+        ),
         "Means with 95 % confidence intervals (t distribution); comparisons are against the baseline "
         f"`{baseline}` (difference = condition minus baseline).",
         f"The primary outcome, fixed when the plan was approved, is `{primary.name}`: its comparisons are "

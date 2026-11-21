@@ -225,12 +225,13 @@ def metric_issues(metrics: list[Metric]) -> list[str]:
     return issues
 
 
-def design_issues(core: PlanCore, min_seeds: int) -> list[str]:
+def design_issues(core: PlanCore, min_seeds: int, *, units: bool = False) -> list[str]:
+    """Problems with a design. In a data analysis (``units``) the repetitions are units, not seeds."""
     return (
-        _design_issues(core.conditions, core.ablations, core.n_seeds, min_seeds)
+        _design_issues(core.conditions, core.ablations, core.n_seeds, 1 if units else min_seeds)
         + primary_issues(core.metrics)
         + metric_issues(core.metrics)
-        + rank_test_issues(core.statistical_tests, core.n_seeds)
+        + ([] if units else rank_test_issues(core.statistical_tests, core.n_seeds))
     )
 
 
@@ -274,8 +275,10 @@ def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float) -> lis
     return issues
 
 
-def results_schema(conditions: list[Condition], metrics: list[Metric], seeds: list[int]) -> dict[str, Any]:
-    """The JSON Schema the Coder's results.json must satisfy (one record per condition and seed)."""
+def results_schema(
+    conditions: list[Condition], metrics: list[Metric], seeds: list[int], *, units: bool = False
+) -> dict[str, Any]:
+    """The JSON Schema the Coder's results.json must satisfy (one record per condition and seed, or per unit)."""
     names = [m.name for m in metrics]
     return {
         "title": "ExperimentResults",
@@ -284,7 +287,7 @@ def results_schema(conditions: list[Condition], metrics: list[Metric], seeds: li
         "properties": {
             "runs": {
                 "type": "array",
-                "minItems": len(conditions) * len(seeds),
+                "minItems": len(conditions) * (2 if units else len(seeds)),  # units: at least two per condition
                 "items": {
                     "type": "object",
                     "required": ["condition", "seed", "metrics"],
@@ -316,12 +319,13 @@ def brief_issues(
     n_seeds: int | None = None,
     conditions: list[Condition] | None = None,
     metrics: list[Metric] | None = None,
+    units: bool = False,
 ) -> list[str]:
     """Where a plan breaks the brief's fixed limits; pass only the parts to check."""
     if brief is None:
         return []
     issues = []
-    if n_seeds is not None and brief.seeds and n_seeds != brief.seeds:
+    if n_seeds is not None and brief.seeds and n_seeds != brief.seeds and not units:
         issues.append(f"the researcher asked for exactly {brief.seeds} seeds per condition, not {n_seeds}")
     if conditions is not None:
         named = {c.name: c for c in conditions}
@@ -420,11 +424,12 @@ def plan_issues(
 ) -> list[str]:
     """Everything the planner would warn about, for a whole plan."""
     pack = load_pack(brief.domain_pack if brief else DEFAULT_PACK)
+    units = plan.replicates == "units"
     return (
-        _design_issues(plan.conditions, plan.ablations, len(plan.seeds), min_seeds)
+        _design_issues(plan.conditions, plan.ablations, len(plan.seeds), 1 if units else min_seeds)
         + primary_issues(plan.metrics)
         + metric_issues(plan.metrics)
-        + rank_test_issues(plan.statistical_tests, len(plan.seeds))
+        + ([] if units else rank_test_issues(plan.statistical_tests, len(plan.seeds)))
         + resource_issues(plan.resources, max_dataset_gb)
         + source_issues(plan.resources, pack)
         + compute_issues(plan.compute, config)
@@ -435,6 +440,7 @@ def plan_issues(
             n_seeds=len(plan.seeds),
             conditions=plan.conditions,
             metrics=plan.metrics,
+            units=units,
         )
         + pack_plan_issues(pack, plan, brief)
     )

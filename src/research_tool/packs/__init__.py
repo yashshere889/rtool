@@ -42,6 +42,9 @@ class Pack:
     template: str = ""  # Jinja source of experiment.py
     plan_checks: list[str] = field(default_factory=list)  # "module:function", each (plan, brief) -> issues
     resource_sources: list[str] = field(default_factory=list)  # the sources its plans may use; empty: any
+    replicates: str = "seeds"  # "units": its plans analyse data, compared across units (donors, samples)
+    review_checks: list[str] = field(default_factory=list)  # questions the Reviewer asks of every study
+    literature_sources: list[str] = field(default_factory=list)  # search sources for its topics; empty: config's
 
 
 def available_packs() -> list[str]:
@@ -64,7 +67,12 @@ def load_pack(name: str) -> Pack:
         template=template.read_text(encoding="utf-8") if template.is_file() else "",
         plan_checks=[str(c) for c in data.get("plan_checks", [])],
         resource_sources=[str(s) for s in data.get("resource_sources", [])],
+        replicates=str(data.get("replicates", "seeds")),
+        review_checks=[str(q) for q in data.get("review_checks", [])],
+        literature_sources=[str(s) for s in data.get("literature_sources", [])],
     )
+    if pack.replicates not in ("seeds", "units"):
+        raise ConfigError(f"pack {name!r}: replicates must be 'seeds' or 'units', not {pack.replicates!r}")
     for ref in pack.plan_checks:
         _plan_check(name, ref)  # a misspelt check fails when the pack is chosen, not after the plan is written
     return pack

@@ -1,4 +1,4 @@
-"""OpenAlex, Semantic Scholar, arXiv and Unpaywall clients.
+"""OpenAlex, Semantic Scholar, arXiv, PubMed, Europe PMC and Unpaywall clients.
 
 All of them go through ``PoliteHttp`` (rate limits, retries, response cache)
 and return ``PaperHit`` objects. Keys come from the environment (see
@@ -237,3 +237,131 @@ class UnpaywallResolver:
                 if location.get(key):
                     urls.append(location[key])
         return list(dict.fromkeys(urls))
+
+
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _plain(text: str | None) -> str:
+    """Abstract text without the inline HTML Europe PMC keeps (<i>, <sup>, ...)."""
+    return _clean(_TAG.sub(" ", text or ""))
+
+
+class PubMedSource:
+    """PubMed through NCBI's E-utilities: ESearch (JSON) for ids, then EFetch (PubMed XML) for the records.
+
+    Without an API key NCBI allows 3 requests per second (the host limit in the toolkit keeps to it).
+    """
+
+    name = "pubmed"
+    base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+    def __init__(self, http: PoliteHttp, api_key: str | None = None, email: str | None = None) -> None:
+        self.http = http
+        self.common = {"tool": "rtool", "api_key": api_key, "email": email}  # None values are dropped
+
+    def search(self, query: str, limit: int, *, year_from: int | None = None) -> list[PaperHit]:
+        term = f'({query}) AND ("{year_from}"[PDAT] : "3000"[PDAT])' if year_from else query
+        params = {"db": "pubmed", "term": term, "retmax": min(limit, 200), "retmode": "json", "sort": "relevance"}
+        found = self.http.get_json(f"{self.base}/esearch.fcgi", params={**params, **self.common})
+        ids = [str(i) for i in (found.get("esearchresult") or {}).get("idlist") or []]
+        if not ids:
+            return []
+        xml = self.http.get_text(
+            f"{self.base}/efetch.fcgi", params={"db": "pubmed", "id": ",".join(ids), "retmode": "xml", **self.common}
+        )
+        return self.parse(xml)
+
+    @staticmethod
+    def parse(xml: str) -> list[PaperHit]:
+        try:
+            root = ET.fromstring(xml)
+        except ET.ParseError as exc:
+            raise HttpError(f"invalid PubMed XML: {exc}") from None
+        hits = []
+        for article in root.iter("PubmedArticle"):
+            pmid = article.findtext("MedlineCitation/PMID", default="").strip()
+            heading = article.find("MedlineCitation/Article/ArticleTitle")
+            title = _clean("".join(heading.itertext())) if heading is not None else ""
+            if not pmid or not title:
+                continue
+            parts = []
+            for node in article.findall("MedlineCitation/Article/Abstract/AbstractText"):
+                text = _clean("".join(node.itertext()))
+                label = node.get("Label")
+                parts.append(f"{label}: {text}" if label and text else text)
+            authors = []
+            for author in article.findall("MedlineCitation/Article/AuthorList/Author"):
+                last, first = author.findtext("LastName"), author.findtext("ForeName")
+                name = " ".join(p for p in (first, last) if p) or author.findtext("CollectiveName") or ""
+                if name:
+                    authors.append(_clean(name))
+            date = article.find("MedlineCitation/Article/Journal/JournalIssue/PubDate")
+            year_text = (date.findtext("Year") or date.findtext("MedlineDate") or "") if date is not None else ""
+            ids = {
+                i.get("IdType"): (i.text or "").strip() for i in article.findall("PubmedData/ArticleIdList/ArticleId")
+            }
+            hits.append(
+                PaperHit(
+                    source="pubmed",
+                    source_id=pmid,
+                    title=title,
+                    abstract=" ".join(p for p in parts if p),
+                    year=int(year_text[:4]) if year_text[:4].isdigit() else None,
+                    authors=authors,
+                    venue=_clean(article.findtext("MedlineCitation/Article/Journal/Title")),
+                    doi=normalize_doi(ids.get("doi")),
+                    url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                )
+            )
+        return hits
+
+
+class EuropePMCSource:
+    """Europe PMC's REST search (resultType core, JSON): PubMed, PubMed Central and preprints, with open copies."""
+
+    name = "europe_pmc"
+    base = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+    def __init__(self, http: PoliteHttp) -> None:
+        self.http = http
+
+    def search(self, query: str, limit: int, *, year_from: int | None = None) -> list[PaperHit]:
+        text = f"({query}) AND PUB_YEAR:[{year_from} TO 3000]" if year_from else query
+        params = {"query": text, "format": "json", "resultType": "core", "pageSize": min(limit, 1000)}
+        data = self.http.get_json(self.base, params=params)
+        return [hit for r in (data.get("resultList") or {}).get("result") or [] if (hit := self.to_hit(r))]
+
+    @staticmethod
+    def to_hit(result: dict[str, Any]) -> PaperHit | None:
+        title = _plain(result.get("title"))
+        if not title:
+            return None
+        authors = [a.get("fullName") or "" for a in (result.get("authorList") or {}).get("author") or []]
+        if not any(authors) and result.get("authorString"):
+            authors = [a.strip() for a in str(result["authorString"]).rstrip(".").split(",")]
+        links = (result.get("fullTextUrlList") or {}).get("fullTextUrl") or []
+        free = [
+            link["url"]
+            for link in links
+            if link.get("url")
+            and link.get("availabilityCode") in ("OA", "F")
+            and link.get("documentStyle") in ("pdf", "html")
+        ]
+        journal = ((result.get("journalInfo") or {}).get("journal") or {}).get("title") or result.get("journalTitle")
+        year = str(result.get("pubYear") or "")
+        source, record = result.get("source") or "", result.get("id") or ""
+        cited = result.get("citedByCount")
+        return PaperHit(
+            source="europe_pmc",
+            source_id=f"{source}:{record}",
+            title=title,
+            abstract=_plain(result.get("abstractText")),
+            year=int(year) if year.isdigit() else None,
+            authors=[_clean(a) for a in authors if a],
+            venue=_clean(journal),
+            doi=normalize_doi(result.get("doi")),
+            url=f"https://europepmc.org/article/{source}/{record}" if source and record else None,
+            oa_urls=list(dict.fromkeys(sorted(free, key=lambda u: not u.endswith(".pdf")))),  # PDFs first
+            citation_count=cited if isinstance(cited, int) else None,
+        )

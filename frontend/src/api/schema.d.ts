@@ -1258,6 +1258,12 @@ export interface components {
             objective: string;
             /** Procedure */
             procedure: string[];
+            /**
+             * Replicates
+             * @default seeds
+             * @enum {string}
+             */
+            replicates: "seeds" | "units";
             /** Resources */
             resources: components["schemas"]["ResourceSpec"][];
             /** Results Schema */
@@ -1270,6 +1276,11 @@ export interface components {
             seeds: number[];
             /** Statistical Tests */
             statistical_tests: components["schemas"]["StatisticalTest"][];
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
         };
         /** ExperimentResults */
         ExperimentResults: {
@@ -1294,6 +1305,8 @@ export interface components {
              * @default 0
              */
             gpu_hours_requested: number;
+            /** Issues */
+            issues: string[];
             /** Jobs */
             jobs: string[];
             /** Notes */
@@ -2073,7 +2086,7 @@ export interface components {
         ResourceSpec: {
             /**
              * Identifier
-             * @description Hugging Face repo id, URL, torchvision name, pip package, or the name of a local dataset
+             * @description Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE dataset id, or the name of a local dataset
              */
             identifier: string;
             /**
@@ -2101,7 +2114,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "huggingface" | "url" | "torchvision" | "pip" | "local" | "manual";
+            source: "huggingface" | "url" | "torchvision" | "pip" | "local" | "geo" | "cellxgene" | "manual";
             /** Split */
             split: string | null;
             /**
@@ -2290,6 +2303,11 @@ export interface components {
         };
         /** RunRecord */
         RunRecord: {
+            /**
+             * Batch
+             * @default
+             */
+            batch: string;
             /** Condition */
             condition: string;
             /**
@@ -2315,6 +2333,11 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "failed" | "missing";
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
         };
         /** RunState */
         RunState: {

@@ -38,6 +38,7 @@ from ...knowledge.vectors import absorb_small, agglomerative, center, suggested_
 from ...knowledge.verify import normalize, quote_support
 from ...llm.client import LLMOutputError
 from ...llm.prompts import PromptLibrary
+from ...packs import load_pack
 from ...schemas.common import ResearchBrief
 from ...schemas.literature import (
     Corpus,
@@ -70,7 +71,7 @@ CAP_NOTE = "below the corpus size cap"
 
 
 class LiteratureConfig(BaseModel):
-    sources: list[Literal["openalex", "semantic_scholar", "arxiv"]] = Field(
+    sources: list[Literal["openalex", "semantic_scholar", "arxiv", "pubmed", "europe_pmc"]] = Field(
         default_factory=lambda: ["openalex", "semantic_scholar", "arxiv"]
     )
     max_queries: int = Field(default=8, ge=1, le=12)
@@ -215,6 +216,9 @@ class LiteratureAgent(Agent):
 
     def run(self, ctx: AgentContext) -> None:
         config: LiteratureConfig = self.config
+        pack = load_pack(ctx.inputs.get("research_brief").domain_pack)
+        if pack.literature_sources:  # the field's own indexes (e.g. PubMed for biology) instead of the default
+            config = LiteratureConfig.model_validate({**config.model_dump(), "sources": pack.literature_sources})
         cache = ctx.workspace.path("http_cache.sqlite")
         factory = ctx.tools.get("literature_toolkit")
         toolkit = factory(config, cache) if factory else build_toolkit(config, cache, ctx.app_config.knowledge)

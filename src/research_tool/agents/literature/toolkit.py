@@ -16,7 +16,14 @@ from ...core.config import KnowledgeConfig
 from ...knowledge.vectors import Embedder, make_embedder
 from ...tools.documents.convert import pymupdf_to_markdown
 from ...tools.http import PoliteHttp
-from ...tools.scholarly.sources import ArxivSource, OpenAlexSource, SemanticScholarSource, UnpaywallResolver
+from ...tools.scholarly.sources import (
+    ArxivSource,
+    EuropePMCSource,
+    OpenAlexSource,
+    PubMedSource,
+    SemanticScholarSource,
+    UnpaywallResolver,
+)
 
 # Seconds between requests per host, from each service's published terms.
 HOST_LIMITS = {
@@ -25,6 +32,8 @@ HOST_LIMITS = {
     "api.semanticscholar.org": 1.1,  # about one request per second with a free key
     "api.openalex.org": 0.12,
     "api.unpaywall.org": 0.2,
+    "eutils.ncbi.nlm.nih.gov": 0.34,  # NCBI E-utilities: at most 3 requests per second without an API key
+    "www.ebi.ac.uk": 0.2,  # Europe PMC (and other EMBL-EBI services): no published limit, so a courteous one
 }
 
 
@@ -47,6 +56,8 @@ def build_toolkit(
     limits = dict(HOST_LIMITS)
     if not environ.get("S2_API_KEY"):
         limits["api.semanticscholar.org"] = 3.5  # keyless callers share one throttled pool
+    if environ.get("NCBI_API_KEY"):
+        limits["eutils.ncbi.nlm.nih.gov"] = 0.11  # 10 requests per second with a key
     http = PoliteHttp(limits=limits, cache_path=cache_path)
     sources: dict[str, Any] = {}
     if "openalex" in config.sources:
@@ -55,6 +66,10 @@ def build_toolkit(
         sources["semantic_scholar"] = SemanticScholarSource(http, api_key=environ.get("S2_API_KEY"))
     if "arxiv" in config.sources:
         sources["arxiv"] = ArxivSource(http)
+    if "pubmed" in config.sources:
+        sources["pubmed"] = PubMedSource(http, api_key=environ.get("NCBI_API_KEY"), email=environ.get("NCBI_EMAIL"))
+    if "europe_pmc" in config.sources:
+        sources["europe_pmc"] = EuropePMCSource(http)
     email = environ.get("UNPAYWALL_EMAIL")
     return LiteratureToolkit(
         sources=sources,

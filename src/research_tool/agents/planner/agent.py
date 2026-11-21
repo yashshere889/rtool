@@ -22,7 +22,15 @@ from ...packs import load_pack, pack_plan_issues
 from ...schemas.common import ResearchBrief, SelectedItem
 from ...schemas.hypothesis import Hypothesis
 from ...schemas.literature import Corpus, KnowledgeMap
-from ...schemas.plan import ComputeEstimate, ExperimentPlan, Metric, PlanCore, ResourcePlan, ResourceSpec
+from ...schemas.plan import (
+    ComputeEstimate,
+    ExperimentPlan,
+    Metric,
+    PlanCore,
+    PlanCoreUnits,
+    ResourcePlan,
+    ResourceSpec,
+)
 from ...tools.http import PoliteHttp
 from ...tools.resources.checks import HubChecker, ResourceChecker
 from ..common import SYSTEM, cached_models, compute_profile, open_corpus_kb
@@ -37,6 +45,20 @@ from .checks import (
     results_schema,
     source_issues,
 )
+
+# How the resources prompt describes each source, for packs that limit their sources (pack.resource_sources).
+SOURCE_RULES = {
+    "huggingface": 'source "huggingface" with the exact Hugging Face Hub repository id (for example "imdb")',
+    "url": 'source "url" only for a direct download link',
+    "torchvision": 'source "torchvision" for a torchvision dataset, by its class name',
+    "pip": 'source "pip" for a software package',
+    "local": 'source "local" only for a dataset the researcher provided (listed above), named exactly as listed',
+    "geo": 'source "geo" for a GEO series, with its accession as the identifier (for example "GSE12345"): its '
+    "supplementary files and series matrices are downloaded",
+    "cellxgene": 'source "cellxgene" for a CELLxGENE Discover dataset, with its dataset id (a UUID) as the identifier: '
+    "its H5AD file is downloaded",
+    "manual": 'source "manual" only if nothing public exists',
+}
 
 
 class PlannerConfig(BaseModel):
@@ -79,6 +101,8 @@ class PlannerAgent(Agent):
             feedback.insert(0, f"When choosing this hypothesis the researcher noted: {selected.note.strip()}")
         checker = self.checker(ctx)
 
+        units = pack.replicates == "units"  # a data analysis: conditions are groups of units, one run each
+        min_seeds = 1 if units else brief.seeds or cfg.min_seeds
         core_issues: list[str] = []
         res_issues: list[str] = []
         cmp_issues: list[str] = []
@@ -87,7 +111,7 @@ class PlannerAgent(Agent):
             if core is None or core_issues:
                 core = normalise_core(
                     ctx.llm.structured(
-                        PlanCore,
+                        PlanCoreUnits if units else PlanCore,
                         render(
                             "plan_core.j2",
                             brief=brief,
@@ -96,15 +120,18 @@ class PlannerAgent(Agent):
                             compute=compute,
                             feedback=feedback,
                             issues=core_issues,
-                            min_seeds=brief.seeds or cfg.min_seeds,
+                            min_seeds=min_seeds,
+                            units=units,
                         ),
                         profile="reason",
                         system=SYSTEM,
                     )
                 )
                 core = follow_brief(core, brief)  # what the researcher fixed is set, not asked for again
-                core_issues = design_issues(core, min(cfg.min_seeds, brief.seeds or cfg.min_seeds)) + brief_issues(
-                    brief, conditions=core.conditions, metrics=core.metrics
+                if units:
+                    core.n_seeds = 1  # one analysis per condition; the units are the repetitions
+                core_issues = design_issues(core, min(cfg.min_seeds, min_seeds), units=units) + brief_issues(
+                    brief, conditions=core.conditions, metrics=core.metrics, units=units
                 )
             if resources is None or res_issues:
                 plan = ctx.llm.structured(
@@ -117,6 +144,7 @@ class PlannerAgent(Agent):
                         known_datasets=known,
                         cached_models=cached,
                         local_datasets=ctx.app_config.experiments.local_data,
+                        source_rules=[SOURCE_RULES[s] for s in pack.resource_sources if s in SOURCE_RULES],
                         feedback=feedback,
                         issues=res_issues,
                     ),
@@ -174,8 +202,10 @@ class PlannerAgent(Agent):
             compute=request,
             expected_results=core.expected_results,
             risks=core.risks,
-            results_schema=results_schema(conditions, core.metrics, seeds),
+            results_schema=results_schema(conditions, core.metrics, seeds, units=units),
             issues=core_issues + res_issues + cmp_issues,
+            replicates="units" if units else "seeds",
+            unit=getattr(core, "unit_of_analysis", ""),
         )
         plan_artifact.issues += pack_plan_issues(pack, plan_artifact, brief)  # recorded and shown, not repaired
         markdown = ctx.workspace.write_text("experiment_plan.md", render_markdown(plan_artifact, hypothesis.title))
@@ -208,7 +238,10 @@ class PlannerAgent(Agent):
         injected = ctx.tools.get("resource_checker")
         if injected is not None:
             return injected
-        http = PoliteHttp(cache_path=ctx.workspace.path("http_cache.sqlite"), limits={"huggingface.co": 0.3})
+        http = PoliteHttp(
+            cache_path=ctx.workspace.path("http_cache.sqlite"),
+            limits={"huggingface.co": 0.3, "ftp.ncbi.nlm.nih.gov": 0.34},
+        )
         return HubChecker(http, token=os.environ.get("HF_TOKEN"), local=ctx.app_config.experiments.local_data)
 
     @staticmethod

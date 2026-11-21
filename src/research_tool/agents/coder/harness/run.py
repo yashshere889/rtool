@@ -8,6 +8,10 @@ config.json, and writes PATH as JSON::
 
     {"condition": ..., "seed": ..., "metrics": {...}, "seconds": ..., "smoke": ..., "job_id": ...}
 
+In a data analysis (config.json "replicates": "units"), run() returns {"units": [{"unit": id,
+<metric>: value, ..., "batch": label (optional)}, ...]}: one entry per independent unit (donor,
+sample). The record then also holds "units", and "metrics" holds their means.
+
 Contract problems are printed as ``rtool-contract: ...`` and exit with code 3.
 Runs on Python 3.10 (the experiment image).
 """
@@ -96,6 +100,37 @@ def check(metrics: object, names: list[str]) -> list[str]:
     return problems
 
 
+def check_units(result: object, names: list[str]) -> list[str]:
+    """Problems with a data analysis's result: {"units": [{"unit": ..., metric: number, ...}, ...]}."""
+    units = result.get("units") if isinstance(result, dict) else None
+    if not isinstance(units, list) or len(units) < 2:
+        return ['experiment.run must return {"units": [...]} with one entry per independent unit, at least two']
+    problems, seen = [], set()
+    for i, unit in enumerate(units):
+        if not isinstance(unit, dict) or "unit" not in unit:
+            problems.append(f"units[{i}] must be a dict with a 'unit' id and every metric")
+            continue
+        if str(unit["unit"]) in seen:
+            problems.append(f"unit {unit['unit']!r} appears twice: report each unit once per condition")
+        seen.add(str(unit["unit"]))
+        problems += [f"units[{i}] ({unit['unit']}): {p}" for p in check(unit, names)]
+    return problems[:10]
+
+
+def unit_record(units: list[dict], names: list[str]) -> tuple[dict[str, float], list[dict]]:
+    """The per-unit values as stored, and their means (shown where one number per run is expected)."""
+    stored = [
+        {
+            "unit": str(u["unit"]),
+            "batch": str(u.get("batch") or ""),
+            "metrics": {name: as_number(u[name]) for name in names},
+        }
+        for u in units
+    ]
+    means = {name: sum(u["metrics"][name] for u in stored) / len(stored) for name in names}
+    return means, stored
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one condition of the experiment with one seed.")
     parser.add_argument("--condition", required=True)
@@ -129,10 +164,15 @@ def main() -> int:
     finally:
         # the datasets cache moved here is one copy per task, and nothing else would ever delete it
         shutil.rmtree(workdir / "hf" / "datasets", ignore_errors=True)
-    problems = check(metrics, list(config["metrics"]))
+    names = list(config["metrics"])
+    units = config.get("replicates") == "units"
+    problems = check_units(metrics, names) if units else check(metrics, names)
     if problems:
         print("rtool-contract: " + "; ".join(problems))
         return 3
+    per_unit: list[dict] = []
+    if units:
+        metrics, per_unit = unit_record(metrics["units"], names)
     record = {
         "condition": args.condition,
         "seed": args.seed,
@@ -142,6 +182,8 @@ def main() -> int:
         # the job that really ran it, also when the array was resubmitted by hand
         "job_id": os.environ.get("SLURM_ARRAY_JOB_ID") or os.environ.get("SLURM_JOB_ID", ""),
     }
+    if units:
+        record["units"] = per_unit
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     partial = output.with_name(output.name + ".partial")
