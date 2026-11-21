@@ -1,6 +1,9 @@
 # Roadmap: one tool for research in any field
 
-Status: **proposal** (2026-11-20). Nothing here is built yet. Refine it, then build stage by stage.
+Status (2026-11-21): Stages 0–6 are **built**, and each passed its local gate: the full test suite, and a
+run of the real engine with the demo model, scored by the validity harness. **No stage has passed its
+exit test yet.** Those need real runs on Barkla, and an expert to confirm each field's ground truth. What
+was built, how it was tested, and what each stage still waits for: [build_log.md](build_log.md).
 
 ## Goal
 
@@ -59,7 +62,8 @@ bottleneck per field, more than the code.
 
 ## What exists, and what is missing
 
-Checked in the code on 2026-11-20:
+Checked in the code on 2026-11-20, before Stage 0 (the stages since have built the right-hand column;
+see the build log):
 
 | Exists | Missing for a general tool |
 |---|---|
@@ -133,8 +137,9 @@ Only after Stages 0–4 hold up. Pack packaging and sharing, per-pack access rul
 
 ## Rules that apply to every stage
 
-- **No controlled-access data** (dbGaP, patient-level genomes). The pack must refuse it.
-- **Refusal list per pack.** Pathogen enhancement and toxin or toxic-protein design are refused at the brief and plan stages.
+- **No controlled-access data** (dbGaP, patient-level genomes). The pack must refuse it. *Built:* dbGaP and
+  EGA accessions are refused in briefs, and as resources (also by URL) in the plan and the fetch.
+- **Refusal list per pack.** Pathogen enhancement and toxin or toxic-protein design are refused at the brief and plan stages. *Built:* default rules for every pack, which a pack can add to (`refuse:`). They are pattern matches: a guard against plain requests, not against someone rephrasing.
 - **Local models only**, as now. No hosted APIs.
 - **Reports say what they are.** In-silico results are hypotheses, stated with their validity level.
 - **A new check ships with a test that catches the trap it targets.**
@@ -143,7 +148,7 @@ Only after Stages 0–4 hold up. Pack packaging and sharing, per-pack access rul
 
 1. **Who confirms ground truth** for each new field's replication cases (you, a supervisor, an outside expert)?
 2. **Thresholds** for the exit tests. Proposal: false-positive rate at or below alpha, and a replication pass rate we agree before the first run, not after.
-3. **Container strategy.** One big image or one per pack family. Decide at Stage 1, when `omics` first needs packages the ML image lacks.
+3. **Container strategy.** One big image or one per pack family. *Settled in Stage 5 as a mechanism:* a site can give any pack its own image (`experiments.pack_images`); which images to build is still open.
 4. **Which field after omics**, if your own research points somewhere specific.
 
 ## Not building yet

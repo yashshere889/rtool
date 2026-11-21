@@ -30,3 +30,16 @@ a formula, or a `reference.py` run (with date and machine). The others are repor
 | ml_dl | random-halves-null | null | construction: the halves are exchangeable under the seed |
 | ml_dl | softmax-mnist-accuracy | replication | not yet: `reference.py` needs torch and MNIST (Barkla) |
 | ml_dl | open-topic | open | nothing to confirm (scored L0–L1 only) |
+| omics | pseudobulk-planted | planted | `reference.py`: donor-level permutation test |
+| omics | pseudobulk-null | null | construction (fold 1), and `reference.py` |
+| sysbio | sir-final-size | replication | the final-size equation, and `reference.py` |
+| sysbio | vaccination-shrinks-epidemic | planted | `reference.py` |
+| sysbio | ssa-method-null | null | construction: both methods simulate the same process exactly |
+| medicine | statins-ldl-review | synthesis | an established finding (meta-analyses of statin trials) |
+| study | caffeine-reaction-time | planted | `reference.py`: Welch t on the generated trial |
+| study | placebo-null | null | construction (no effect), and `reference.py` |
+| protein | motif-classifier | planted | `reference.py` (standard library) |
+
+A `synthesis` case is a literature review, scored on the review itself: every sentence rests on listed
+findings (L1), its numbers and citations match them (L2), and it states the known findings (L3). The
+`study` cases provide the data a person would bring back, so the analysis runs without waiting for anyone.

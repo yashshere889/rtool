@@ -1,6 +1,8 @@
 # Stage 0 design: measuring whether rtool's results are right
 
-Status: **design** (2026-11-20). Nothing here is built yet. Part of [the roadmap](roadmap.md).
+Status (2026-11-21): PRs 1–3 are **built** and committed. PR 4, the baseline on Barkla, is written up in
+[barkla_runbook.md](barkla_runbook.md#validity-baseline-stage-0-pr-4) and **not run**, so the exit test
+below has not been met. Part of [the roadmap](roadmap.md); what was built is in [build_log.md](build_log.md).
 
 ## What Stage 0 delivers
 

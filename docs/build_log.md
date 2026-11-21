@@ -3,6 +3,22 @@
 Plan: [roadmap.md](roadmap.md). Stage 0 design: [stage0_design.md](stage0_design.md).
 Started 2026-11-21: build every remaining stage, and test each before the next.
 
+## Where it stands (2026-11-21)
+
+Every stage is built and passed its local gate (below), one commit each. None has passed its exit
+test: those need Barkla, and for most fields an expert.
+
+| Stage | Built | Commit | Waits for |
+|---|---|---|---|
+| 0 | Validity harness: cases, seeded runs, scorer, card, `rtool validity` | `8ceb2ed`, `f3f1ba2` | the baseline run on Barkla (PR 4, in the runbook) |
+| 1 | Analyse existing data: units mode, `omics`, `tabular`, GEO, CELLxGENE, PubMed, Europe PMC | `35bf577` | live probes; real omics runs; three reanalyses an expert chooses |
+| 2 | Simulate or model: BioModels, result checks, `sysbio` | `d6ef029` | real runs; curated models and knockouts an expert chooses |
+| 3 | Literature synthesis: pipeline, agent, `medicine` | `3c81983` | a real model's reviews; a labelled set from an expert |
+| 4 | Study design with a person: protocol, data upload, analysis | `8066a4d` | a real model's protocols; a real study |
+| 5 | GPU-heavy fields: pack images, UniProt, AlphaFold, PDB, four packs | `8586a7e` | pack images and GPU runs on Barkla |
+| Rules | Refusals and controlled-access data, in every pack | `370e493` | a real model's plans checked against them |
+| 6 | Installed packs, what a deployment offers, every pack in the UI | `791454f` | a real pack package and site config on Barkla |
+
 ## What "tested" means here
 
 No Barkla access (it needs your approval and an interactive login), no live API calls or data
