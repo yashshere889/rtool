@@ -9,8 +9,19 @@ from pydantic import BaseModel, Field
 from ..core.artifacts import artifact_type
 
 # "local": a dataset the researcher provides on disk (config experiments.local_data), named by its key;
-# "geo": a GEO series (accession GSE...); "cellxgene": a CELLxGENE Discover dataset (its dataset id)
-ResourceSource = Literal["huggingface", "url", "torchvision", "pip", "local", "geo", "cellxgene", "manual"]
+# "geo": a GEO series (accession GSE...); "cellxgene": a CELLxGENE Discover dataset (its dataset id);
+# "biomodels": a BioModels model (BIOMD... or MODEL...)
+ResourceSource = Literal[
+    "huggingface",
+    "url",
+    "torchvision",
+    "pip",
+    "local",
+    "geo",
+    "cellxgene",
+    "biomodels",
+    "manual",
+]
 
 
 class Variable(BaseModel):
@@ -88,7 +99,7 @@ class ResourceChoice(BaseModel):
     source: ResourceSource
     identifier: str = Field(
         description="Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE "
-        "dataset id, or the name of a local dataset"
+        "dataset id, BioModels id, or the name of a local dataset"
     )
     subset: str | None = Field(default=None, description="Hugging Face config name, if any")
     split: str | None = None

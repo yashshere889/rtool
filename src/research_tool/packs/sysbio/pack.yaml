@@ -1,0 +1,22 @@
+name: sysbio
+description: >-
+  Simulation and modelling of biological systems (kinetic ODE and stochastic models, epidemics, metabolic
+  networks), compared across seeds.
+smoke: >-
+  When smoke is True, simulate a short time span (or a few hundred stochastic events) through the same
+  code path, so the run takes seconds on a CPU.
+packages: [numpy]
+resource_sources: [biomodels, url, local, pip]
+literature_sources: [pubmed, europe_pmc, openalex, semantic_scholar]
+result_checks:
+  - research_tool.packs.sysbio.checks:conservation_issues
+review_checks:
+  - Are the model's parameters and initial conditions stated with their sources, and is their uncertainty propagated (sampled per seed) rather than fixed?
+  - For ODE models, is the solver suited to stiff systems, and were the results checked at a tighter tolerance?
+  - Does the simulation conserve what the model conserves (mass, moieties, a closed population), and is that checked?
+  - Are claims about the biological system kept apart from claims about the model?
+hints:
+  - Load models only from the local paths in `resources` (SBML files from BioModels); never download. libroadrunner or tellurium (SBML, ODEs), cobra (metabolic networks) and scipy are not in the image; list the ones you import on the `# requirements:` line.
+  - rtool compares conditions across seeds, so the seed must matter. Draw uncertain parameters from stated ranges (for example ±20 % around the published values), or run a stochastic (Gillespie) simulation with the seed. A deterministic model with fixed parameters gives the same number for every seed, and then nothing can be tested.
+  - Use a stiff solver (LSODA or BDF) for kinetic ODE models, with a relative tolerance of 1e-8 or tighter.
+  - When the model conserves a total (mass, a moiety, a closed population), also return `mass_balance_error`, the relative change of that total over the run; rtool flags values above 1e-6.

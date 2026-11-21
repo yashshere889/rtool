@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import httpx
+
 from ..agents.planner.checks import results_schema
 from ..schemas.code import RunRecord
 from ..schemas.plan import ComputeRequest, Condition, ExperimentPlan, Metric, StatisticalTest, Variable
+from ..tools.http import PoliteHttp
 
 ACCURACY = {"base": [0.65, 0.66, 0.63], "new": [0.71, 0.74, 0.69]}
 
@@ -59,3 +62,34 @@ def sample_records() -> list[RunRecord]:
         for c in ("base", "new")
         for s in (0, 1, 2)
     ]
+
+
+# A conversion A -> B with rate constant k: A + B is conserved.
+SBML = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" level="3" version="1">
+  <model id="conversion">
+    <listOfSpecies>
+      <species id="A" compartment="c" initialAmount="10" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
+      <species id="B" compartment="c" initialAmount="0" hasOnlySubstanceUnits="true" boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters><parameter id="k" value="0.5" constant="true"/></listOfParameters>
+  </model>
+</sbml>
+"""  # noqa: E501
+
+
+def biomodels_mock(files: dict[str, bytes]) -> PoliteHttp:
+    """A BioModels server (its documented API) holding one model, BIOMD0000000999, with these main files."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/biomodels/model/files/BIOMD0000000999":
+            assert request.url.params["format"] == "json"
+            main = [{"name": name, "fileSize": len(body)} for name, body in files.items()]
+            return httpx.Response(200, json={"main": main, "additional": [{"name": "notes.pdf", "fileSize": 9}]})
+        if request.url.path == "/biomodels/model/download/BIOMD0000000999":
+            return httpx.Response(200, content=files[request.url.params["filename"]])
+        return httpx.Response(404)
+
+    return PoliteHttp(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), default_interval_s=0, sleep=lambda _s: None
+    )

@@ -42,3 +42,12 @@ def test_cellxgene(http: PoliteHttp) -> None:
     collection = http.get_json(f"{CELLXGENE_API}/collections/{collections[0]['collection_id']}")
     version = cellxgene_latest(http, collection["datasets"][0]["dataset_id"])
     assert h5ad_asset(version) is not None and version.get("title")
+
+
+def test_biomodels(http: PoliteHttp, tmp_path_factory: pytest.TempPathFactory) -> None:
+    from research_tool.schemas.plan import ResourceSpec  # noqa: PLC0415
+    from research_tool.tools.resources.fetch import Fetcher  # noqa: PLC0415
+
+    model = ResourceSpec(kind="model", name="m", source="biomodels", identifier="BIOMD0000000012", purpose="")
+    fetched = Fetcher(tmp_path_factory.mktemp("biomodels"), http=http).fetch(model)  # Elowitz's repressilator
+    assert fetched.status == "ready", fetched.note  # an SBML file with a model in it

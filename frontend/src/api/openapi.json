@@ -3765,7 +3765,7 @@
    "ResourceSpec": {
     "properties": {
      "identifier": {
-      "description": "Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE dataset id, or the name of a local dataset",
+      "description": "Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE dataset id, BioModels id, or the name of a local dataset",
       "title": "Identifier",
       "type": "string"
      },
@@ -3817,6 +3817,7 @@
        "local",
        "geo",
        "cellxgene",
+       "biomodels",
        "manual"
       ],
       "title": "Source",

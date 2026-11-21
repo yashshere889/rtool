@@ -6,7 +6,9 @@ A pack is a folder ``packs/<name>/`` with:
 * ``templates/experiment.py.j2`` — the skeleton the Coder starts from;
 * ``prompts/<agent>/*.j2`` — optional prompt overrides (found by the prompt library);
 * in ``pack.yaml``, optionally: ``plan_checks`` (``"module:function"`` names of checks run on every
-  plan, ``(plan, brief) -> list[str]``) and ``resource_sources`` (the only sources its plans may use).
+  plan, ``(plan, brief) -> list[str]``), ``result_checks`` (the same for finished runs,
+  ``(plan, records) -> list[str]``, reported as ``results.issues``) and ``resource_sources`` (the only
+  sources its plans may use).
 
 The research brief names the pack (``rtool new --pack ml_dl``).
 """
@@ -14,7 +16,7 @@ The research brief names the pack (``rtool new --pack ml_dl``).
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from typing import TYPE_CHECKING
@@ -24,6 +26,7 @@ import yaml
 from ..core.errors import ConfigError
 
 if TYPE_CHECKING:
+    from ..schemas.code import RunRecord
     from ..schemas.common import ResearchBrief
     from ..schemas.plan import ExperimentPlan
 
@@ -41,6 +44,7 @@ class Pack:
     packages: list[str] = field(default_factory=list)  # what this kind of experiment usually imports
     template: str = ""  # Jinja source of experiment.py
     plan_checks: list[str] = field(default_factory=list)  # "module:function", each (plan, brief) -> issues
+    result_checks: list[str] = field(default_factory=list)  # "module:function", each (plan, records) -> issues
     resource_sources: list[str] = field(default_factory=list)  # the sources its plans may use; empty: any
     replicates: str = "seeds"  # "units": its plans analyse data, compared across units (donors, samples)
     review_checks: list[str] = field(default_factory=list)  # questions the Reviewer asks of every study
@@ -66,6 +70,7 @@ def load_pack(name: str) -> Pack:
         packages=[str(p) for p in data.get("packages", [])],
         template=template.read_text(encoding="utf-8") if template.is_file() else "",
         plan_checks=[str(c) for c in data.get("plan_checks", [])],
+        result_checks=[str(c) for c in data.get("result_checks", [])],
         resource_sources=[str(s) for s in data.get("resource_sources", [])],
         replicates=str(data.get("replicates", "seeds")),
         review_checks=[str(q) for q in data.get("review_checks", [])],
@@ -73,7 +78,7 @@ def load_pack(name: str) -> Pack:
     )
     if pack.replicates not in ("seeds", "units"):
         raise ConfigError(f"pack {name!r}: replicates must be 'seeds' or 'units', not {pack.replicates!r}")
-    for ref in pack.plan_checks:
+    for ref in [*pack.plan_checks, *pack.result_checks]:
         _plan_check(name, ref)  # a misspelt check fails when the pack is chosen, not after the plan is written
     return pack
 
@@ -92,3 +97,8 @@ def _plan_check(pack: str, ref: str) -> PlanCheck:
 def pack_plan_issues(pack: Pack, plan: ExperimentPlan, brief: ResearchBrief | None) -> list[str]:
     """What the pack's own checks find in a plan."""
     return [issue for ref in pack.plan_checks for issue in _plan_check(pack.name, ref)(plan, brief)]
+
+
+def pack_result_issues(pack: Pack, plan: ExperimentPlan, records: Sequence[RunRecord]) -> list[str]:
+    """What the pack's own checks find in finished runs."""
+    return [issue for ref in pack.result_checks for issue in _plan_check(pack.name, ref)(plan, records)]

@@ -57,6 +57,8 @@ SOURCE_RULES = {
     "supplementary files and series matrices are downloaded",
     "cellxgene": 'source "cellxgene" for a CELLxGENE Discover dataset, with its dataset id (a UUID) as the identifier: '
     "its H5AD file is downloaded",
+    "biomodels": 'source "biomodels" for a curated BioModels model, with its id as the identifier (for example '
+    '"BIOMD0000000012"): its main SBML file is downloaded',
     "manual": 'source "manual" only if nothing public exists',
 }
 

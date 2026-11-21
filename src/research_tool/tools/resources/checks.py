@@ -19,6 +19,7 @@ from ...core.config import LocalDataset
 from ...schemas.plan import ResourceChoice
 from ..http import HttpError, PoliteHttp
 from .fetch import tree_size
+from .models import biomodels_files
 from .omics import cellxgene_latest, geo_files, h5ad_asset
 
 HF_API = "https://huggingface.co/api"
@@ -85,6 +86,12 @@ class HubChecker:
             if resource.source == "geo":
                 files = geo_files(self.http, resource.identifier)
                 return ResourceCheck(bool(files), note=f"GEO series with {len(files)} supplementary and matrix files")
+            if resource.source == "biomodels":
+                files = biomodels_files(self.http, resource.identifier)
+                size = sum(f.get("fileSize") or 0 for f in files)
+                return ResourceCheck(
+                    bool(files), size_gb=round(size / 1e9, 6), note=f"main files: {', '.join(f['name'] for f in files)}"
+                )
             if resource.source == "cellxgene":
                 version = cellxgene_latest(self.http, resource.identifier)
                 asset = h5ad_asset(version)

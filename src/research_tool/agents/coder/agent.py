@@ -36,7 +36,7 @@ from ...core.registry import register_agent
 from ...hpc.jobspec import format_time_limit, parse_time_limit
 from ...hpc.sbatch import validate_job
 from ...llm.prompts import PromptLibrary
-from ...packs import DEFAULT_PACK, Pack, load_pack
+from ...packs import DEFAULT_PACK, Pack, load_pack, pack_result_issues
 from ...schemas.code import CodeBundle, CodeFile, ExperimentResults, FixRecord, RunRecord, SmokeResult
 from ...schemas.common import ResearchBrief
 from ...schemas.plan import ExperimentPlan, FetchedResource, ResourceManifest
@@ -983,7 +983,7 @@ class CoderSession:
         warnings = self.warnings() + sanity.results_warnings(self.plan, records)
         notes += [f"Warning: {w}" for w in warnings]
         # design problems the data show; the Writer and Reviewer read them in the notes
-        issues = confounding_issues(self.plan, records)
+        issues = confounding_issues(self.plan, records) + pack_result_issues(self.pack, self.plan, records)
         notes += [f"Design problem: {i}" for i in issues]
         payload = results_payload(records, notes)
         problems = validate(payload, self.plan.results_schema)

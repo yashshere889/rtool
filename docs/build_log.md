@@ -199,3 +199,58 @@ Files: `schemas/{plan,code}.py`, `packs/__init__.py`, `packs/units.py`, `packs/o
 `agents/tasks/fetch_resources.py`, `tools/report/render.py`, `validity/{cases,score}.py`, `benchmarks/omics/**`,
 `docs/architecture.md`, `frontend/src/api/*`, `web/static/build-stamp.json`, `tests/unit/test_units_analysis.py`,
 `tests/unit/test_bio_sources.py`, `tests/integration/test_units_pipeline.py`, `tests/barkla/test_live_sources.py`.
+
+---
+
+## Stage 2 — simulate or model (local gate passed 2026-11-21)
+
+Built:
+- **`biomodels` resource source** (`tools/resources/models.py`):
+  - checked with `GET /model/files/{id}?format=json` (main files and sizes);
+  - fetched with `GET /model/download/{id}?filename=…`;
+  - every downloaded `.xml` must be SBML with a `<model>`, or the fetch fails and says why. That is a
+    well-formedness check; full libSBML validation is not built.
+- **Pack `result_checks`** (`"module:function"`, `(plan, records) -> issues`): run on finished
+  experiments; their findings go into `results.issues` and the notes, so they fail L2 as `design_problem`.
+- **`sysbio` pack:**
+  - hints: the seed must matter (sampled parameter uncertainty or stochastic simulation), stiff
+    solvers with rtol ≤ 1e-8, and report `mass_balance_error`;
+  - sources: BioModels, url, local, pip;
+  - literature: PubMed first;
+  - four review questions;
+  - result check `conservation_issues`: a conservation error above 1e-6 relative is flagged. That is
+    also how a too-large step or a non-stiff solver usually shows; a separate stiffness check is not built.
+- **Fixed in the sanity checks:** a lower-is-better error that is exactly zero everywhere no longer
+  counts as a fake experiment. A conserving simulation's mass balance is 0 in every run, and the old rule
+  failed it at L1.
+- Three epidemic cases (`sysbio`), with references in the standard library (Mac, 2026-11-21):
+  - `sir-final-size`: 0.792 over 8 seeds, against 0.800 from the final-size equation (R0 2).
+  - `vaccination-shrinks-epidemic`: 0.792 against 0.330, paired t −11.3.
+  - `ssa-method-null`: Gillespie's direct method against first reaction, paired t −1.04, 0.01 and 1.15
+    at R0 1.5, 2 and 3.
+
+Checked against BioModels' own API spec (biomodels.org/docs/biomodels-jummp-swagger.json): the
+files and download endpoints, `ModelFiles.main[].name` and `fileSize`, and the `filename` parameter.
+
+Proved by:
+- `tests/integration/test_sysbio_pipeline.py`: a planted model case through the real engine. A mock
+  BioModels server serves an SBML model, the fetch stage downloads and checks it, and the simulation
+  reads it. The conserving version scores L3; a version that leaks mass is flagged
+  (`results.issues`, a design-problem note) and scores L1, `design_problem`.
+- `tests/unit/test_models_sources.py`: BioModels check, fetch and SBML problems, the conservation check,
+  and the zero-error rule.
+- Every shipped pack's cases load and generate their data (`test_validity_card.py`).
+- Full suite exit 0, web tests exit 0, ruff clean. API types regenerated and the bundle rebuilt (only
+  its stamp changed).
+
+Waits for Barkla, or an expert:
+- `pytest -m barkla` (the BioModels probe fetches BIOMD0000000012).
+- Real runs of the three cases.
+- The roadmap's "curated models reproduce their published outputs" and "known knockouts predicted
+  correctly". Both need someone to choose models and published values, and to run libroadrunner or
+  cobra on Barkla. Physics models are covered only by the generic pack's simulations (the queue cases).
+
+Files: `tools/resources/{models,checks,fetch}.py`, `schemas/plan.py`, `packs/__init__.py`, `packs/sysbio/**`,
+`agents/coder/{agent,sanity}.py`, `agents/planner/agent.py`, `testing/samples.py`, `benchmarks/sysbio/**`,
+`frontend/src/api/*`, `web/static/build-stamp.json`, `tests/unit/test_models_sources.py`,
+`tests/integration/test_sysbio_pipeline.py`, `tests/unit/test_validity_card.py`, `tests/barkla/test_live_sources.py`.

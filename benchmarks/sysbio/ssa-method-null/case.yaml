@@ -1,0 +1,31 @@
+# Gillespie's direct and first-reaction methods are both exact: they sample the same distribution.
+id: ssa-method-null
+kind: "null"  # quoted: a bare null is YAML for "nothing"
+pack: sysbio
+confirmed_by: "construction: both methods are exact simulations of the same process; reference.py on the Mac (2026-11-21): paired t -1.04, 0.01, 1.15 at R0 1.5, 2, 3"
+brief:
+  topic: Does the choice between two exact stochastic simulation algorithms change an SIR epidemic's attack rate?
+  constraints:
+    - CPU only. Use the Python standard library or numpy; there is nothing to download.
+    - Simulate a closed population of 1,000 with 10 initial infections, recovery rate 1 and the R0 the notes give (transmission rate R0 times the recovery rate), until no one is infected.
+    - direct uses Gillespie's direct method (one uniform number chooses the next event); first_reaction draws an exponential waiting time for each reaction and fires the earliest.
+    - The attack rate is the number of people ever infected, the 10 index cases included, divided by 1,000.
+  notes: Use R0 = 2.
+  seeds: 8
+  max_minutes_per_run: 5
+  conditions:
+    - {name: direct, baseline: true, description: "Gillespie's direct method"}
+    - {name: first_reaction, description: "Gillespie's first-reaction method"}
+  primary_metric: {name: attack_rate, higher_is_better: false}
+hypothesis:
+  statement: The first-reaction method gives a different attack rate than the direct method.
+  null_hypothesis: Both methods give the same attack rate.
+  success_criteria: first_reaction differs from direct in mean attack_rate with p < 0.05 in a paired t-test over the 8 seeds; otherwise the hypothesis is refuted.
+  independent_variables: [simulation algorithm]
+  dependent_variables: [attack_rate]
+expect:
+  significant: false
+variants:
+  - {name: r0_2}
+  - {name: r0_1_5, brief: {notes: Use R0 = 1.5.}}
+  - {name: r0_3, brief: {notes: Use R0 = 3.}}

@@ -26,6 +26,7 @@ from typing import Any
 
 from ...schemas.plan import FetchedResource, ResourceSpec
 from ..http import HttpError, PoliteHttp
+from .models import biomodels_files, download_url, sbml_problem
 from .omics import cellxgene_latest, geo_files, h5ad_asset
 
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -125,6 +126,8 @@ class Fetcher:
                 return self._geo(resource, base)
             if resource.source == "cellxgene":
                 return self._cellxgene(resource, base)
+            if resource.source == "biomodels":
+                return self._biomodels(resource, base)
             if resource.source == "huggingface":
                 return self._huggingface(resource, base)
             if resource.source == "torchvision":
@@ -164,6 +167,28 @@ class Fetcher:
         size, files = tree_size(dest.parent)
         note = f"{version.get('title') or 'CELLxGENE dataset'}, version {version.get('dataset_version_id', '?')}"
         return FetchedResource(**base, status="ready", path=str(dest.parent), bytes=size, files=files, note=note)
+
+    def _biomodels(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
+        if self.http is None:
+            return FetchedResource(**base, status="failed", note="no HTTP client configured")
+        model = resource.identifier.strip()
+        files = biomodels_files(self.http, model)
+        if not files:
+            return FetchedResource(**base, status="failed", note=f"BioModels lists no main file for {model}")
+        target = self.root / "biomodels" / model
+        problems = []
+        for entry in files:
+            dest = target / Path(entry["name"]).name
+            if not dest.exists():
+                self.http.download(download_url(model, entry["name"]), dest, max_bytes=self.max_url_bytes, accept=())
+            if dest.suffix.lower() == ".xml":
+                problems += [p for p in (sbml_problem(dest),) if p]
+        if problems:  # the experiment would read a broken model: better to stop here and say why
+            return FetchedResource(**base, status="failed", path=str(target), note="; ".join(problems)[:300])
+        size, count = tree_size(target)
+        return FetchedResource(
+            **base, status="ready", path=str(target), bytes=size, files=count, note=f"BioModels {model}"
+        )
 
     def _provided(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
         found = self.provided.get(resource.identifier)

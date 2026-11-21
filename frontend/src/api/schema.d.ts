@@ -2086,7 +2086,7 @@ export interface components {
         ResourceSpec: {
             /**
              * Identifier
-             * @description Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE dataset id, or the name of a local dataset
+             * @description Hugging Face repo id, URL, torchvision name, pip package, GEO series accession, CELLxGENE dataset id, BioModels id, or the name of a local dataset
              */
             identifier: string;
             /**
@@ -2114,7 +2114,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "huggingface" | "url" | "torchvision" | "pip" | "local" | "geo" | "cellxgene" | "manual";
+            source: "huggingface" | "url" | "torchvision" | "pip" | "local" | "geo" | "cellxgene" | "biomodels" | "manual";
             /** Split */
             split: string | null;
             /**

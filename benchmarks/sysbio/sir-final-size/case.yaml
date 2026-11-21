@@ -1,0 +1,26 @@
+# The final size of an SIR epidemic follows z = 1 - (1 - i0) exp(-R0 z): 0.800 for R0 = 2.
+id: sir-final-size
+kind: replication
+pack: sysbio
+confirmed_by: "final-size equation 0.800 for R0 2; reference.py on the Mac (2026-11-21): 0.792 over 8 seeds, sd 0.037 (0.939 against 0.941 for R0 3)"
+brief:
+  topic: The final size of a stochastic SIR epidemic
+  constraints:
+    - CPU only. Use the Python standard library or numpy; there is nothing to download.
+    - Simulate a closed population of 1,000 with 10 initial infections by Gillespie's direct method, recovery rate 1 and transmission rate R0 times the recovery rate, until no one is infected.
+    - The attack rate is the number of people ever infected, the 10 index cases included, divided by 1,000.
+  seeds: 8
+  max_minutes_per_run: 5
+  conditions:
+    - {name: r0_2, baseline: true, description: "R0 = 2"}
+    - {name: r0_3, description: "R0 = 3"}
+  primary_metric: {name: attack_rate, higher_is_better: false}
+hypothesis:
+  statement: A stochastic SIR epidemic with R0 = 2 and 1 % initially infected infects about 80 % of a closed population, as the final-size equation predicts.
+  null_hypothesis: The simulated attack rate differs from the final-size equation.
+  success_criteria: The mean attack_rate of r0_2 over its 8 seeds lies between 0.75 and 0.84.
+  independent_variables: [basic reproduction number R0]
+  dependent_variables: [attack_rate]
+expect:
+  value: {condition: r0_2, low: 0.75, high: 0.84}
+  outcome: [supported]

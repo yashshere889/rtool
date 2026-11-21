@@ -152,7 +152,8 @@ def results_warnings(plan: ExperimentPlan, records: Sequence[RunRecord]) -> list
             for c in plan.run_conditions()
         ]
         groups = [g for g in groups if len(g) >= 2]
-        if groups and all(constant(g) for g in groups):
+        never = not metric.higher_is_better and all(v == 0 for g in groups for v in g)
+        if groups and all(constant(g) for g in groups) and not never:  # an error that never happens is no sign
             flat.append(f"`{metric.name}`")
     if flat and plan.replicates == "units":
         warnings.append(

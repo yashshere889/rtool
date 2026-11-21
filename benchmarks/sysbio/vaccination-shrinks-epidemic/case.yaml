@@ -1,0 +1,27 @@
+# Vaccinating 30 % before the outbreak lowers R_eff from 2 to 1.4: the attack rate falls from about 0.79 to 0.33.
+id: vaccination-shrinks-epidemic
+kind: planted
+pack: sysbio
+confirmed_by: "reference.py on the Mac (2026-11-21): 0.792 without vaccination, 0.330 with 30 % vaccinated, difference -0.462, paired t -11.3"
+brief:
+  topic: Does vaccinating part of a population before an outbreak shrink the epidemic?
+  constraints:
+    - CPU only. Use the Python standard library or numpy; there is nothing to download.
+    - Simulate a closed population of 1,000 with 10 initial infections by Gillespie's direct method, R0 = 2 (transmission rate 2, recovery rate 1), until no one is infected.
+    - In vaccinate_30, 300 people start immune; the attack rate is the number of people ever infected, the 10 index cases included, divided by 1,000.
+  seeds: 8
+  max_minutes_per_run: 5
+  conditions:
+    - {name: no_vaccination, baseline: true, description: "nobody is immune at the start"}
+    - {name: vaccinate_30, description: "300 of the 1,000 start immune"}
+  primary_metric: {name: attack_rate, higher_is_better: false}
+hypothesis:
+  statement: Vaccinating 30 % of the population before the outbreak lowers the attack rate of an SIR epidemic with R0 = 2.
+  null_hypothesis: The attack rate is the same with and without vaccination.
+  success_criteria: vaccinate_30 has a lower mean attack_rate than no_vaccination, with p < 0.05 in a paired t-test over the 8 seeds.
+  independent_variables: [share vaccinated]
+  dependent_variables: [attack_rate]
+expect:
+  significant: true
+  direction: better
+  difference: {low: -0.6, high: -0.3}
