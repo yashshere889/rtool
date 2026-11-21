@@ -1,0 +1,28 @@
+# The literature-only pipeline: from a topic to a review in which every sentence rests on checked quotes.
+#   literature -> synthesis
+# For fields without experiments (medicine, law, the humanities, policy). Human gates: literature_review
+# and final_report; set them to `auto` under gates.modes for unattended runs.
+name: synthesis
+description: From a topic to a literature review in which every sentence rests on verified quotes; no experiment.
+initial_artifacts: [research_brief]
+
+gates:
+  literature_review:
+    kind: approve
+    prompt: >-
+      Review the papers and the literature map. Approve to continue, or request changes with feedback
+      (e.g. "focus on X", "drop Y"). Papers without an open-access copy can be added by hand.
+  final_report:
+    kind: approve
+    prompt: >-
+      Read the review and its checks (sentences kept and dropped, findings used). Approve to finish, or
+      reject with feedback for another round.
+
+stages:
+  - id: literature
+    agent: literature
+    gate: literature_review
+
+  - id: synthesis
+    agent: synthesis
+    gate: final_report

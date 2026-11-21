@@ -92,7 +92,11 @@ def test_variants_change_the_expectation(tmp_path: Path) -> None:
         ({"expect": {"significant": False}}, "planted case expects a significant effect"),
         ({"kind": "null"}, "null case expects no effect"),
         ({"kind": "replication"}, "needs expect.value"),
-        ({"kind": "open"}, "open case fixes nothing"),
+        ({"kind": "open"}, "open case fixes no experiment"),
+        (
+            {"kind": "synthesis", "hypothesis": None, "brief": {"conditions": [], "primary_metric": None}},
+            "needs expect.findings",
+        ),
         ({"hypothesis": None}, "needs a hypothesis"),
         ({"brief": {"primary_metric": None}}, "primary_metric is required"),
         ({"brief": {"seeds": None}}, "brief.seeds is required"),

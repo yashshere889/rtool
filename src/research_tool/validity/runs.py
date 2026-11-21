@@ -24,7 +24,7 @@ from ..core.run import RunHandle, is_valid_name
 from ..schemas.common import SelectedItem
 from ..schemas.literature import Corpus, KnowledgeMap
 from ..tools.resources.fetch import content_hash
-from .cases import MAIN_VARIANT, Case, CaseError
+from .cases import EXPERIMENTS, MAIN_VARIANT, Case, CaseError
 
 MARKER = "validity.json"  # in the run folder: the case as it was, and which variant and repeat this run is
 OVERLAY = "validity-overlay.yaml"  # in the run folder; every episode applies it last
@@ -134,8 +134,8 @@ def create_case_run(
     case.expectation(variant)  # an unknown variant fails here
     if repeat < 1:
         raise CaseError(f"repeat must be 1 or more, not {repeat}")
-    spec = pipeline_from(find_pipeline("research"), case.start)
-    if case.kind != "open" and "selected_hypothesis" not in spec.initial_artifacts:
+    spec = pipeline_from(find_pipeline(case.pipeline_name), case.start)
+    if case.kind in EXPERIMENTS and "selected_hypothesis" not in spec.initial_artifacts:
         raise CaseError(
             f"case {case.id!r} starts at {case.start!r}, where the pipeline still chooses the hypothesis; "
             f"a {case.kind} case must fix it, so it starts at 'plan' or later"

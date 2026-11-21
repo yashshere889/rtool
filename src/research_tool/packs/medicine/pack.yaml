@@ -1,0 +1,13 @@
+name: medicine
+description: >-
+  Medicine and public health: mostly literature reviews (pipeline synthesis) over clinical and biomedical
+  studies, searched in PubMed and Europe PMC.
+smoke: When smoke is True, use at most 50 records and the same code path, so the run takes seconds on a CPU.
+packages: [numpy]
+literature_sources: [pubmed, europe_pmc, openalex, semantic_scholar]
+review_checks:
+  - Are randomised trials and observational studies told apart, and is the strength of each claim matched to its design?
+  - Are effect sizes given with their uncertainty, and are surrogate outcomes (such as LDL) kept apart from clinical outcomes (such as heart attacks)?
+  - Could a conflict of interest or publication bias explain the results reported?
+hints:
+  - Read data only from the local paths in `resources`; never download. Patient-level data is never used, only published summaries.

@@ -1,0 +1,12 @@
+# A literature review on a settled question: statins lower LDL cholesterol. Any paper may state it.
+id: statins-ldl-review
+kind: synthesis
+pack: medicine
+confirmed_by: "an established finding, e.g. the Cholesterol Treatment Trialists' meta-analyses of statin trials"
+brief:
+  topic: The effect of statins on LDL cholesterol and cardiovascular events in adults
+  questions:
+    - Do statins lower LDL cholesterol, and does that reduce major cardiovascular events?
+expect:
+  findings:
+    - {terms: [statin, LDL]}

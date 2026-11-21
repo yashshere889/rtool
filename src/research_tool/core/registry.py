@@ -29,6 +29,7 @@ BUILTIN_AGENT_MODULES: list[str] = [
     "research_tool.agents.coder",
     "research_tool.agents.writer",
     "research_tool.agents.reviewer",
+    "research_tool.agents.synthesis",
 ]
 
 ENTRY_POINT_GROUP = "research_tool.agents"

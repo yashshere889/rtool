@@ -109,6 +109,10 @@ def score_run(run: RunHandle) -> RunScore:
         lambda: _l2(brief, expect, plan, results, comparison, summary),
         lambda: _l3(expect, comparison, summary, final),
     ]
+    if case.kind == "synthesis":  # a literature review: its own three levels after L0
+        review, corpus = head("synthesis"), head("corpus")
+        score.facts.update(_synthesis_facts(review, expect, corpus))
+        levels = [levels[0], *(lambda n=n: _synthesis_level(n, review, expect, corpus) for n in (1, 2, 3))]
     for level, checks in enumerate(levels[: score.max_level + 1]):
         found = checks()
         score.checks += found
@@ -175,6 +179,84 @@ def _facts(
     if final is not None:
         facts["outcome"] = final.hypothesis_outcome
     return facts
+
+
+def _found(expect: Expectation, review: Any, corpus: Any) -> list[bool]:
+    """For each expected finding, whether a kept sentence citing a paper of that title states its terms."""
+    titles = {p.bib_key: p.title.lower() for p in corpus.papers if p.bib_key} if corpus is not None else {}
+    found = []
+    for finding in expect.findings:
+        papers = {key for key, title in titles.items() if finding.paper.lower() in title}  # "" matches every title
+        found.append(
+            any(
+                set(s.papers) & papers and all(term.lower() in s.text.lower() for term in finding.terms)
+                for s in review.kept()
+            )
+        )
+    return found
+
+
+def _synthesis_facts(review: Any, expect: Expectation, corpus: Any) -> dict[str, Any]:
+    if review is None:
+        return {}
+    found = _found(expect, review, corpus)
+    return {
+        "kept_sentences": len(review.kept()),
+        "dropped_sentences": len(review.dropped),
+        "findings_used": len({c for s in review.kept() for c in s.claims}),
+        "findings_offered": len(review.claims),
+        "recall": round(sum(found) / len(found), 4) if found else 0.0,
+    }
+
+
+def _synthesis_level(level: int, review: Any, expect: Expectation, corpus: Any) -> list[Check]:
+    """L1: every sentence rests on findings the review lists; L2: its numbers and papers match those findings
+    (checked again here, not taken from the agent); L3: it states the known findings."""
+    from ..agents.synthesis.agent import numbers  # noqa: PLC0415  (agents import the scorer's neighbours)
+
+    if review is None:
+        return [Check(level=level, name="the review was written", ok=False, category="unsupported_review")]
+    kept = review.kept()
+    if level == 1:
+        loose = [s.text for s in kept if not s.claims or any(c not in review.claims for c in s.claims)]
+        return [
+            Check(level=1, name="the review has sentences", ok=bool(kept), category="unsupported_review"),
+            Check(
+                level=1,
+                name="every sentence rests on listed findings",
+                ok=not loose,
+                detail=loose[0][:150] if loose else "",
+                category="unsupported_review",
+            ),
+        ]
+    if level == 2:
+        wrong = []
+        for s in kept:
+            cited = [review.claims[c] for c in s.claims]
+            extra = numbers(s.text) - numbers(" ".join(f"{c.text} {c.quote}" for c in cited))
+            if extra or set(s.papers) != {c.bib_key for c in cited}:
+                wrong.append(s.text)
+        return [
+            Check(
+                level=2,
+                name="numbers and citations match the findings",
+                ok=not wrong,
+                detail=wrong[0][:150] if wrong else "",
+                category="unfaithful_review",
+            )
+        ]
+    found = _found(expect, review, corpus)
+    missed = [f.paper for f, ok in zip(expect.findings, found, strict=True) if not ok]
+    recall = sum(found) / len(found) if found else 0.0
+    return [
+        Check(
+            level=3,
+            name=f"the review states at least {expect.min_recall:.0%} of the known findings",
+            ok=recall >= expect.min_recall,
+            detail=f"{sum(found)} of {len(found)}" + (f"; missed: {', '.join(missed[:3])}" if missed else ""),
+            category="missed_findings",
+        )
+    ]
 
 
 def _first_line(text: str | None) -> str:

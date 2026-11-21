@@ -1,0 +1,21 @@
+Write one paragraph of a literature review on "{{ topic.label }}", part of a review of: {{ brief.topic }}.
+{% if topic.summary %}
+What this group of papers is about: {{ topic.summary }}
+{% endif %}
+
+Use only these findings. Each was extracted from a paper, with a quote checked against the paper's text:
+{% for cid, claim in claims %}
+[{{ cid }}] {{ claim.text }} (quote: "{{ claim.quote }}")
+{% endfor %}
+{% if brief.requirements() %}
+
+The researcher's requirements:
+{% for c in brief.requirements() %}
+- {{ c }}
+{% endfor %}
+{% endif %}
+
+Rules:
+- Write 2 to 6 sentences. Each sentence says only what the findings it lists say, and lists their ids (for example ["C2", "C5"]).
+- Connect the findings: where they agree, where they differ, what was tested where. Add no facts, numbers or papers of your own.
+- Copy every number exactly as the findings give it.

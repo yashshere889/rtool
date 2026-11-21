@@ -254,3 +254,53 @@ Files: `tools/resources/{models,checks,fetch}.py`, `schemas/plan.py`, `packs/__i
 `agents/coder/{agent,sanity}.py`, `agents/planner/agent.py`, `testing/samples.py`, `benchmarks/sysbio/**`,
 `frontend/src/api/*`, `web/static/build-stamp.json`, `tests/unit/test_models_sources.py`,
 `tests/integration/test_sysbio_pipeline.py`, `tests/unit/test_validity_card.py`, `tests/barkla/test_live_sources.py`.
+
+---
+
+## Stage 3 — literature synthesis without compute (local gate passed 2026-11-21)
+
+Built:
+- **Pipeline `synthesis`** (literature → synthesis, gates `literature_review` and `final_report`).
+  Run with `rtool new … --pipeline synthesis`.
+- **Synthesis agent** (`agents/synthesis/`):
+  - For each topic of the knowledge map, the model writes a paragraph sentence by sentence. Every
+    sentence names the verified findings it rests on (C1, C2, …).
+  - Code keeps a sentence only if every finding it names was offered and is verified (its quote was
+    found in the paper), and every number it states appears in those findings. Dropped sentences are
+    kept with their reasons.
+  - It writes the review with `[@key]` citations, an Evidence section quoting each finding, and
+    references. Outputs: `synthesis` (sentences and their findings) and `final_report` (the text, for the UI).
+- **Validity:**
+  - A `synthesis` case kind, scored against a labelled set (`expect.findings`: a paper-title fragment,
+    or none for any paper, and terms; `min_recall`).
+  - Cases gain `pipeline:`, the pipeline a case runs (default: `synthesis` for synthesis cases, else
+    `research`).
+  - The scorer re-checks the review itself rather than trusting the agent's filter. L1: every sentence
+    rests on listed findings. L2: numbers and citations match those findings. L3: the known findings
+    are stated.
+- **`medicine` pack** (PubMed and Europe PMC first, three review questions), and the shipped case
+  `statins-ldl-review` (statins lower LDL, stated by any paper).
+
+Proved by `tests/integration/test_synthesis_pipeline.py`:
+- The literature stage runs for real on the demo's fictional papers (PDFs, quote checks), then the
+  synthesis stage. The stubbed model restated 19 findings and added an invented number and a citation
+  to a finding nobody offered, in each of the 2 paragraphs. Those 4 sentences were dropped, and none of
+  their text reached the review.
+- The run scores L3 with recall 1.0 on two labelled demo findings. A third, false labelled finding
+  gives `missed_findings` (recall 2/3). A sentence edited to carry numbers its quote lacks gives
+  `unfaithful_review` at L1.
+- Full suite exit 0, web tests exit 0, ruff clean, API schema unchanged.
+
+Waits for Barkla, or an expert:
+- A real model writing reviews.
+- The statins case on real PubMed and Europe PMC results.
+- The roadmap's exit test needs a labelled set from a domain expert (claim-support and citation
+  accuracy with a threshold set beforehand). The scorer measures recall of known findings, and the
+  dropped share is reported as a fact.
+
+Not done: no LLM Reviewer for reviews (the Reviewer agent expects an experiment); the final checkpoint
+shows the synthesis checks instead. The web report page has no review artifact to show for this pipeline.
+
+Files: `agents/synthesis/**`, `pipelines/synthesis.yaml`, `core/registry.py`, `validity/{cases,runs,score}.py`,
+`packs/medicine/pack.yaml`, `benchmarks/medicine/**`, `tests/integration/test_synthesis_pipeline.py`,
+`tests/unit/test_validity_cases.py`, `tests/unit/test_validity_card.py`.

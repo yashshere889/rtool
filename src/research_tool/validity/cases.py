@@ -25,7 +25,9 @@ MAIN_VARIANT = "main"  # the name of a case's only variant when it lists none
 # paired seeds: with 5 its smallest two-sided p-value is 2/32 = 0.0625.
 MIN_SEEDS = 6
 
-CaseKind = Literal["planted", "null", "replication", "open"]
+# synthesis: a literature review (pipeline "synthesis"), scored against a labelled set of known findings
+CaseKind = Literal["planted", "null", "replication", "open", "synthesis"]
+EXPERIMENTS = ("planted", "null", "replication")  # kinds that fix a hypothesis and an experiment design
 Outcome = Literal["supported", "refuted", "inconclusive"]
 DEFAULT_OUTCOMES: dict[str, list[Outcome]] = {"planted": ["supported"], "null": ["refuted", "inconclusive"]}
 _SLUG = r"^[a-z][a-z0-9_]*$"  # how the planner names conditions and metrics
@@ -119,6 +121,13 @@ class ValueBand(Band):
     condition: str = Field(pattern=_SLUG)
 
 
+class ExpectedFinding(_Strict):
+    """A finding the literature is known to report: a kept sentence citing that paper must state it."""
+
+    paper: str = ""  # part of the paper's title (case does not matter); "": any paper of the corpus
+    terms: list[str] = Field(min_length=1)  # words the sentence must contain (case does not matter)
+
+
 class Expectation(_Strict):
     condition: str | None = Field(default=None, pattern=_SLUG)  # compared with the baseline; default: the only one
     significant: bool | None = None
@@ -126,6 +135,8 @@ class Expectation(_Strict):
     difference: Band | None = None  # the estimated difference (condition minus baseline) must fall in it
     value: ValueBand | None = None  # the mean of the primary metric for one condition must fall in it
     outcome: list[Outcome] = Field(default_factory=list)  # what the final report may conclude; empty: not checked
+    findings: list[ExpectedFinding] = Field(default_factory=list)  # synthesis: the known findings
+    min_recall: float = Field(default=1.0, gt=0, le=1)  # synthesis: the share of them the review must state
 
 
 class Variant(_Strict):
@@ -139,7 +150,8 @@ class Case(_Strict):
     id: str
     kind: CaseKind
     pack: str
-    start_at: str = ""  # default: "literature" for open cases, else "plan"
+    pipeline: str = ""  # the built-in pipeline the case runs; default: "synthesis" for synthesis cases, else "research"
+    start_at: str = ""  # default: "literature" for open and synthesis cases, else "plan"
     brief: CaseBrief
     hypothesis: CaseHypothesis | None = None
     data: list[DataSpec] = Field(default_factory=list)
@@ -161,7 +173,11 @@ class Case(_Strict):
     # ------------------------------------------------------------ queries
     @property
     def start(self) -> str:
-        return self.start_at or ("literature" if self.kind == "open" else "plan")
+        return self.start_at or ("plan" if self.kind in EXPERIMENTS else "literature")
+
+    @property
+    def pipeline_name(self) -> str:
+        return self.pipeline or ("synthesis" if self.kind == "synthesis" else "research")
 
     @property
     def confirmed(self) -> bool:
@@ -218,9 +234,11 @@ class Case(_Strict):
         unlisted = [n for n in data if n not in self.brief.datasets]
         if unlisted:
             problems.append(f"brief.datasets must list the data the case provides: {unlisted}")
-        if self.kind == "open":
+        if self.kind in ("open", "synthesis"):
             if self.hypothesis or self.brief.conditions or self.brief.primary_metric:
-                problems.append("an open case fixes nothing: no hypothesis, conditions or primary metric")
+                problems.append(f"an {self.kind} case fixes no experiment: no hypothesis, conditions or primary metric")
+            if self.kind == "synthesis" and not self.expect.findings:
+                problems.append("a synthesis case needs expect.findings: the known findings the review must state")
             return problems
         if self.hypothesis is None:
             problems.append(f"a {self.kind} case needs a hypothesis")
