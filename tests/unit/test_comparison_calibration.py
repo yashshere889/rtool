@@ -73,11 +73,11 @@ def test_the_paired_t_test_has_the_power_theory_gives() -> None:
     assert abs(power - POWER_8_SEEDS_DZ_1) <= 0.04  # binomial sd at 0.68: 0.010
 
 
-def test_a_failed_run_makes_the_test_unpaired_without_extra_false_effects() -> None:
+def test_a_failed_run_keeps_the_pairing_without_extra_false_effects() -> None:
     p = plan("paired t-test")
-    assert {c.test for c in experiment(p, random.Random(3), failed=("new0", 0))} == {"Welch t-test"}
-    # ignoring the pairing only makes it more cautious
-    assert share(p, 1000, seed=3, failed=("new0", 0)) <= 0.065
+    assert {c.test for c in experiment(p, random.Random(3), failed=("new0", 0))} == {"paired t-test"}
+    # the failed seed only drops out of the pairs, so false effects stay at alpha
+    assert 0.035 <= share(p, 1000, seed=3, failed=("new0", 0)) <= 0.065
 
 
 @pytest.mark.parametrize(("test", "seeds", "reps"), [("Wilcoxon signed-rank", 8, 1000), ("Mann-Whitney U", 6, 600)])

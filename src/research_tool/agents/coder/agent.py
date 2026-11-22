@@ -978,7 +978,7 @@ class CoderSession:
             if len(ok) < len(records)
             else []
         )
-        notes += analysis_notes(self.plan, comparisons)
+        notes += analysis_notes(self.plan, comparisons, records)
         notes += variation_notes(self.plan, records, comparisons)
         warnings = self.warnings() + sanity.results_warnings(self.plan, records)
         notes += [f"Warning: {w}" for w in warnings]

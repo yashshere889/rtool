@@ -455,7 +455,29 @@ def test_partial_results_still_aggregate() -> None:
     runs[0] = RunRecord(condition="base", seed=0, status="failed", error="cuda_oom")
     summaries, comparisons = aggregate(plan(), runs)
     base = next(s for s in summaries if s.condition == "base" and s.metric == "acc")
-    assert base.n == 2 and comparisons[0].test == "Welch t-test"  # seeds no longer pair up
+    assert base.n == 2 and (comparisons[0].test, comparisons[0].n) == ("paired t-test", 2)  # seeds 1 and 2 pair up
+
+
+def test_a_failed_run_leaves_only_its_seed_out_of_the_pairing() -> None:
+    runs = records()  # base seeds 0-2, then new seeds 0-2
+    runs[3] = RunRecord(condition="new", seed=0, status="failed", error="cuda_oom")
+    summaries, comparisons = aggregate(plan(), runs)
+    acc, expected = comparisons[0], stats.paired_t([0.74, 0.69], [0.66, 0.63])  # acc of new and base, seeds 1, 2
+    assert (acc.test, acc.n) == ("paired t-test", 2)
+    assert (acc.p_value, acc.difference) == (pytest.approx(expected.p_value), pytest.approx(expected.difference))
+    assert next(s for s in summaries if s.condition == "base" and s.metric == "acc").n == 3  # every run that worked
+    assert analysis_notes(plan(), comparisons, runs)[-1] == (
+        "`new` vs `base` is paired on the 2 seeds with results in both, so its differences and tests leave out seed 0"
+    )
+    wilcoxon = aggregate(plan(test="Wilcoxon signed-rank test"), runs)[1][0]
+    assert (wilcoxon.test, wilcoxon.n) == ("Wilcoxon signed-rank", 2)
+    rank = aggregate(plan(test="Mann-Whitney U test"), runs)[1][0]  # unpaired by design: all runs, as before
+    assert rank.test == "Mann-Whitney U"
+    assert rank.difference == pytest.approx((0.74 + 0.69) / 2 - (0.65 + 0.66 + 0.63) / 3)
+    runs[2] = RunRecord(condition="base", seed=2, status="failed", error="cuda_oom")  # one shared seed: no pairs
+    comparisons = aggregate(plan(), runs)[1]
+    assert comparisons[0].test == "Welch t-test"
+    assert not any("paired on" in note for note in analysis_notes(plan(), comparisons, runs))
 
 
 def test_numbers_and_svg() -> None:

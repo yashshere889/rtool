@@ -183,8 +183,8 @@ def correction_used(plan: ExperimentPlan, comparisons: list[Comparison]) -> str:
     return next((c.correction for c in comparisons if c.correction != "none"), "")
 
 
-def analysis_notes(plan: ExperimentPlan, comparisons: list[Comparison]) -> list[str]:
-    """What the analysis did, in words, where it differs from what the plan says."""
+def analysis_notes(plan: ExperimentPlan, comparisons: list[Comparison], records: Sequence[RunRecord] = ()) -> list[str]:
+    """What the analysis did, in words, where it differs from what the plan says (``records``: which seeds)."""
     if not comparisons:
         return []
     family, _ = _test_family(plan)
@@ -209,6 +209,20 @@ def analysis_notes(plan: ExperimentPlan, comparisons: list[Comparison]) -> list[
             f"no test was possible for {', '.join(untestable)}: the results (or their differences from the "
             "baseline) did not vary across seeds"
         )
+
+    def seeds(condition: str) -> set[int]:
+        return {r.seed for r in records if r.status == "ok" and r.condition == condition}
+
+    paired = {
+        (c.condition, c.baseline): c.n for c in comparisons if c.test in ("paired t-test", "Wilcoxon signed-rank")
+    }
+    for (condition, baseline), n in paired.items():
+        left_out = sorted(seeds(condition) ^ seeds(baseline))  # a result on one side only
+        if left_out:
+            notes.append(
+                f"`{condition}` vs `{baseline}` is paired on the {n} seeds with results in both, so its differences "
+                f"and tests leave out seed{'s' if len(left_out) > 1 else ''} {', '.join(map(str, left_out))}"
+            )
     return notes
 
 
@@ -254,7 +268,8 @@ def aggregate(plan: ExperimentPlan, records: list[RunRecord]) -> tuple[list[Metr
             if not other or not base:
                 continue
             seeds = sorted(set(base) & set(other))
-            paired = len(seeds) >= 2 and len(seeds) == len(base) == len(other)
+            # a failed run drops only its seed from the pairs: seeded runs share variation across conditions
+            paired = family != "mann-whitney" and len(seeds) >= 2
             a = [other[s] for s in seeds] if paired else list(other.values())
             b = [base[s] for s in seeds] if paired else list(base.values())
             if family == "wilcoxon" and paired:
