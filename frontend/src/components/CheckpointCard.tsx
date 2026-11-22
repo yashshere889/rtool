@@ -238,7 +238,7 @@ export function CheckpointCard({
               <input
                 type="radio"
                 name={`choice-${gate.nonce}`}
-                className="mt-0.5 accent-[var(--accent)]"
+                className="mt-0.5 accent-accent"
                 checked={choice === option.index}
                 onChange={() => setChoice(option.index)}
               />

@@ -17,9 +17,9 @@ function Timeline({ timeline }: { timeline: Record<string, number> }) {
     <div className="flex h-28 items-end gap-1.5" role="img" aria-label="Papers per year">
       {years.map((year) => (
         <div key={year} className="flex flex-1 flex-col items-center gap-1" title={`${year}: ${timeline[year]} papers`}>
-          <span className="text-[10px] text-ink-soft">{timeline[year]}</span>
-          <div className="w-full max-w-8 rounded-t bg-accent/70" style={{ height: `${(timeline[year] / most) * 64}px` }} />
-          <span className="text-[10px] text-ink-soft">{year.slice(2)}</span>
+          <span className="text-xs text-ink-soft tabular-nums">{timeline[year]}</span>
+          <div className="w-full max-w-8 rounded-t-sm bg-accent/70" style={{ height: `${(timeline[year] / most) * 64}px` }} />
+          <span className="text-xs text-ink-soft tabular-nums">{year.slice(2)}</span>
         </div>
       ))}
     </div>
@@ -59,14 +59,15 @@ function Coverage({ cells, onFilter }: { cells: CoverageView[]; onFilter: (filte
                         <button
                           type="button"
                           onClick={() => setPicked(c)}
-                          className={cn("size-9 rounded font-semibold text-white", picked === c && "ring-2 ring-ink")}
-                          style={{ backgroundColor: `color-mix(in srgb, var(--accent) ${30 + (70 * c.paper_ids.length) / most}%, transparent)` }}
+                          className={cn("size-9 rounded-sm font-semibold text-accent-ink", picked === c && "ring-2 ring-ink ring-offset-2 ring-offset-surface")}
+                          // 60% floor keeps accent-ink text >= 4.5:1 on the palest cell in both themes
+                          style={{ backgroundColor: `color-mix(in srgb, var(--accent) ${60 + (40 * c.paper_ids.length) / most}%, transparent)` }}
                           aria-label={`${m} on ${d}: ${c.paper_ids.length} papers`}
                         >
                           {c.paper_ids.length}
                         </button>
                       ) : (
-                        <span className="block size-9 rounded border border-dashed border-line" title="No paper tests this pairing" />
+                        <span className="block size-9 rounded-sm border border-dashed border-line" title="No paper tests this pairing" />
                       )}
                     </td>
                   );
@@ -85,7 +86,7 @@ function Coverage({ cells, onFilter }: { cells: CoverageView[]; onFilter: (filte
           {picked.results.length > 0 && <p className="mt-1 text-ink-soft">Reported: {picked.results.join("; ")}</p>}
           <button
             type="button"
-            className="mt-2 font-medium text-accent"
+            className="mt-2 font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
             onClick={() => onFilter({ label: `${picked.method} on ${picked.dataset}`, ids: picked.paper_ids })}
           >
             Show these {picked.paper_ids.length} papers
@@ -136,7 +137,7 @@ export function MapTab({ view, onFilter }: { view: LiteratureView; onFilter: (fi
                         key={e.name}
                         type="button"
                         onClick={() => onFilter({ label: e.name, ids: e.paper_ids })}
-                        className="rounded-full bg-muted px-2.5 py-0.5 text-xs hover:bg-accent-soft hover:text-accent"
+                        className="rounded-sm bg-muted px-2 py-0.5 text-xs hover:bg-accent-soft hover:text-accent"
                       >
                         {e.name} <span className="text-ink-soft">{e.paper_ids.length}</span>
                       </button>

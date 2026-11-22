@@ -16,7 +16,7 @@ function Marked({ text, query }: { text: string; query: string }) {
     <>
       {text.split(pattern).map((part, i) =>
         i % 2 ? (
-          <mark key={i} className="rounded bg-warn-soft px-0.5 text-ink">
+          <mark key={i} className="rounded-sm bg-warn-soft px-0.5 text-ink">
             {part}
           </mark>
         ) : (

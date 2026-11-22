@@ -97,7 +97,7 @@ function MethodsText({ text }: { text: string }) {
     <div>
       <p className="text-sm leading-relaxed whitespace-pre-line">{all || !long ? text : `${text.slice(0, 1200)}…`}</p>
       {long && (
-        <button type="button" className="mt-1 text-sm font-medium text-accent" onClick={() => setAll(!all)}>
+        <button type="button" className="mt-1 text-sm font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent" onClick={() => setAll(!all)}>
           {all ? "Show less" : "Show the whole section"}
         </button>
       )}
@@ -148,7 +148,7 @@ export function PaperPanel({ kind, detail, ctx }: { kind: PanelKind; detail: Pap
           )}
           {paper.abstract && (
             <details className="text-sm">
-              <summary className="cursor-pointer font-medium text-accent">Abstract</summary>
+              <summary className="cursor-pointer font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">Abstract</summary>
               <p className="mt-2 leading-relaxed text-ink-soft">{paper.abstract}</p>
             </details>
           )}

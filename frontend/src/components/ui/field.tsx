@@ -3,8 +3,8 @@ import { forwardRef, useEffect, useState, type InputHTMLAttributes, type ReactNo
 import { cn } from "@/lib/cn";
 
 const control =
-  "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-soft/70 " +
-  "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60";
+  "w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-soft " +
+  "focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-60";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...props },

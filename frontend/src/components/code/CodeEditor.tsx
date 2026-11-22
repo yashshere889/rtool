@@ -14,9 +14,11 @@ import { useDark } from "@/lib/useDark";
 const focusable = EditorView.contentAttributes.of({ tabindex: "0" });
 
 const frame = EditorView.theme({
-  "&": { fontSize: "13px", border: "1px solid var(--line)", borderRadius: "0.75rem", overflow: "hidden" },
-  ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.55" },
-  "&.cm-focused": { outline: "2px solid color-mix(in srgb, var(--accent) 35%, transparent)" },
+  "&": { fontSize: "13px", border: "1px solid var(--line)", borderRadius: "var(--radius-xl)", overflow: "hidden" },
+  // the app's surface instead of the colour theme's own (oneDark is bluish grey)
+  "&.cm-editor, .cm-gutters": { backgroundColor: "var(--surface)" },
+  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.55" },
+  "&.cm-focused": { outline: "2px solid var(--accent)" },
 });
 
 function useEditor(

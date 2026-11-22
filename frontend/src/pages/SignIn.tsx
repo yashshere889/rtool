@@ -24,8 +24,8 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
             </div>
           </div>
           <p className="text-sm">
-            Open the link that <code className="rounded bg-muted px-1">rtool ui</code> printed (it ends in{" "}
-            <code className="rounded bg-muted px-1">#token=…</code>), or paste the token here.
+            Open the link that <code className="rounded-sm bg-muted px-1">rtool ui</code> printed (it ends in{" "}
+            <code className="rounded-sm bg-muted px-1">#token=…</code>), or paste the token here.
           </p>
           <form
             className="space-y-3"

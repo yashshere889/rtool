@@ -49,7 +49,7 @@ function HighlightedText({ text, active }: { text: PaperText; active: number | n
               key={`m${mark.claim}`}
               id={mark.claim === FOCUS ? "quote" : `claim-${mark.claim}`}
               className={cn(
-                "rounded px-0.5 text-ink",
+                "rounded-sm px-0.5 text-ink",
                 active === mark.claim ? "bg-warn/40 ring-2 ring-warn" : "bg-warn-soft",
               )}
             >
@@ -62,7 +62,7 @@ function HighlightedText({ text, active }: { text: PaperText; active: number | n
         return (
           <section key={s}>
             <h3 className="mb-2 font-semibold">{section.title}</h3>
-            <p className="text-[0.95rem] leading-relaxed whitespace-pre-line">{nodes}</p>
+            <p className="text-reading whitespace-pre-line">{nodes}</p>
           </section>
         );
       })}
@@ -157,7 +157,7 @@ export function PaperReader() {
             <iframe
               src={file}
               title={`Full text of ${paper.title}`}
-              className="h-[78vh] w-full rounded-xl border border-line bg-white"
+              className="h-[78vh] w-full rounded-xl border border-line bg-paper"
               sandbox={paper.file_kind === "html" ? "" : undefined}
             />
           ) : (

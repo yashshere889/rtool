@@ -95,13 +95,13 @@ function FieldInput<T extends object>({ field, item, items, index, onChange, id 
     case "csv":
       return <CsvInput id={id} value={(value as string[]) ?? []} onChange={set} placeholder={field.placeholder} />;
     case "checkbox":
-      return <input id={id} type="checkbox" className="size-4 accent-[var(--accent)]" checked={Boolean(value)} onChange={(e) => set(e.target.checked)} />;
+      return <input id={id} type="checkbox" className="size-4 accent-accent" checked={Boolean(value)} onChange={(e) => set(e.target.checked)} />;
     case "radio": // one item in the list: choosing it clears the others
       return (
         <input
           id={id}
           type="radio"
-          className="size-4 accent-[var(--accent)]"
+          className="size-4 accent-accent"
           checked={Boolean(value)}
           onChange={() => onChange(items.map((it, i) => ({ ...it, [field.key]: i === index })))}
         />

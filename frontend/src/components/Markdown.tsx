@@ -37,7 +37,7 @@ export function Markdown({
         const paper = papers.get(decodeURIComponent(href.slice(5)));
         if (!paper) return <span className="text-bad">{children}</span>;
         return (
-          <Link to={readerPath(project, runId, stage, paper.paper_id)} title={paper.title} className="rounded bg-ok-soft/70 px-1 text-ok underline decoration-ok/40 underline-offset-2">
+          <Link to={readerPath(project, runId, stage, paper.paper_id)} title={paper.title} className="rounded-sm bg-ok-soft/70 px-1 text-ok underline decoration-ok/40 underline-offset-2">
             {children}
           </Link>
         );
@@ -47,6 +47,10 @@ export function Markdown({
           {children}
         </a>
       );
+    },
+    // .rt-prose tables scroll sideways when wide; keyboard users need to focus them to scroll
+    table({ children }) {
+      return <table tabIndex={0}>{children}</table>;
     },
     img({ src = "", alt = "" }) {
       const url = typeof src === "string" && !/^[a-z]+:/i.test(src) ? fileUrl(project, runId, `${baseDir}/${src}`) : String(src);
