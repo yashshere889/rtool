@@ -10,7 +10,7 @@ test: those need Barkla, and for most fields an expert.
 
 | Stage | Built | Commit | Waits for |
 |---|---|---|---|
-| 0 | Validity harness: cases, seeded runs, scorer, card, `rtool validity` | `8ceb2ed`, `f3f1ba2` | the baseline run on Barkla (PR 4, in the runbook) |
+| 0 | Validity harness: cases, seeded runs, scorer, card, `rtool validity` | `8ceb2ed`, `f3f1ba2` | baseline run on Barkla 2026-11-22 (13 / 29, cards in `benchmarks/`); two planner bugs to fix, then a rerun |
 | 1 | Analyse existing data: units mode, `omics`, `tabular`, GEO, CELLxGENE, PubMed, Europe PMC | `35bf577` | live probes; real omics runs; three reanalyses an expert chooses |
 | 2 | Simulate or model: BioModels, result checks, `sysbio` | `d6ef029` | real runs; curated models and knockouts an expert chooses |
 | 3 | Literature synthesis: pipeline, agent, `medicine` | `3c81983` | a real model's reviews; a labelled set from an expert |
@@ -125,11 +125,11 @@ Files: `cli/main.py` (validity commands), `validity/{card,provenance,cases,runs,
 `tests/integration/test_validity_cli.py`, `tests/unit/test_validity_card.py`,
 `tests/integration/test_validity.py`.
 
-### PR 4 — the baseline on Barkla (written up, not run)
+### PR 4 — the baseline on Barkla (run 2026-11-22: see "On Barkla" below)
 
 This needs your OK for the LLM episodes' GPU time, the Qwen container and weights on Barkla, and a
 clean deploy. The exact steps are in [barkla_runbook.md](barkla_runbook.md#validity-baseline-stage-0-pr-4).
-Nothing was run on Barkla.
+Run with your OK on 2026-11-22; the results are under "On Barkla" at the end.
 
 ---
 
@@ -542,3 +542,50 @@ the Mac's at `1220bbb` (`1abc7339e8ab`), so cards name that commit. The default 
 three new probes for UniProt, AlphaFold DB and RCSB PDB (each checked and fetched). So the formats
 written from memory hold: the ESearch JSON keys, PubMed's XML elements, Europe PMC's year syntax, NCBI's
 folder listings, and AlphaFold's `/api` prefix.
+
+**The baseline (Stage 0 PR 4): 31 runs, 17 cases, 7 packs, one repeat, Qwen3.6-35B-A3B, code `1abc7339e8ab`.**
+The cards are in `benchmarks/<pack>/CARD.md`. 13 of the 29 runs on confirmed cases reached their top
+level; the two unconfirmed torch cases (label-noise-hurts, softmax-mnist-accuracy) both reached L3 but
+are not counted.
+
+| pack | top level reached | false claims on nulls |
+|---|---|---|
+| generic | 0 / 5 | 2 / 3 |
+| ml_dl | 3 / 5 | 0 / 2 |
+| omics | 4 / 6 | 0 / 4 |
+| sysbio | 0 / 5 | 0 / 3 |
+| medicine | 1 / 1 | — |
+| study | 5 / 6 | 0 / 4 |
+| protein | 0 / 1 | — |
+
+The conclusions were mostly right: 26 of the 28 runs with an expected answer that reached a result
+said what the case expects (two-servers by its report only: its comparison could not be scored). Most failures come from two planner bugs, both visible in the plan's
+`issues` and let through because validity runs approve every gate themselves:
+
+- **The model copies the conditions as ablations** (7 runs: motif-classifier, ssa-method-null × 3,
+  random-halves-null 5000, caffeine-reaction-time trial 2, open-topic). Every condition then runs
+  twice per seed ("16 of 8 seeds"), and the smoke test compares seed 0 with seed 0. The planner flags
+  "condition names must be unique" but never drops the copies.
+- **A dataset is required even for a simulation** ("no dataset is listed"; 6 runs: mm1, rng-choice
+  × 3, sir-final-size, vaccination). Either the issue stays open (L1), or the model invents one to pass
+  the check: mm1 listed an empty "Simulation Output Data" (so `fake_experiment`), vaccination a local
+  `results.json` that does not exist (so fetch failed).
+
+The rest, one run each: two-servers renamed the fixed primary metric (`mean_time_in_system`), so no
+comparison could be scored; pseudobulk-planted fold 1.5's Coder fix of a syntax error deleted the
+condition code (the guard caught it, the stage failed); pseudobulk-null seed 5 was marked a fake
+because a fallback for a missing batch column says "dummy" (the data has the column; the scorer's word
+check is strict here).
+
+**Not explained yet: rng-choice-null false claims.** Load 0.5 and 0.8 both came out significant
+(p = 0.047 and 0.044, 8 seeds, paired t-test). The analysis followed the pre-registered test, and the
+generated code is a correct M/M/1 simulation (mean 2.0 at load 0.5). Two of three nulls crossing has
+about a 0.7 % chance if nothing is wrong; more seeds would tell.
+
+**Found on the way:** onnxruntime 1.30 writes a telemetry SQLite file in the NFS home
+(`~/.cache/Microsoft/DeveloperTools/.onnxruntime/`); with several episodes at once, one hung on its lock
+for an hour holding two H100s. `ORT_DISABLE_TELEMETRY=1` is now set in the roadmap venv's activate
+script; rtool itself does not set it yet. The run was cancelled and resubmitted, and finished.
+
+Cost: about 5.4 GPU-episode hours for the 31 runs (model episodes on two GPUs; the experiments ran on
+CPU); 3,017 LLM calls, 1,427 of them in the one medicine review.
