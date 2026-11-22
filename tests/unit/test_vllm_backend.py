@@ -199,3 +199,29 @@ def test_two_phase_structured_when_server_cannot_mix_reasoning_and_json() -> Non
     assert "response_format" not in first and first["messages"][0]["content"] == "/think"
     assert "response_format" in second and second["messages"][0]["content"] == "/no_think"
     assert second["temperature"] == 0.0 and "top_p" not in second
+
+
+def test_tools_are_sent_and_tool_calls_parsed() -> None:
+    seen: list[dict[str, Any]] = []
+    call = {"id": "c0", "type": "function", "function": {"name": "read_file", "arguments": '{"path": "a.py"}'}}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(req.content))
+        body = completion("")
+        body["choices"][0]["message"]["tool_calls"] = [call]
+        return httpx.Response(200, json=body)
+
+    tools = [{"type": "function", "function": {"name": "read_file", "parameters": {"type": "object"}}}]
+    history = [
+        ChatMessage(role="user", content="fix it"),
+        ChatMessage(role="assistant", content="", tool_calls=[call]),
+        ChatMessage(role="tool", content="print(1)", tool_call_id="c0", name="read_file"),
+    ]
+    reply = make_backend(handler).chat(ChatRequest(messages=history, tools=tools))
+
+    assert reply.tool_calls == [call]
+    payload = seen[0]
+    assert payload["tools"] == tools and payload["tool_choice"] == "auto"
+    assert payload["messages"][1] == {"role": "user", "content": "fix it"}  # no null tool fields
+    assert payload["messages"][3] == {"role": "tool", "content": "print(1)", "tool_call_id": "c0", "name": "read_file"}
+    assert "tools" not in json.loads(json.dumps(make_backend(handler).build_payload(request())))

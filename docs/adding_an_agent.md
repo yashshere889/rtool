@@ -175,6 +175,29 @@ def test_novelty_checker(runs_root):
     assert store.get("novelty_report").closest_title.startswith("Closed-loop")
 ```
 
+## 7. Let the model use tools (optional)
+
+For work that needs files and commands rather than one answer, hand the task to the tool-calling
+loop (`research_tool/codeagent`, vendored from the coding-agent repo). The model gets read_file,
+edit_file, write_file, glob, grep and bash in a folder of your choice, plus any tools you add:
+
+```python
+from research_tool.agents.tool_agent import run_tool_agent
+
+result = run_tool_agent(ctx, "Tabulate the CSV files in ./data into summary.md", workspace=ctx.workspace.mkdir("work"),
+                        allow=["bash(python *)"], read_roots=[data_dir], max_turns=30)
+if result.stopped:  # max_turns, max_tokens, repeated_denial or context_full
+    raise StageFailed(f"the tool agent stopped ({result.stopped}); transcript: {result.transcript}")
+```
+
+Every turn goes through `ctx.llm` (budget, `llm_call` events). Nobody can approve a call in an episode,
+so anything outside the allow rules is refused with a reason, and shell downloads, pip and Slurm commands
+are always refused (the Coder's `smoke_test` still installs declared requirements through the experiment image). The server needs a tool-call parser (`--enable-auto-tool-choice --tool-call-parser
+qwen3_coder` in `llm.server.extra_args`; set in the Qwen configs). Without writing an agent, the
+`tool_task` stage does this for a task given in the pipeline (`config: {task: "..."}`), and the Coder
+does it for experiment.py with `config: {tool_agent: true}` (its own `smoke_test` tool runs the code
+in the experiment image).
+
 ## Checklist
 
 - Read and write only artifacts; never import another agent or refer to stage ids.

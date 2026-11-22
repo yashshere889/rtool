@@ -41,8 +41,10 @@ llm:
     # content and then emits only newlines until max_tokens (the planner's ResourcePlan, 2026-10-12:
     # 32 lines of JSON, then 8192 tokens, three tries). xgrammar reads this only from the server
     # config, and only with the backend named explicitly.
+    # Tool calling for run_tool_agent / the Coder's tool_agent option: the Qwen3.6 card's own flags.
     extra_args: [--tensor-parallel-size, "2", --language-model-only, --safetensors-load-strategy, eager,
-                 --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}']
+                 --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}',
+                 --enable-auto-tool-choice, --tool-call-parser, qwen3_coder]
     reasoning_parser: qwen3
     # FlashInfer's and DeepGEMM's MoE kernels JIT-compile into the read-only image (seen with Qwen3-Coder-Next
     # FP8, 2026-11-14: "Read-only file system: .../flashinfer/data/csrc"). Switching them off makes vLLM use
