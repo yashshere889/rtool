@@ -14,7 +14,7 @@ from ...core.run import RunHandle, is_valid_name
 from ...core.state import RunState
 from ...hpc.episode import llm_needed
 from ...service import KickResult, RunSummary, create_run, list_runs, load_app_config, run_status, stop_run
-from ..deps import get_run, public_summary, runner_of, settings_of
+from ..deps import get_run, hide_run_paths, public_summary, runner_of, settings_of
 from ..runner import WorkerState
 
 router = APIRouter(tags=["runs"])
@@ -89,6 +89,8 @@ def project_name(topic: str) -> str:
 def detail(request: Request, run: RunHandle) -> RunDetail:
     status = run_status(run)
     for stage in status.stages:
+        if stage.last_error:
+            stage.last_error = hide_run_paths(run.spec.project, run.run_id, stage.last_error)
         if stage.gate is not None:
             stage.gate.summary = public_summary(run, stage.gate.summary)
     status.open_gates = [s.gate for s in status.stages if s.gate is not None]
@@ -98,7 +100,12 @@ def detail(request: Request, run: RunHandle) -> RunDetail:
 
 @router.get("/runs", response_model=list[RunSummary])
 def all_runs(request: Request) -> list[RunSummary]:
-    return list_runs(settings_of(request).runs_root)
+    runs = list_runs(settings_of(request).runs_root)
+    for run in runs:
+        for stage in run.stages:
+            if stage.last_error:
+                stage.last_error = hide_run_paths(run.project, run.run_id, stage.last_error)
+    return runs
 
 
 @router.post("/runs", response_model=Created, status_code=201)

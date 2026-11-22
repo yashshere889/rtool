@@ -11,7 +11,7 @@ import contextlib
 import re
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ from ...knowledge.verify import locate_quote
 from ...schemas.literature import Claim, Corpus, KnowledgeMap, PaperRecord, QualityCheck, TopicScope
 from ...tools.report.render import bibtex_subset
 from ..deps import get_run
+from .rounds import Round, previous_round
 
 router = APIRouter(tags=["literature"])
 
@@ -105,6 +106,11 @@ class SubtopicView(BaseModel):
     paper_ids: list[str]  # included papers that screening found to cover it
 
 
+class RoundPaper(BaseModel):
+    id: str
+    title: str
+
+
 class LiteratureView(BaseModel):
     stage: str  # the stage that produced the corpus
     corpus_version: int
@@ -124,6 +130,9 @@ class LiteratureView(BaseModel):
     scope: TopicScope | None = None  # how the agent read the topic (None for corpora built before it existed)
     subtopics: list[SubtopicView] = Field(default_factory=list)
     quality: list[QualityCheck] = Field(default_factory=list)  # measured at the end of the stage
+    previous: Round | None = None  # this corpus against the one before it (None: the first)
+    papers_added: list[str] = Field(default_factory=list)  # included now, not in the previous corpus
+    papers_removed: list[RoundPaper] = Field(default_factory=list)  # included before, not now
 
 
 class DigestView(BaseModel):
@@ -221,6 +230,7 @@ class _Literature:
         except ArtifactError:
             raise HTTPException(404, "the literature stage has not produced a corpus yet") from None
         self.run = run
+        self.envelope = corpus_env
         self.corpus_version = corpus_env.version
         self.stage = corpus_env.producer.stage
         self.corpus = Corpus.model_validate(corpus_env.payload)
@@ -356,7 +366,25 @@ def literature(project: str, run_id: str, request: Request) -> LiteratureView:
             for name in lit.corpus.must_cover
         ],
         quality=km.quality if km else [],
+        **_round(lit),
     )
+
+
+def _round(lit: _Literature) -> dict[str, Any]:
+    """This corpus against the previous one: why it was redone, and which included papers came and went."""
+    found = previous_round(
+        lit.run, ArtifactStore(lit.run.artifacts_dir), lit.envelope, {p.id: p.title for p in lit.corpus.papers}
+    )
+    if found is None:
+        return {}
+    previous, envelope = found
+    before = {p.id: p.title for p in Corpus.model_validate(envelope.payload).included()}
+    now = {p.id for p in lit.corpus.included()}
+    return {
+        "previous": previous,
+        "papers_added": [p.id for p in lit.corpus.included() if p.id not in before],
+        "papers_removed": [RoundPaper(id=i, title=t) for i, t in before.items() if i not in now],
+    }
 
 
 @router.get("/runs/{project}/{run_id}/literature/paper", response_model=PaperDetail)

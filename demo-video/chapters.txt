@@ -1,0 +1,17 @@
+rtool demo (5:21) — chapters
+
+0:00  What rtool is, and what this demo simulates
+0:15  Projects and a new question
+0:40  Live progress and the activity feed
+0:50  Literature checkpoint: warnings, papers, quality checks
+1:35  Paper reader and keep/drop marks
+2:05  Sending choices; suggestions; what changed
+2:40  Hypotheses: evidence, compare, redo, choose
+3:24  Experiment plan and editing it
+3:48  Datasets & models
+3:54  Code, tests and GPU approval
+4:19  Results
+4:29  Report and downloads
+4:45  Review
+4:56  Finished-run summary, activity and usage
+5:09  Dark theme

@@ -61,6 +61,7 @@ interface GateInfo {
   approve: string;
   reject: string;
   help: string;
+  redo?: string; // what requesting changes runs again, said in the dialog
 }
 
 const GATES: Record<string, GateInfo> = {
@@ -71,24 +72,28 @@ const GATES: Record<string, GateInfo> = {
     help:
       "Approving moves on to the hypotheses. Requesting changes searches and screens again with your comments; " +
       "you can also mark papers Keep or Drop on the Literature page.",
+    redo: "The literature is searched and screened again with your comments, and any papers it now needs are downloaded and read.",
   },
   hypothesis_selection: {
     title: "Choose a hypothesis",
     approve: "Choose",
     reject: "Ask for new hypotheses",
     help: "The experiment will be planned for the hypothesis you choose.",
+    redo: "New hypotheses are drafted from the same literature with your comments, and checked again.",
   },
   experiment_plan: {
     title: "Approve the experiment plan",
     approve: "Approve plan & start downloads",
     reject: "Request changes",
     help: "Approving lets the tool download the datasets and models the plan lists.",
+    redo: "The planner writes a new plan from your comments, and its datasets and models are checked again.",
   },
   gpu_runs: {
     title: "Approve GPU time",
     approve: "Approve GPU runs",
     reject: "Request code changes",
     help: "Nothing runs on a GPU until you approve. Requesting changes has the code revised and tested again.",
+    redo: "The code is revised with your comments and tested on a CPU again before any GPU time is asked for.",
   },
   final_report: {
     title: "Approve the final report",

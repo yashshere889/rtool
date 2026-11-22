@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeEvent } from "./events";
+import { describeEvent, fold, lastFailure, stageProgress, stageSuggestions, stageWarnings } from "./events";
 
 const event = (kind: string, data: Record<string, unknown> = {}, stage?: string) => ({
   ts: "2026-10-09T10:00:00+00:00",
@@ -32,5 +32,120 @@ describe("activity feed wording", () => {
   it("hides bookkeeping and still shows unknown events", () => {
     expect(describeEvent(event("artifact_committed"))).toBeNull();
     expect(describeEvent(event("novelty_checked", {}, "novelty"))?.text).toBe("Novelty: Novelty checked");
+  });
+
+  it("words the AI model start-up", () => {
+    const ready = { seconds: 69.1, node: "gpu33", gpu: "NVIDIA H100 80GB HBM3, 81559 MiB" };
+    expect(describeEvent(event("llm_server_ready", ready, "literature"))?.text).toBe("AI model ready on H100 80GB HBM3 (gpu33) after 69 s");
+    expect(describeEvent(event("llm_server_ready", {}, "literature"))?.text).toBe("AI model ready");
+  });
+});
+
+describe("lastFailure", () => {
+  it("returns the latest failure with only the automatic retries that led to it", () => {
+    const events = [
+      { ...event("stage_retrying", {}, "code") },
+      { ...event("stage_failed", { attempt: 1, traceback: "old" }, "code") },
+      { ...event("stage_retrying", {}, "code") },
+      { ...event("stage_retrying", {}, "plan") }, // another stage
+      { ...event("stage_retrying", {}, "code") },
+      { ...event("stage_failed", { attempt: 2, traceback: "KeyError: 'sections'" }, "code"), ts: "2026-10-21T03:31:00+00:00" },
+    ];
+    expect(lastFailure(events, "code")).toEqual({
+      ts: "2026-10-21T03:31:00+00:00",
+      attempt: 2,
+      traceback: "KeyError: 'sections'",
+      retries: 2,
+    });
+    expect(lastFailure(events, "report")).toBeNull();
+  });
+});
+
+describe("stageProgress", () => {
+  const at = (kind: string, data: Record<string, unknown> = {}, stage?: string, ts = "2026-10-09T10:00:00+00:00") => ({
+    ...event(kind, data, stage),
+    ts,
+  });
+
+  it("follows the literature steps of the current attempt, and a worker still in the queue", () => {
+    const events = [
+      at("stage_started", { resumed: false }, "literature"),
+      at("literature_phase_done", { phase: "plan" }, "literature"),
+      at("literature_phase_done", { phase: "search" }, "literature"),
+      at("literature_phase_done", { phase: "screen" }, "literature"), // an earlier attempt
+      at("stage_started", { resumed: false }, "literature", "2026-10-09T11:00:00+00:00"),
+      at("literature_phase_done", { phase: "plan" }, "literature"),
+      at("literature_phase_done", { phase: "search" }, "literature", "2026-10-09T11:05:00+00:00"),
+      at("stage_started", { resumed: true }, "literature"), // a resumed attempt keeps its steps
+      at("episode_started"),
+      at("episode_submitted", { job: "123", expected_start: "2026-10-09T12:00:00" }, undefined, "2026-10-09T11:10:00+00:00"),
+    ];
+    const progress = stageProgress(events, "literature", "literature");
+    expect(progress.since).toBe("2026-10-09T11:00:00+00:00");
+    expect(progress.steps?.slice(0, 4).map((s) => s.state)).toEqual(["done", "done", "waiting", "waiting"]); // queued: nothing runs yet
+    expect(progress.latest?.text).toBe("Literature started (continuing)");
+    expect(progress.queued).toEqual({ since: "2026-10-09T11:10:00+00:00", job: "123", expectedStart: "2026-10-09T12:00:00" });
+  });
+
+  it("uses the coding steps, and reports no steps for stages that have none", () => {
+    const events = [at("stage_started", {}, "code"), at("phase_changed", { phase: "smoke" }, "code"), at("episode_started")];
+    expect(stageProgress(events, "code", "coder").steps?.map((s) => s.state)).toEqual(["done", "current", "waiting", "waiting", "waiting"]);
+    expect(stageProgress(events, "code", "coder").queued).toBeNull();
+    const queued = [...events, at("episode_submitted", { job: "7" })];
+    expect(stageProgress(queued, "code", "coder").steps?.map((s) => s.state)).toEqual(["done", "waiting", "waiting", "waiting", "waiting"]);
+    expect(stageProgress([at("stage_started", {}, "plan")], "plan", "planner").steps).toBeNull();
+  });
+});
+
+describe("feed tidying and warnings", () => {
+  it("drops step lines the progress strip shows, and words the coding steps and CPU tests", () => {
+    expect(describeEvent(event("literature_phase_done", { phase: "parse" }, "literature"))).toBeNull();
+    expect(describeEvent(event("phase_changed", { phase: "smoke" }, "code"))?.text).toBe("Code & runs: testing the code on a CPU");
+    expect(describeEvent(event("phase_changed", { phase: "approve" }, "code"))).toBeNull();
+    expect(describeEvent(event("smoke_result", { condition: "sham", seed: 1, ok: false, error: "boom" }, "code"))?.text).toBe(
+      "CPU test of sham (seed 1): failed (boom)",
+    );
+  });
+
+  it("folds equal neighbours only", () => {
+    expect(fold(["a", "a", "b", "a"], (x) => x)).toEqual([
+      { item: "a", n: 2 },
+      { item: "b", n: 1 },
+      { item: "a", n: 1 },
+    ]);
+  });
+
+  it("collects the current attempt's warnings for the checkpoint, repeats counted", () => {
+    const failed = { source: "arxiv", error: "timeout" };
+    const events = [
+      event("literature_small_corpus", { included: 3, wanted: 30 }, "literature"), // an earlier attempt
+      event("stage_started", {}, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_screened", { included: 9 }, "literature"), // not a warning
+      event("literature_small_corpus", { included: 9, wanted: 30 }, "literature"),
+      event("hypothesis_draft_failed", {}, "hypotheses"), // another stage
+    ];
+    expect(stageWarnings(events, "literature")).toEqual([
+      "A search on arxiv failed: timeout (2 times)",
+      "Only 9 relevant papers found (aimed for 30)",
+    ]);
+  });
+});
+
+describe("stageSuggestions", () => {
+  it("turns the current attempt's shortfalls into requests, once each", () => {
+    const failed = { source: "arxiv", error: "timeout" };
+    const events = [
+      event("literature_search_failed", { source: "openalex" }, "literature"), // an earlier attempt
+      event("stage_started", {}, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_search_failed", failed, "literature"),
+      event("literature_small_corpus", { included: 9, wanted: 30 }, "literature"),
+    ];
+    expect(stageSuggestions(events, "literature")).toEqual([
+      "Search arxiv again: it failed last time.",
+      "Broaden the search: only 9 relevant papers were found and the aim is 30.",
+    ]);
   });
 });

@@ -262,3 +262,14 @@ def test_no_evidence_means_a_human_must_widen_the_corpus(runs_root: Path, llm: M
     result = Engine(run, Services(llm=LLMClient(llm, run.config.llm))).advance()
     assert result.outcome is Outcome.NEEDS_HUMAN
     assert "no verified evidence" in result.failed[0]["error"]
+
+
+def test_the_shortlist_is_offered_best_first() -> None:
+    from types import SimpleNamespace
+
+    from research_tool.agents.hypothesis.agent import mmr
+
+    items = [SimpleNamespace(id=i, total_score=s) for i, s in [("a", 0.9), ("b", 0.8), ("c", 0.85)]]
+    vectors = {"a": [1.0, 0.0], "b": [0.0, 1.0], "c": [1.0, 0.0]}  # c is a near-copy of a, so diversity picks b first
+    picked = mmr(items, vectors, 3, diversity=0.5)  # type: ignore[arg-type]
+    assert [h.id for h in picked] == ["a", "c", "b"]

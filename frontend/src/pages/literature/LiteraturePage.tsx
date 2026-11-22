@@ -8,12 +8,16 @@ import type { OpenGate, PaperCardData, RunDetail, StageSummary } from "@/api/typ
 import { CheckpointCard, useGateDecision } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
 import { ReopenButton } from "@/components/ReopenDialog";
+import { RoundBanner, TitleList } from "@/components/RoundBanner";
+import { StageProgress } from "@/components/StageProgress";
+import { Suggestions } from "@/components/Suggestions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/field";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePaperMarks } from "@/lib/paperMarks";
 import { STAGES } from "@/lib/stages";
 
 import { GapsTab } from "./GapsTab";
@@ -48,12 +52,14 @@ export function ChoicesBar({
   gate,
   choices,
   titles,
+  suggestions = [],
   onSent,
 }: {
   run: RunDetail;
   gate: OpenGate;
   choices: Record<string, Choice>;
   titles: Map<string, string>;
+  suggestions?: string[];
   onSent: () => void;
 }) {
   const { send, decide } = useGateDecision(run, gate);
@@ -95,6 +101,7 @@ export function ChoicesBar({
               Anything else? (optional: with a comment the papers are also screened again)
             </label>
             <Textarea id={commentId} rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="For example: also cover studies in older adults." />
+            <Suggestions run={run} stage={gate.stage} extra={suggestions} value={comment} onChange={setComment} />
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <DialogClose asChild>
@@ -138,16 +145,10 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
   const [text, setText] = useState("");
   const [filter, setFilter] = useState<PaperFilter | null>(null);
   const [adding, setAdding] = useState(false);
-  const [choices, setChoices] = useState<Record<string, Choice>>({});
   const gate = stage.gate && !stage.gate.in_stage && stage.gate.kind === "approve" ? stage.gate : null;
+  const { marks: choices, mark, clear } = usePaperMarks(run.project, run.run_id, gate?.nonce);
   const queuedDecision = gate && run.queued_actions.some((a) => a.stage === gate.stage && a.gate === gate.gate);
-  const choose = (id: string) => (choice: Choice | null) =>
-    setChoices((prev) => {
-      const next = { ...prev };
-      if (choice === null) delete next[id];
-      else next[id] = choice;
-      return next;
-    });
+  const choose = (id: string) => (choice: Choice | null) => mark(id, choice);
 
   const papers = useMemo(() => {
     const data = literature.data?.papers ?? [];
@@ -191,6 +192,7 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
       <div className="space-y-6">
         {header}
         {stage.status === "failed" && <FailureCard run={run} stage={stage} />}
+        {missing && stage.status === "running" && <StageProgress run={run} stage={stage} />}
         {missing ? (
           <Empty title="No papers yet">The literature stage has not finished its first search. This page fills in when it has.</Empty>
         ) : (
@@ -201,12 +203,42 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
   }
   const view = literature.data;
   const stats = view.stats;
+  // the sub-topics the search plan meant to cover that have fewer than two papers (as the quality check counts)
+  const thin = view.subtopics.filter((s) => s.paper_ids.length < 2).map((s) => `Find more papers on ${s.name}.`);
 
   return (
     <div className="space-y-6">
       {header}
-      {stage.gate && <CheckpointCard run={run} gate={stage.gate} showStageLink={false} />}
+      {stage.gate && <CheckpointCard run={run} gate={stage.gate} showStageLink={false} suggestions={thin} />}
       {stage.status === "failed" && <FailureCard run={run} stage={stage} />}
+      {view.previous && (
+        <RoundBanner round={view.previous} what="set of papers">
+          {view.papers_added.length === 0 && view.papers_removed.length === 0 ? (
+            <p className="text-ink-soft">The included papers are the same as before.</p>
+          ) : (
+            <p>
+              {view.papers_added.length > 0 && (
+                <button
+                  type="button"
+                  className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                  onClick={() => {
+                    setFilter({ label: "this round's additions", ids: view.papers_added });
+                    setTab("papers");
+                  }}
+                >
+                  {view.papers_added.length} new paper{view.papers_added.length === 1 ? "" : "s"}
+                </button>
+              )}
+              {view.papers_added.length > 0 && view.papers_removed.length > 0 && " · "}
+              {view.papers_removed.length > 0 && (
+                <>
+                  {view.papers_removed.length} no longer included: <TitleList titles={view.papers_removed.map((p) => p.title)} />
+                </>
+              )}
+            </p>
+          )}
+        </RoundBanner>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat value={stats.full_text ?? 0} label="papers read in full" />
@@ -303,7 +335,8 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
               gate={gate}
               choices={choices}
               titles={new Map(view.papers.map((p) => [p.id, p.title]))}
-              onSent={() => setChoices({})}
+              suggestions={thin}
+              onSent={clear}
             />
           )}
         </TabsContent>

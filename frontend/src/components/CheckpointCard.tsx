@@ -3,14 +3,17 @@ import { useId, useState } from "react";
 import { Link } from "react-router";
 
 import { fileUrl, runPath } from "@/api/client";
-import { useDecide, useUndo } from "@/api/hooks";
+import { useDecide, useEvents, useUndo } from "@/api/hooks";
 import type { ActionRequest, OpenGate, RunDetail } from "@/api/types";
 import { cn } from "@/lib/cn";
+import { stageWarnings } from "@/lib/events";
 import { humanize } from "@/lib/format";
+import { usePaperMarks } from "@/lib/paperMarks";
 import { gateInfo, stageTitle } from "@/lib/stages";
 
 import { Button } from "./ui/button";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
+import { Suggestions } from "./Suggestions";
 import { Textarea } from "./ui/field";
 
 type Summary = Record<string, unknown>;
@@ -106,12 +109,14 @@ export function CheckpointCard({
   showStageLink = true,
   choiceElsewhere = false,
   rejectHint,
+  suggestions,
 }: {
   run: RunDetail;
   gate: OpenGate;
   showStageLink?: boolean;
   choiceElsewhere?: boolean;
   rejectHint?: string; // said in the "request changes" dialog, e.g. that hand edits are not kept
+  suggestions?: string[]; // requests the page can offer in that dialog (the stage's own warnings add more)
 }) {
   const info = gateInfo(gate.gate);
   const summary = gate.summary as Summary;
@@ -126,11 +131,15 @@ export function CheckpointCard({
   const files = (summary.review_files as string[] | undefined) ?? [];
   const text = String(summary.prompt ?? summary.message ?? "");
   const details = Object.entries(summary).filter(([key, value]) => !SHOWN_ELSEWHERE.has(key) && shown(value));
-  const warnings = textList(summary.warnings); // signs that nothing real was measured: for the researcher to check
+  const events = useEvents(run.project, run.run_id);
+  // signs that nothing real was measured, and what the stage itself warned about: for the researcher to check
+  const warnings = [...textList(summary.warnings), ...stageWarnings(events.data?.events ?? [], gate.stage)];
   const reopened = Boolean(summary.reopened);
   const current = (summary.current as { index: number } | undefined)?.index;
   const canKeep = gate.kind === "select" && gate.actions.includes("approve");
   const showOptions = gate.kind === "select" && options.length > 0 && !choiceElsewhere;
+  const { marks, clear: clearMarks } = usePaperMarks(run.project, run.run_id, gate.nonce);
+  const unsentMarks = gate.kind === "approve" ? Object.keys(marks).length : 0; // approving would ignore them
 
   const approve = () =>
     gate.kind === "select"
@@ -263,8 +272,24 @@ export function CheckpointCard({
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap gap-2">
+          {unsentMarks > 0 && (
+            <div role="note" className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-warn/40 bg-surface/70 px-3 py-2 text-sm">
+              <span className="flex-1">
+                You marked {unsentMarks} paper{unsentMarks === 1 ? "" : "s"} Keep or Drop but have not sent{" "}
+                {unsentMarks === 1 ? "it" : "them"}. Approving would ignore your marks: send them from the{" "}
+                {stageTitle(gate.stage)} page, or discard them to approve.
+              </span>
+              <Button variant="ghost" size="sm" onClick={clearMarks}>
+                Discard marks
+              </Button>
+            </div>
+          )}
           {(gate.kind !== "select" || showOptions) && (
-            <Button onClick={approve} busy={decide.isPending} disabled={gate.kind === "select" && choice === null}>
+            <Button
+              onClick={approve}
+              busy={decide.isPending}
+              disabled={(gate.kind === "select" && choice === null) || unsentMarks > 0}
+            >
               {info.approve}
             </Button>
           )}
@@ -286,7 +311,7 @@ export function CheckpointCard({
       <Dialog open={asking} onOpenChange={setAsking}>
         <DialogContent
           title={info.reject}
-          description={`The stage runs again with your comments. Be specific.${rejectHint ? ` ${rejectHint}` : ""}`}
+          description={`${info.redo ?? "The stage runs again with your comments."} Be specific.${rejectHint ? ` ${rejectHint}` : ""}`}
         >
           <form
             onSubmit={(event) => {
@@ -307,6 +332,7 @@ export function CheckpointCard({
               placeholder="For example: focus on studies in older adults, and drop the modelling papers."
               autoFocus
             />
+            <Suggestions run={run} stage={gate.stage} extra={suggestions} value={feedback} onChange={setFeedback} />
             <div className="mt-4 flex justify-end gap-2">
               <DialogClose asChild>
                 <Button variant="ghost">Cancel</Button>
