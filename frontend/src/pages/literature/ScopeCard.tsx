@@ -25,7 +25,7 @@ export function ScopeCard({ view, onFilter }: { view: LiteratureView; onFilter: 
       <CardBody className="space-y-4 text-sm">
         {scope && (
           <>
-            <p className="text-[0.95rem] leading-relaxed">{scope.interpretation}</p>
+            <p className="text-reading">{scope.interpretation}</p>
             <dl className="grid gap-x-4 gap-y-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
               <dt className="text-ink-soft">Key concepts</dt>
               <dd className="flex flex-wrap gap-1.5">
@@ -62,7 +62,7 @@ export function ScopeCard({ view, onFilter }: { view: LiteratureView; onFilter: 
                         key={s.name}
                         type="button"
                         onClick={() => onFilter({ label: `Sub-topic: ${s.name}`, ids: s.paper_ids })}
-                        className="rounded-full bg-muted px-2.5 py-0.5 text-xs hover:bg-accent-soft hover:text-accent"
+                        className="rounded-sm bg-muted px-2 py-0.5 text-xs hover:bg-accent-soft hover:text-accent"
                       >
                         {s.name} <span className={s.paper_ids.length <= 1 ? "font-semibold text-warn" : "text-ink-soft"}>{s.paper_ids.length}</span>
                       </button>

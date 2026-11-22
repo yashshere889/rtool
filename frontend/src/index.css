@@ -3,12 +3,14 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Swiss: one neo-grotesque family, system-installed only (the UI is served from the cluster, no font CDN) */
+  --font-sans: "Helvetica Neue", Helvetica, Inter, Arial, ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-accent: var(--accent);
@@ -24,17 +26,40 @@
   --color-info-soft: var(--info-soft);
   --color-stale: var(--stale);
   --color-stale-soft: var(--stale-soft);
+  --color-tone-ink: var(--tone-ink);
+  --color-scrim: var(--scrim);
+  --color-paper: var(--paper);
+
+  /* long-form reading text (statements, abstracts, report prose) */
+  --text-reading: 1rem;
+  --text-reading--line-height: 1.65;
+
+  /* Swiss: near-square corners, flat surfaces; only floating layers keep one crisp shadow */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 3px;
+  --shadow-2xs: 0 0 #0000;
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: 0 0 #0000;
+  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.18);
+  --shadow-lg: 0 6px 20px -6px rgb(0 0 0 / 0.22);
+  --shadow-xl: 0 12px 32px -8px rgb(0 0 0 / 0.28);
 }
 
 :root {
-  --canvas: #f5f6f8;
+  color-scheme: light;
+  --canvas: #fafafa;
   --surface: #ffffff;
-  --muted: #eef0f3;
-  --line: #dde1e7;
-  --ink: #1b1f24;
-  --ink-soft: #5b6472;
-  --accent: #2c5be8;
-  --accent-soft: #e7edfd;
+  --muted: #f2f2f2;
+  --line: #d9d9d9;
+  --line-strong: #858585; /* form-control edges, >= 3:1 on surface */
+  --ink: #0a0a0a;
+  --ink-soft: #525252;
+  /* Swiss: the single primary is black; selection is shown by borders and weight, not hue */
+  --accent: #0a0a0a;
+  --accent-soft: #e5e5e5;
   --accent-ink: #ffffff;
   --ok: #18703d; /* 5.3:1 on --ok-soft, 6.1:1 on white (WCAG AA) */
   --ok-soft: #e1f3e8;
@@ -46,18 +71,23 @@
   --info-soft: #e1eff8;
   --stale: #6d43ad;
   --stale-soft: #efe8f9;
+  --tone-ink: #ffffff; /* text on a solid status fill */
+  --scrim: rgb(0 0 0 / 0.45);
+  --paper: #ffffff; /* backdrop for PDFs and figures, white in both themes */
 }
 
 .dark {
-  --canvas: #0e1116;
-  --surface: #161a21;
-  --muted: #1f242d;
-  --line: #2c323d;
-  --ink: #e6e9ee;
-  --ink-soft: #9aa3b2;
-  --accent: #7193f6;
-  --accent-soft: #1d2a4d;
-  --accent-ink: #0e1116;
+  color-scheme: dark;
+  --canvas: #0a0a0a;
+  --surface: #141414;
+  --muted: #1f1f1f;
+  --line: #3a3a3a;
+  --line-strong: #737373;
+  --ink: #f2f2f2;
+  --ink-soft: #a3a3a3;
+  --accent: #f2f2f2;
+  --accent-soft: #2e2e2e;
+  --accent-ink: #0a0a0a;
   --ok: #4cc488;
   --ok-soft: #12301f;
   --warn: #f0b04a;
@@ -68,6 +98,9 @@
   --info-soft: #0f2a3b;
   --stale: #b58cf0;
   --stale-soft: #2a1d40;
+  --tone-ink: #0a0a0a;
+  --scrim: rgb(0 0 0 / 0.65);
+  --paper: #ffffff;
 }
 
 html {
@@ -76,6 +109,15 @@ html {
 
 body {
   @apply bg-canvas text-ink font-sans antialiased;
+}
+
+/* Swiss hierarchy: headings carry weight and tight tracking instead of colour (base layer, so tracking-* utilities still win) */
+@layer base {
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
 }
 
 :focus-visible {
@@ -119,10 +161,10 @@ body {
   text-underline-offset: 2px;
 }
 .rt-prose code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
   background: var(--muted);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0.1em 0.3em;
 }
 .rt-prose table {
@@ -141,9 +183,9 @@ body {
 .rt-prose img {
   max-width: 100%;
   margin: 1em 0;
-  background: white;
+  background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   padding: 0.5rem;
 }
 @media print {

@@ -115,7 +115,7 @@ export function NewResearch() {
                   key={example}
                   type="button"
                   onClick={() => setTopic(example)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs text-ink-soft hover:border-accent/50 hover:text-ink"
+                  className="inline-flex items-center gap-1.5 rounded-sm border border-line px-3 py-1 text-xs text-ink-soft hover:border-accent/50 hover:text-ink"
                 >
                   <Sparkles className="size-3" /> {example}
                 </button>
@@ -138,7 +138,7 @@ export function NewResearch() {
                 <input
                   type="radio"
                   name="review"
-                  className="mt-1 accent-[var(--accent)]"
+                  className="mt-1 accent-accent"
                   checked={review === mode.value}
                   onChange={() => setReview(mode.value)}
                 />
@@ -157,7 +157,7 @@ export function NewResearch() {
         <div>
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-sm font-medium text-accent"
+            className="inline-flex items-center gap-1 text-sm font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
             aria-expanded={more}
             onClick={() => setMore(!more)}
           >

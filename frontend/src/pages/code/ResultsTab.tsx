@@ -171,7 +171,7 @@ export function ResultsTab({ run }: { run: RunDetail }) {
                 <img
                   src={fileUrl(run.project, run.run_id, figure)}
                   alt={`Mean ${metric.name} per condition with 95% confidence intervals`}
-                  className="w-full rounded-lg border border-line bg-white p-2"
+                  className="w-full rounded-lg border border-line bg-paper p-2"
                 />
               )}
             </div>

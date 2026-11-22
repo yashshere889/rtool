@@ -15,7 +15,7 @@ export function StageIcon({ stage, run, index }: { stage: StageSummary; run?: Ru
     <span
       className={cn(
         "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-        state.tone === "neutral" ? "border border-line bg-surface text-ink-soft" : `${TONE_DOT[state.tone]} text-white`,
+        state.tone === "neutral" ? "border border-line bg-surface text-ink-soft" : `${TONE_DOT[state.tone]} text-tone-ink`,
       )}
       aria-hidden
     >

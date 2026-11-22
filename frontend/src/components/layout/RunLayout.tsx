@@ -23,7 +23,7 @@ function RunNav({ run }: { run: RunDetail }) {
   const item = ({ isActive }: { isActive: boolean }) =>
     cn(
       "flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm shrink-0",
-      isActive ? "bg-surface shadow-sm ring-1 ring-line" : "hover:bg-muted",
+      isActive ? "bg-surface font-medium ring-1 ring-line-strong" : "hover:bg-muted",
     );
   return (
     <nav aria-label="Run" className="lg:sticky lg:top-20">

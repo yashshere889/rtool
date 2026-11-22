@@ -20,7 +20,7 @@ function Cited({ text, view, run }: { text: string; view: LiteratureView; run: R
             key={i}
             to={readerPath(run.project, run.run_id, view.stage, id)}
             title={paper ? `${paper.title} (${paper.year ?? "n.d."})` : key}
-            className="rounded bg-accent-soft px-1 text-[0.85em] font-medium text-accent underline decoration-accent/40 underline-offset-2"
+            className="rounded-sm bg-accent-soft px-1 text-[0.85em] font-medium text-accent underline decoration-accent/40 underline-offset-2"
           >
             {key}
           </Link>
@@ -39,7 +39,7 @@ export function OverviewTab({ view, run }: { view: LiteratureView; run: RunDetai
           title="State of the art"
           description="Written by the AI model from the extracted facts; every citation links to the paper it comes from."
         />
-        <CardBody className="space-y-4 text-[0.95rem] leading-relaxed">
+        <CardBody className="space-y-4 text-reading">
           {paragraphs.length ? (
             paragraphs.map((p, i) => (
               <p key={i}>

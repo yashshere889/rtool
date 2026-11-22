@@ -275,7 +275,7 @@ export function LiteraturePage({ run, stage }: { run: RunDetail; stage: StageSum
           {filter && (
             <p className="flex items-center gap-2 text-sm">
               Showing papers for <span className="font-medium">{filter.label}</span>
-              <button type="button" className="inline-flex items-center gap-1 text-accent" onClick={() => setFilter(null)}>
+              <button type="button" className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent" onClick={() => setFilter(null)}>
                 <X className="size-3.5" /> clear
               </button>
             </p>

@@ -78,7 +78,7 @@ function Column({
         <h2 id={title} className="text-lg leading-snug font-semibold">
           {h.title}
         </h2>
-        <p className="rounded-lg bg-accent-soft/60 px-3 py-2.5 text-[0.95rem] leading-relaxed">{h.statement}</p>
+        <p className="rounded-lg bg-accent-soft/60 px-3 py-2.5 text-reading">{h.statement}</p>
         <p className="text-xs text-ink-soft">
           {COMPUTE[h.compute].label} · {h.evidence.length} citations · {card.papers.length} papers
         </p>
