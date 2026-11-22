@@ -364,3 +364,17 @@ def test_a_model_in_the_llm_cache_is_used_where_it_is(tmp_path: Path) -> None:
         10,
         "already on the cluster",
     )
+
+
+def test_ablations_that_repeat_a_condition_are_dropped() -> None:  # seen on Barkla: 7 of 31 validity runs
+    core = core_with([{"name": "acc", "definition": "a"}])
+    base, new = Condition(name="Base", description="b", is_baseline=True), Condition(name="new", description="n")
+    core.conditions = [base, new]
+    core.ablations = [Condition(name="base", description="b"), Condition(name="no_x", description="x")]
+    assert [a.name for a in normalise_core(core).ablations] == ["no_x"]
+
+
+def test_only_a_data_analysis_must_list_a_dataset() -> None:  # a simulation makes its own data
+    numpy = ResourceSpec(kind="code", name="numpy", source="pip", identifier="numpy", purpose="", verified=True)
+    assert resource_issues([numpy], max_dataset_gb=100) == []
+    assert "no dataset is listed" in resource_issues([numpy], max_dataset_gb=100, units=True)[0]

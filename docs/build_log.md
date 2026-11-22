@@ -10,7 +10,7 @@ test: those need Barkla, and for most fields an expert.
 
 | Stage | Built | Commit | Waits for |
 |---|---|---|---|
-| 0 | Validity harness: cases, seeded runs, scorer, card, `rtool validity` | `8ceb2ed`, `f3f1ba2` | baseline run on Barkla 2026-11-22 (13 / 29, cards in `benchmarks/`); two planner bugs to fix, then a rerun |
+| 0 | Validity harness: cases, seeded runs, scorer, card, `rtool validity` | `8ceb2ed`, `f3f1ba2` | baseline run on Barkla 2026-11-22 (13 / 29, cards in `benchmarks/`); two planner bugs fixed locally, rerun waits |
 | 1 | Analyse existing data: units mode, `omics`, `tabular`, GEO, CELLxGENE, PubMed, Europe PMC | `35bf577` | live probes; real omics runs; three reanalyses an expert chooses |
 | 2 | Simulate or model: BioModels, result checks, `sysbio` | `d6ef029` | real runs; curated models and knockouts an expert chooses |
 | 3 | Literature synthesis: pipeline, agent, `medicine` | `3c81983` | a real model's reviews; a labelled set from an expert |
@@ -589,3 +589,13 @@ script; rtool itself does not set it yet. The run was cancelled and resubmitted,
 
 Cost: about 5.4 GPU-episode hours for the 31 runs (model episodes on two GPUs; the experiments ran on
 CPU); 3,017 LLM calls, 1,427 of them in the one medicine review.
+
+**Fixed after the baseline (local only, not rerun on Barkla):**
+- `normalise_core` drops ablations whose names repeat a condition. It runs for both plans and study
+  protocols.
+- Only a data analysis (`replicates: units`) must list a dataset. The resources prompt now says a
+  simulation lists none and never invents one.
+- rtool sets `ORT_DISABLE_TELEMETRY=1` before it loads fastembed.
+
+The cards above are still the pre-fix baseline. The fix needs the 13 affected runs again, on the new
+code hash, before it counts.

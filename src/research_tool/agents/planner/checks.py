@@ -119,6 +119,9 @@ def normalise_core(core: PlanCore) -> PlanCore:
         condition.name = slug(condition.name)
     for metric in core.metrics:
         metric.name = slug(metric.name)
+    conditions = {c.name for c in core.conditions}
+    # Seen on Barkla (7 of 31 validity runs): the model repeats the conditions as ablations, so each runs twice.
+    core.ablations = [a for a in core.ablations if a.name not in conditions]
     if not any(m.primary for m in core.metrics):
         core.metrics[0].primary = True
     return core
@@ -248,10 +251,14 @@ def _design_issues(conditions: list[Condition], ablations: list[Condition], n_se
     return issues
 
 
-def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float) -> list[str]:
+def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float, *, units: bool = False) -> list[str]:
+    """Only a data analysis (``units``) must list a dataset: a simulation or training run may make its own.
+
+    Requiring one everywhere made the model invent datasets for simulations (seen on Barkla, 2026-11-22).
+    """
     issues = []
-    if not any(r.kind == "dataset" for r in resources):
-        issues.append("no dataset is listed")
+    if units and not any(r.kind == "dataset" for r in resources):
+        issues.append("no dataset is listed: a data analysis needs the data it analyses")
     for r in resources:
         if r.source == "manual" and r.kind == "code":
             issues.append(
@@ -430,7 +437,7 @@ def plan_issues(
         + primary_issues(plan.metrics)
         + metric_issues(plan.metrics)
         + ([] if units else rank_test_issues(plan.statistical_tests, len(plan.seeds)))
-        + resource_issues(plan.resources, max_dataset_gb)
+        + resource_issues(plan.resources, max_dataset_gb, units=units)
         + source_issues(plan.resources, pack)
         + compute_issues(plan.compute, config)
         + brief_issues(

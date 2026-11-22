@@ -162,7 +162,7 @@ class PlannerAgent(Agent):
                 )
                 resources = [self.verify(checker, choice, cfg.check_resources) for choice in plan.resources]
                 res_issues = (
-                    resource_issues(resources, cfg.max_dataset_gb)
+                    resource_issues(resources, cfg.max_dataset_gb, units=units)
                     + source_issues(resources, pack)
                     + brief_issues(brief, resources=resources)
                 )
