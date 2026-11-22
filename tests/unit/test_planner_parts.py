@@ -204,9 +204,8 @@ def test_hub_checker() -> None:
         ResourceChoice(kind="dataset", name="c", source="torchvision", identifier="CIFAR10", purpose="")
     )
     assert torchvision.exists
-    page = checker.check(
-        ResourceChoice(kind="dataset", name="S&P", source="url", identifier="https://x.test/quote/GSPC/history", purpose="")
-    )
+    url = "https://x.test/quote/GSPC/history"
+    page = checker.check(ResourceChoice(kind="dataset", name="S&P", source="url", identifier=url, purpose=""))
     assert not page.exists and "HTML" in page.note
     csv = checker.check(
         ResourceChoice(kind="dataset", name="ff", source="url", identifier="https://x.test/data/ff.csv", purpose="")
