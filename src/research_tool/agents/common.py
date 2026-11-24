@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ..core.config import AppConfig
@@ -56,3 +57,8 @@ def open_corpus_kb(ctx: AgentContext, corpus: Corpus) -> KnowledgeStore | None:
     """Read-only knowledge-base snapshot that came with the corpus (None if it is missing)."""
     path = ctx.absolute(corpus.kb_path)
     return KnowledgeStore(path, readonly=True) if path.exists() else None
+
+
+def loose_key(name: str) -> str:
+    """Names compared loosely: "CIFAR-10", "cifar10" and "uoft-cs/cifar10" agree."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())

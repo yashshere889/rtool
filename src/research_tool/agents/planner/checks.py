@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Collection
 from typing import Any
 
 from ...core.config import AppConfig
@@ -20,11 +21,15 @@ from ...schemas.plan import (
     ResourceSpec,
     StatisticalTest,
 )
+from ...tools.resources.fetch import local_models
 from ..coder.results import family_of_tests
 from ..coder.stats import ALPHA
+from ..common import loose_key as _key
 
 SAFETY_FACTOR = 1.3  # runs take longer than estimated
 _SLUG = re.compile(r"[^a-z0-9]+")
+# a name like results.json or queue_simulation_results.csv: what the experiment writes, not what it reads
+_OWN_OUTPUT = re.compile(r"^(results?|outputs?)([._-]|$)|[_-](results?|outputs?)(\.\w+)?$")
 UNCHECKED = "changed by hand; checked when it is downloaded"  # ResourceSpec.note of an edited resource
 
 
@@ -251,7 +256,13 @@ def _design_issues(conditions: list[Condition], ablations: list[Condition], n_se
     return issues
 
 
-def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float, *, units: bool = False) -> list[str]:
+def resource_issues(
+    resources: list[ResourceSpec],
+    max_dataset_gb: float,
+    *,
+    units: bool = False,
+    cached: Collection[str] = (),
+) -> list[str]:
     """Only a data analysis (``units``) must list a dataset: a simulation or training run may make its own.
 
     Requiring one everywhere made the model invent datasets for simulations (seen on Barkla, 2026-11-22).
@@ -260,7 +271,27 @@ def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float, *, uni
     if units and not any(r.kind == "dataset" for r in resources):
         issues.append("no dataset is listed: a data analysis needs the data it analyses")
     for r in resources:
-        if r.source == "manual" and r.kind == "code":
+        if r.kind == "model" and r.source == "local":
+            issues.append(
+                f"{r.name} is a model, not a dataset the researcher provided: give its Hugging Face id "
+                "(source huggingface), or one of the models already on the cluster"
+            )
+        elif r.kind == "model" and r.source == "huggingface" and re.search(r"\s", r.identifier.strip()):
+            issues.append(f"{r.name}: {r.identifier!r} is a description, not a Hugging Face model id like org/name")
+        elif (
+            r.source == "local"
+            and r.kind == "dataset"
+            and (_OWN_OUTPUT.search(r.identifier.lower()) or _OWN_OUTPUT.search(r.name.lower()))
+        ):
+            issues.append(
+                f"{r.name} looks like the experiment's own output, not an input: leave it out (a simulation or a "
+                "run that makes its own data lists no dataset)"
+            )
+        elif r.verified and r.note.startswith("script-only"):
+            issues.append(f"{r.name} ({r.source}: {r.identifier}) is {r.note}")
+        elif r.verified and r.note.startswith("gated") and r.identifier not in cached:
+            issues.append(f"{r.name} ({r.source}: {r.identifier}) is {r.note}: choose an open one, or the run stalls")
+        elif r.source == "manual" and r.kind == "code":
             issues.append(
                 f"{r.name} is code marked manual: leave the experiment's own code (pipelines, scripts, "
                 "analysis) out of the list, because rtool writes it; list only existing code, e.g. a pip package"
@@ -280,6 +311,23 @@ def resource_issues(resources: list[ResourceSpec], max_dataset_gb: float, *, uni
         elif r.size_gb is not None and r.size_gb > max_dataset_gb:
             issues.append(f"{r.name} is {r.size_gb:g} GB, above the {max_dataset_gb:g} GB limit; use a subset")
     return issues
+
+
+def blocking_issues(resources: list[ResourceSpec]) -> list[str]:
+    """Resource problems the researcher must acknowledge before approving the plan.
+
+    A resource changed by hand is not listed: the researcher chose it and it is checked when downloaded.
+    """
+    found = []
+    for r in resources:
+        label = f"{r.name} ({r.source}: {r.identifier or 'no identifier'})"
+        if r.source == "manual" and r.kind != "code":
+            found.append(f"{label} is not public: nothing will be downloaded")
+        elif not r.verified and r.source != "manual" and r.note != UNCHECKED:
+            found.append(f"{label} could not be found: {r.note or 'check the identifier'}")
+        elif r.verified and r.note.startswith("gated"):
+            found.append(f"{label} is {r.note}")
+    return found
 
 
 def results_schema(
@@ -312,10 +360,6 @@ def results_schema(
             "notes": {"type": "string"},
         },
     }
-
-
-def _key(name: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", name.lower())  # "CIFAR-10", "cifar10" and "uoft-cs/cifar10" agree
 
 
 def brief_issues(
@@ -361,12 +405,25 @@ def brief_issues(
             issues.append(
                 f"the primary metric {fixed_metric.name} must have {direction} is better, as the researcher set"
             )
-    if resources is not None and brief.datasets:
+    if resources is not None and brief.datasets:  # kind dataset only; models are checked below
         allowed = {_key(d) for d in brief.datasets}
         for r in resources:
             names = {_key(r.name), _key(r.identifier), _key(r.identifier.rsplit("/", 1)[-1])}
             if r.kind == "dataset" and not names & allowed:
                 issues.append(f"{r.name} is not one of the datasets the researcher allows: {', '.join(brief.datasets)}")
+    if resources is not None and brief.models:
+        allowed = {_key(m) for m in brief.models}
+        for r in resources:
+            names = {_key(r.name), _key(r.identifier), _key(r.identifier.rsplit("/", 1)[-1])}
+            if r.kind == "model" and not names & allowed:
+                issues.append(f"{r.name} is not one of the models the researcher allows: {', '.join(brief.models)}")
+    if resources is not None and brief.no_download:
+        for r in resources:
+            if r.kind in ("dataset", "model") and r.source not in ("local", "pip"):
+                issues.append(
+                    f"{r.name} would be downloaded, but the researcher said nothing is downloaded: leave it out "
+                    "(the experiment makes its own data in code)"
+                )
     if hours_per_run is not None and brief.max_minutes_per_run and hours_per_run * 60 > brief.max_minutes_per_run:
         issues.append(
             f"one run is estimated at {hours_per_run * 60:g} minutes; the researcher allows at most "
@@ -437,7 +494,7 @@ def plan_issues(
         + primary_issues(plan.metrics)
         + metric_issues(plan.metrics)
         + ([] if units else rank_test_issues(plan.statistical_tests, len(plan.seeds)))
-        + resource_issues(plan.resources, max_dataset_gb, units=units)
+        + resource_issues(plan.resources, max_dataset_gb, units=units, cached=local_models(config.llm.server.hf_home))
         + source_issues(plan.resources, pack)
         + compute_issues(plan.compute, config)
         + brief_issues(

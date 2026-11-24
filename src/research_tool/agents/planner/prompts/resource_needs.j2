@@ -1,0 +1,28 @@
+Before listing resources, say which datasets and models this experiment needs, each with a short name to search the Hugging Face Hub for.
+
+Hypothesis: {{ h.statement }}
+Design: {{ core.design }}
+Procedure:
+{% for step in core.procedure %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+Datasets mentioned in the collected literature: {{ known_datasets | join(", ") or "none" }}
+{% if brief.requirements() %}
+
+The researcher's requirements (follow them exactly):
+{% for c in brief.requirements() %}
+- {{ c }}
+{% endfor %}
+{% endif %}
+{% if feedback %}
+
+Feedback from the researcher (follow it where it concerns datasets or models):
+{% for f in feedback %}
+- {{ f }}
+{% endfor %}
+{% endif %}
+
+Rules:
+- One entry per dataset or model. Use the name people know it by ("GSM8K", "Llama 3.1 8B"), not a description of it.
+- A simulation, or an experiment that makes its own data or trains from scratch, needs none: return an empty list.
+- Do not list the experiment's own code.

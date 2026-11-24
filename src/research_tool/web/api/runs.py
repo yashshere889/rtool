@@ -69,6 +69,8 @@ class NewRun(BaseModel):
     seeds: int | None = Field(default=None, ge=1, le=100)
     max_minutes_per_run: float | None = Field(default=None, gt=0)
     datasets: list[str] = Field(default_factory=list, max_length=20)
+    models: list[str] = Field(default_factory=list, max_length=20)
+    no_download: bool = False
 
 
 class Created(BaseModel):
@@ -138,6 +140,8 @@ def new_run(body: NewRun, request: Request) -> Created:
                 seeds=body.seeds,
                 max_minutes_per_run=body.max_minutes_per_run,
                 datasets=[d.strip() for d in body.datasets if d.strip()],
+                models=[m.strip() for m in body.models if m.strip()],
+                no_download=body.no_download,
                 created_by="rtool ui",
             )
     except RToolError as exc:

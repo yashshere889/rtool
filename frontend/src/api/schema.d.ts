@@ -1677,6 +1677,13 @@ export interface components {
             max_gpu_hours?: number | null;
             /** Max Minutes Per Run */
             max_minutes_per_run?: number | null;
+            /** Models */
+            models?: string[];
+            /**
+             * No Download
+             * @default false
+             */
+            no_download?: boolean;
             /**
              * Pack
              * @default generic

@@ -19,6 +19,7 @@ import { Textarea } from "./ui/field";
 type Summary = Record<string, unknown>;
 
 const SHOWN_ELSEWHERE = new Set([
+  "blocking",
   "prompt",
   "message",
   "artifacts",
@@ -134,6 +135,8 @@ export function CheckpointCard({
   const events = useEvents(run.project, run.run_id);
   // signs that nothing real was measured, and what the stage itself warned about: for the researcher to check
   const warnings = [...textList(summary.warnings), ...stageWarnings(events.data?.events ?? [], gate.stage)];
+  const blocking = textList(summary.blocking); // problems the researcher must acknowledge to approve
+  const [acknowledged, setAcknowledged] = useState(false);
   const reopened = Boolean(summary.reopened);
   const current = (summary.current as { index: number } | undefined)?.index;
   const canKeep = gate.kind === "select" && gate.actions.includes("approve");
@@ -144,7 +147,7 @@ export function CheckpointCard({
   const approve = () =>
     gate.kind === "select"
       ? send("select", { index: choice }, `${info.title}: option ${(choice ?? 0) + 1}`)
-      : send("approve", {}, info.title);
+      : send("approve", blocking.length > 0 ? { acknowledge_issues: true } : {}, info.title);
 
   return (
     <section
@@ -190,6 +193,23 @@ export function CheckpointCard({
               <li key={i}>{w}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {blocking.length > 0 && gate.kind === "approve" && (
+        <div role="note" aria-label="Problems to acknowledge" className="mt-3 rounded-lg border border-bad/40 bg-surface/70 px-3 py-2 text-sm">
+          <p className="flex items-center gap-1.5 font-medium text-bad">
+            <AlertTriangle className="size-4 shrink-0" /> This plan has problems
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {blocking.map((b, i) => (
+              <li key={i}>{b}</li>
+            ))}
+          </ul>
+          <label className="mt-2 flex items-center gap-2">
+            <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
+            I have read these and want to approve anyway
+          </label>
         </div>
       )}
 
@@ -288,7 +308,11 @@ export function CheckpointCard({
             <Button
               onClick={approve}
               busy={decide.isPending}
-              disabled={(gate.kind === "select" && choice === null) || unsentMarks > 0}
+              disabled={
+                (gate.kind === "select" && choice === null) ||
+                unsentMarks > 0 ||
+                (blocking.length > 0 && gate.kind === "approve" && !acknowledged)
+              }
             >
               {info.approve}
             </Button>

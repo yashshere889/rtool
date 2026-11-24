@@ -2,6 +2,12 @@ You are proposing hypotheses for an experiment on: {{ topic }}
 {% if questions %}
 Research questions: {{ questions | join("; ") }}
 {% endif %}
+{% if requirements %}
+The researcher's requirements (every hypothesis must respect them, also in the datasets and models it names):
+{% for c in requirements %}
+- {{ c }}
+{% endfor %}
+{% endif %}
 {% if feedback %}
 Feedback from the researcher (follow it):
 {% for f in feedback %}

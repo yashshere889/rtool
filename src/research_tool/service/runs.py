@@ -169,6 +169,8 @@ def create_run(
     seeds: int | None = None,
     max_minutes_per_run: float | None = None,
     datasets: Iterable[str] = (),
+    models: Iterable[str] = (),
+    no_download: bool = False,
     run_id: str | None = None,
     created_by: str = "rtool new",
 ) -> RunHandle:
@@ -189,8 +191,10 @@ def create_run(
         seeds=seeds,
         max_minutes_per_run=max_minutes_per_run,
         datasets=list(datasets),
+        models=list(models),
+        no_download=no_download,
     )
-    texts = [brief.topic, *brief.questions, *brief.constraints, *brief.seed_queries, *brief.datasets]
+    texts = [brief.topic, *brief.questions, *brief.constraints, *brief.seed_queries, *brief.datasets, *brief.models]
     refused = pack_refusal(chosen, *texts)
     if refused:
         raise RToolError(f"rtool refuses this brief: {refused}")

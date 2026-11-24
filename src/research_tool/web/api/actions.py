@@ -102,6 +102,11 @@ def check(status: RunStatus, body: ActionRequest, run: RunHandle) -> dict[str, A
             raise HTTPException(409, "a decision for this checkpoint is already queued; undo it first to change it")
         if any(a.kind is ActionKind.EDIT and a.stage == body.stage for a in status.queued_actions):
             raise HTTPException(409, "your edits to this stage are still on their way; decide once they are applied")
+        blocking = gate.summary.get("blocking") or []
+        if body.kind == "approve" and blocking and not payload.get("acknowledge_issues"):
+            raise HTTPException(
+                422, "tick that you have read the problems with this plan to approve it: " + "; ".join(blocking)
+            )
         if body.kind == "select":
             index = payload.get("index")
             options = gate.summary.get("options") or []

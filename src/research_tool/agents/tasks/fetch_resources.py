@@ -93,9 +93,10 @@ def gate_message(missing: list[FetchedResource]) -> str:
     where = "; ".join(f"{r.name}: {r.path}" for r in missing)
     return (
         f"{len(missing)} resource(s) in the plan are not public, so nothing was downloaded for them ({where}). "
-        "Put their files in those folders and approve; or approve without them, and the Coder will try to "
-        "build them in code (check that code at the GPU-runs checkpoint: the results rest on it). "
-        "Request changes to have the plan revised instead, e.g. to use a public dataset or pip package."
+        "Best: request changes to have the plan revised, e.g. to use a public dataset or pip package. "
+        "Or put their files in those folders and approve. Approving without them makes the Coder write code that "
+        "invents them, so the results rest on invented data (seen on Barkla: metrics computed from a formula); "
+        "check that code at the GPU-runs checkpoint."
     )
 
 
@@ -149,18 +150,26 @@ class FetchResources(Task):
             ctx.emit("resource_fetched", name=resource.name, status=result.status, bytes=result.bytes)
             results.append(result)
         failed = [r for r in results if r.status == "failed"]
-        if failed:
-            details = "; ".join(f"{r.name}: {r.note}" for r in failed)
-            # a resumed retry keeps the plan it started with: a wrong dataset name needs a plan edit and a fresh retry
-            renamed = (
-                " A torchvision dataset name that does not exist is corrected in the plan (`rtool edit <run> "
-                "experiment_plan`, or the plan page), then `rtool retry <run>` fetches again."
-                if any(r.source == "torchvision" for r in failed)
-                else ""
+        details = "; ".join(f"{r.name}: {r.note}" for r in failed)
+        notes = [f.text for f in ctx.feedback]
+        if failed and notes:
+            # The researcher said what to use instead (a note on this stage): the planner chooses the resources,
+            # so the note goes to it, and this stage runs again on the new plan.
+            ctx.request_change(
+                artifact="experiment_plan",
+                reason=f"fetching failed ({details}); the researcher says: " + " / ".join(notes),
+                required_changes=notes,
             )
+            ctx.outputs.put("resource_manifest", ResourceManifest(resources=results, root=str(root)))
+            return
+        if failed:
+            # a resumed retry keeps the plan it started with: a wrong id or name needs a note (the planner redoes
+            # the plan) or a plan edit, then a fresh retry
             raise StageFailed(
-                f"could not fetch {details}. Fix it (e.g. HF_TOKEN for gated data), then resume the stage "
-                "(“Continue from where it stopped” in the web UI, or `rtool retry <run> --resume`)." + renamed,
+                f"could not fetch {details}. If the id or name is wrong, tell the planner what to use instead: "
+                '`rtool retry <run> --note "use X"` (or a note in the web UI) redoes the plan with it; or edit the '
+                "plan (`rtool edit <run> experiment_plan`) and `rtool retry <run>`. For gated data set HF_TOKEN, then "
+                "resume the stage (“Continue from where it stopped” in the web UI, or `rtool retry <run> --resume`).",
                 needs_human=True,
             )
         results = [provided(r) for r in results]
