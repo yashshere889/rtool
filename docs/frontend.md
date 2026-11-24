@@ -20,7 +20,7 @@ generic page (its checkpoint, problems, every version of its outputs as JSON, ac
 | Hypotheses | the shortlist side by side: design, novelty, feasibility, scores and judges' comments, papers used, citations with "show in paper", references; a comparison table; the other drafts and why they were set aside | choose, edit and choose (with a note for the planner), ask for new ones, change your choice later |
 | Experiment plan | the plan as a document; datasets and models with links; compute against the budget; downloads after approval | edit any part (form or JSON) with live checks, see what applying redoes, approve |
 | Code & runs | progress strip; every file; smoke tests; what the tool repaired; a condition × seed grid of runs with logs; results per metric | edit `experiment.py` (tested again before any GPU time), compare with the generated code, approve GPU time, cancel jobs, download the code |
-| Datasets & models | each dataset and model of the approved plan: found, downloaded, installed later, or needs you (with the folder to put its files in) | continue or request plan changes at the "datasets you have to provide" checkpoint |
+| Datasets & models | each dataset and model of the approved plan: found, downloaded, installed later, or needs you (with the folder to put its files in) | add small files to a resource that is not public (up to 60 MB each, into the folder the checkpoint names; larger data is copied on the cluster), continue or request plan changes at the "datasets you have to provide" checkpoint |
 | Literature review (synthesis pipeline) | every sentence with the findings and quotes it rests on, the sentences left out and why, the checks | open a quote in the paper, approve or request another round |
 | Study protocol (study pipeline) | the design, sample size and the seeded allocation table, materials, blinding, the data format, a checklist | edit the effect size, materials and blinding (the sample size, allocation and checklist are worked out again), approve |
 | Study data | what to bring back, with a template that has the units and conditions filled in | upload data.csv (checked against the protocol before it is kept, every problem listed), then approve the checkpoint |
@@ -36,7 +36,9 @@ runs the chosen stage again in the copy from the same inputs; the original is un
 
 A report states what its field has been measured at: the Report and Review pages show a note built from the field's
 newest validity card (`<runs root>/.validity-cards`, written by `rtool validity score`), or say that no level is
-claimed when there is none. The note is on the page and prints with it; it is not inside the exported Markdown.
+claimed when there is none. The same sentence is written into the report itself (a line in the Writer's Reproducibility
+section, and a locked "How far this review can be trusted" section of a literature review), so an exported Markdown
+or the bundle carries it.
 
 What the agents wrote is labelled. Findings carry their quote and whether it was found in the
 paper; AI-written digests and summaries say so and flag numbers the paper does not contain;

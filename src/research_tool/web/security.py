@@ -74,7 +74,8 @@ def cookie_name(host: str) -> str:
 
 
 def body_limit(path: str) -> int:
-    return MAX_UPLOAD_BODY if path.endswith("/literature/inbox") else MAX_BODY
+    uploads = path.endswith("/literature/inbox") or ("/resources/" in path and path.endswith("/inbox"))
+    return MAX_UPLOAD_BODY if uploads else MAX_BODY
 
 
 class SecurityMiddleware:

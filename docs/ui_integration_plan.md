@@ -133,6 +133,16 @@ things: dialogs taller than the window could not reach their buttons (the shared
 reader's scrolling text could not be reached from the keyboard when opened at a quote, and the data template uses
 CRLF line endings (CSV's own; the walk now handles them).
 
+**Open items worked on afterwards (2026-11-24).** Done: the validity statement is now written into the report itself
+(`validity/note.py` is shared by the Writer, the synthesis agent and the web pages); manual resources take small file
+uploads into the folder the open checkpoint names (`PUT …/resources/<name>/inbox`, 60 MB per file, plain file names,
+only while the checkpoint waits for that resource); the Analysis page no longer says "0 GPU-hours requested".
+**Not built, needs a decision:** a synthesis editor, and design edits (conditions, outcome, tests) for study runs.
+Both produce two artifacts from one edit (the review and its final report; the plan and the protocol), and the engine's
+`edit` action stores exactly one, so they need a change to the engine first. A checkpoint's "request changes" with a
+note covers both today. The stale "protocol checklist" lines in the plan's issues after a protocol edit are cosmetic:
+nothing downstream reads them.
+
 ## Per-page checklist (from `frontend.md`)
 
 API module in `web/api/` → regenerate types → hooks → page under `src/pages/<name>/` → `PAGES` +

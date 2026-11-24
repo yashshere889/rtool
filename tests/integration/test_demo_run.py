@@ -51,6 +51,7 @@ def test_a_finished_demo_run(runs_root: Path) -> None:
     report = (run.root / store.get("final_report").markdown_path).read_text()
     assert "{{" not in report  # every result placeholder was filled from the results
     assert "[@osei2021slow]" in report and "**[osei2021slow]**" in report  # cited, and in the reference list
+    assert "Validity of this field: No validity card exists for the generic field" in report  # no card: no level
 
 
 def test_a_demo_run_stopped_at_the_hypothesis_checkpoint(runs_root: Path) -> None:
@@ -81,3 +82,21 @@ def test_a_finished_synthesis_demo_run(runs_root: Path) -> None:
     assert run_status(run).last_outcome == "done" and run.spec.pack == "medicine"
     review = ArtifactStore(run.artifacts_dir).get("synthesis")
     assert review.kept() and review.dropped  # the sentence no finding supports is shown as dropped
+
+
+def test_a_report_says_what_its_field_was_measured_at(runs_root: Path) -> None:
+    from research_tool.core.fs import atomic_write_json
+    from research_tool.validity.card import build_card
+    from research_tool.validity.score import RunScore
+
+    score = RunScore(
+        run_id="r1", case="c", variant="main", kind="null", pack="medicine", finished=True, level=3, max_level=3,
+        confirmed=True, repeat=1, commit="abc",
+    )  # fmt: skip
+    card = build_card("medicine", [(None, score)], provenance={"model": "Qwen", "code": "abc"})
+    atomic_write_json(runs_root / ".validity-cards" / "medicine-abc.json", card.model_dump(mode="json"))
+    run = build_demo_run(runs_root, "done", pipeline="synthesis")
+    store = ArtifactStore(run.artifacts_dir)
+    section = next(s for s in store.get("final_report").sections if s.id == "validity")
+    assert section.origin == "rtool" and "Measured on 1 scored benchmark runs of the medicine field" in section.template
+    assert "never claimed as trustworthy" in (run.root / store.get("final_report").markdown_path).read_text()

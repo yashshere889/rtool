@@ -1596,6 +1596,11 @@
    },
    "DownloadsView": {
     "properties": {
+     "can_upload": {
+      "default": false,
+      "title": "Can Upload",
+      "type": "boolean"
+     },
      "items": {
       "items": {
        "$ref": "#/components/schemas/DownloadItem"
@@ -1656,6 +1661,7 @@
      }
     },
     "required": [
+     "can_upload",
      "items",
      "last_error",
      "plan_version",
@@ -4827,6 +4833,39 @@
      "why_not_editable"
     ],
     "title": "ProtocolView",
+    "type": "object"
+   },
+   "Provided": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "filename": {
+      "title": "Filename",
+      "type": "string"
+     },
+     "files": {
+      "title": "Files",
+      "type": "integer"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "total_bytes": {
+      "title": "Total Bytes",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "bytes",
+     "filename",
+     "files",
+     "name",
+     "total_bytes"
+    ],
+    "title": "Provided",
     "type": "object"
    },
    "QualityCheck": {
@@ -9914,6 +9953,76 @@
     "summary": "Check",
     "tags": [
      "report"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/resources/{name}/inbox": {
+   "put": {
+    "description": "A file of a resource that is not public, as the request body, into that resource's folder.\n\nOnly while the manual-resources checkpoint waits for that resource, and only into the folder the checkpoint\nnames. Files are limited to the same size as papers; larger data is copied onto the cluster by hand.",
+    "operationId": "provide_api_runs__project___run_id__resources__name__inbox_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "filename",
+      "required": true,
+      "schema": {
+       "title": "Filename",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Provided"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Provide",
+    "tags": [
+     "plan"
     ]
    }
   },

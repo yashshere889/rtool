@@ -52,6 +52,7 @@ from ...tools.report.render import (
     unresolved_count,
     value_table,
 )
+from ...validity.note import statement_for
 from ..coder.results import translated_tests
 from ..common import SYSTEM
 
@@ -554,6 +555,8 @@ class Drafting:
             + (f" (all jobs: {', '.join(r.jobs)})" if set(r.jobs) - set(produced) else "")
             + f"; GPU-hours requested: {r.gpu_hours_requested:g}.",
             f"- Smoke tests before the full runs: {', '.join(s.condition for s in b.smoke if s.ok) or 'none'}.",
+            "- Validity of this field: "
+            + statement_for(self.ctx.app_config.paths.resolved_runs_root(), self.brief.domain_pack),
         ]
         if self.edited:
             lines.append(

@@ -97,6 +97,29 @@ describe("FetchPage", () => {
   });
 });
 
+describe("FetchPage uploads", () => {
+  it("adds a small file to a resource the checkpoint waits for, and says when it is in", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/resources/") && init?.method === "PUT") return json({ name: "Cohort data", filename: "cohort.csv", bytes: 12, files: 1, total_bytes: 12 }, 201);
+      if (url.endsWith("/downloads"))
+        return json({
+          stage: "fetch", status: "awaiting_gate", started: true, last_error: null, plan_version: 1, root: "resources", can_upload: true,
+          items: [{ name: "Cohort data", kind: "dataset", source: "manual", identifier: "cohort", status: "manual", bytes: 0, files: 0, path: "resources/cohort", note: "not provided" }],
+        });
+      return json({ events: [], cursor: 0 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const stage = stageOf("fetch", "fetch_resources", "awaiting_gate");
+    render(wrap(<FetchPage run={runOf([stage])} stage={stage} />));
+    await userEvent.upload(await screen.findByLabelText("Add a file to Cohort data"), new File(["a,b\n1,2\n"], "cohort.csv", { type: "text/csv" }));
+    await userEvent.click(screen.getByRole("button", { name: /Upload/ }));
+    expect(await screen.findByText(/Added cohort.csv \(1 files there now\)/)).toBeInTheDocument();
+    const [url, init] = fetch.mock.calls.find(([u, i]) => String(u).includes("/resources/") && (i as RequestInit)?.method === "PUT")!;
+    expect(String(url)).toContain("/resources/Cohort%20data/inbox?filename=cohort.csv");
+    expect((init as RequestInit).headers).toMatchObject({ "X-Requested-With": "rtool" });
+  });
+});
+
 describe("helpers", () => {
   it("link the newer resource sources and say durations in words", () => {
     expect(resourceLink({ source: "geo", kind: "dataset", identifier: "GSE12345" })).toBe("https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE12345");

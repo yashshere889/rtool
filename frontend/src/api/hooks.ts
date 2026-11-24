@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { useEffect } from "react";
 import { toast } from "sonner";
 
-import { api, ApiError, uploadStudyData } from "./client";
+import { api, ApiError, uploadResourceFile, uploadStudyData } from "./client";
 import type {
   ActionRequest,
   ActionState,
@@ -22,6 +22,7 @@ import type {
   ValidityNote,
   ValidityCard,
   Replayed,
+  Provided,
   ArchiveView,
   FieldInfo,
   PipelineInfo,
@@ -303,6 +304,15 @@ export function usePlanCheck(project: string, runId: string, baseVersion: number
     enabled,
     placeholderData: keepPreviousData,
     staleTime: Infinity,
+  });
+}
+
+export function useProvideResource(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ resource, file }: { resource: string; file: File }) =>
+      uploadResourceFile<Provided>(project, runId, resource, file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.downloads(project, runId) }),
   });
 }
 

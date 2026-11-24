@@ -9,22 +9,27 @@ Nothing here calls the model or writes engine state; an edit is sent as an
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ...agents.tasks.fetch_resources import GATE as MANUAL_GATE
+from ...agents.tasks.fetch_resources import provided
 from ...core.artifacts import ArtifactStore
 from ...core.editing import edit_refusal
 from ...core.engine import load_status
 from ...core.errors import ArtifactError, RToolError
 from ...core.events import EventLog
 from ...core.run import RunHandle
-from ...core.state import StageStatus
-from ...schemas.plan import ExperimentPlan, ResourceManifest
+from ...core.state import GateStatus, StageStatus
+from ...schemas.plan import ExperimentPlan, FetchedResource, ResourceManifest
 from ...service import check_edit
+from ...tools.resources.fetch import tree_size
 from ..deps import get_run
+from .literature import MAX_UPLOAD_BYTES
 
 router = APIRouter(tags=["plan"])
 
@@ -98,6 +103,7 @@ class DownloadsView(BaseModel):
     plan_version: int | None  # the plan version the downloads are for
     root: str
     items: list[DownloadItem]
+    can_upload: bool = False  # the manual-resources checkpoint is open: files can be put into those folders
 
 
 def _cluster(run: RunHandle, config: Any) -> ClusterView:
@@ -218,6 +224,25 @@ def downloads(project: str, run_id: str, request: Request) -> DownloadsView:
                 items[data["name"]] = item.model_copy(
                     update={"status": data.get("status", "ready"), "bytes": int(data.get("bytes") or 0)}
                 )
+    missing = _open_manual_gate(st)
+    for name, folder in missing.items():
+        if name in items:
+            now = provided(
+                FetchedResource(
+                    **items[name].model_dump(include={"name", "kind", "source", "identifier"}),
+                    status="manual",
+                    path=folder,
+                )
+            )
+            items[name] = items[name].model_copy(
+                update={
+                    "status": "manual",
+                    "path": _shown(run, folder),
+                    "bytes": now.bytes,
+                    "files": now.files,
+                    "note": now.note,
+                }
+            )
     return DownloadsView(
         stage=sid,
         status=st.status,
@@ -226,7 +251,61 @@ def downloads(project: str, run_id: str, request: Request) -> DownloadsView:
         plan_version=plan_version,
         root=root,
         items=list(items.values()),
+        can_upload=bool(missing),
     )
+
+
+_FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_. -]{0,120}$")
+
+
+def _open_manual_gate(st: Any) -> dict[str, str]:
+    """Resources the open manual-resources checkpoint waits for -> the folder their files go in."""
+    gate = st.gate
+    if gate is None or gate.status is not GateStatus.OPEN or gate.gate_id != MANUAL_GATE:
+        return {}
+    return {
+        str(m["name"]): str(m["path"]) for m in (gate.summary.get("missing") or []) if m.get("name") and m.get("path")
+    }
+
+
+class Provided(BaseModel):
+    name: str
+    filename: str
+    bytes: int
+    files: int  # in the resource's folder now
+    total_bytes: int
+
+
+@router.put("/runs/{project}/{run_id}/resources/{name}/inbox", response_model=Provided, status_code=201)
+async def provide(project: str, run_id: str, name: str, request: Request, filename: str) -> Provided:
+    """A file of a resource that is not public, as the request body, into that resource's folder.
+
+    Only while the manual-resources checkpoint waits for that resource, and only into the folder the checkpoint
+    names. Files are limited to the same size as papers; larger data is copied onto the cluster by hand.
+    """
+    run = get_run(request, project, run_id)
+    _, states, pipeline = load_status(run)
+    sid = next((s for s in pipeline.order if MANIFEST in pipeline.stage(s).produces), None)
+    folder = _open_manual_gate(states[sid]).get(name) if sid else None
+    if folder is None:
+        raise HTTPException(409, "no checkpoint is waiting for files of this resource")
+    if not _FILE_NAME.fullmatch(filename) or filename.startswith("."):
+        raise HTTPException(422, "the file name may use letters, digits, spaces, '.', '_' and '-' only")
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"files are limited to {MAX_UPLOAD_BYTES // (1024 * 1024)} MB here")
+    target_dir = Path(folder)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / filename
+    if target.resolve().parent != target_dir.resolve() or target.is_symlink():
+        raise HTTPException(422, "that file name is not allowed")
+    temp = target_dir / f".{filename}.upload"  # a half-written file is never seen as the resource's
+    temp.write_bytes(bytes(body))
+    temp.replace(target)
+    size, files = tree_size(target_dir)
+    return Provided(name=name, filename=filename, bytes=len(body), files=files, total_bytes=size)
 
 
 def _shown(run: RunHandle, path: str) -> str:

@@ -112,6 +112,16 @@ export function uploadPaper<T>(
   return putFile(`${runApi(project, runId)}/literature/inbox?${params}`, file, html ? "text/html" : "application/pdf");
 }
 
+/** Send one file of a resource that is not public into its folder (while the checkpoint waits for it). */
+export function uploadResourceFile<T>(project: string, runId: string, resource: string, file: File): Promise<T> {
+  const query = new URLSearchParams({ filename: file.name });
+  return putFile(
+    `${runApi(project, runId)}/resources/${encodeURIComponent(resource)}/inbox?${query}`,
+    file,
+    "application/octet-stream",
+  );
+}
+
 /** Send the study's data.csv into the collect stage's inbox (the server checks it against the protocol). */
 export function uploadStudyData<T>(project: string, runId: string, file: File): Promise<T> {
   return putFile(`${runApi(project, runId)}/collect/inbox`, file, "text/csv");

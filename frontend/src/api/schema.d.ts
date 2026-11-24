@@ -774,6 +774,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/resources/{name}/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Provide
+         * @description A file of a resource that is not public, as the request body, into that resource's folder.
+         *
+         *     Only while the manual-resources checkpoint waits for that resource, and only into the folder the checkpoint
+         *     names. Files are limited to the same size as papers; larger data is copied onto the cluster by hand.
+         */
+        put: operations["provide_api_runs__project___run_id__resources__name__inbox_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/results": {
         parameters: {
             query?: never;
@@ -1585,6 +1608,11 @@ export interface components {
         };
         /** DownloadsView */
         DownloadsView: {
+            /**
+             * Can Upload
+             * @default false
+             */
+            can_upload: boolean;
             /** Items */
             items: components["schemas"]["DownloadItem"][];
             /** Last Error */
@@ -2725,6 +2753,19 @@ export interface components {
             versions: number[];
             /** Why Not Editable */
             why_not_editable: string;
+        };
+        /** Provided */
+        Provided: {
+            /** Bytes */
+            bytes: number;
+            /** Filename */
+            filename: string;
+            /** Files */
+            files: number;
+            /** Name */
+            name: string;
+            /** Total Bytes */
+            total_bytes: number;
         };
         /**
          * QualityCheck
@@ -5209,6 +5250,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReportCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provide_api_runs__project___run_id__resources__name__inbox_put: {
+        parameters: {
+            query: {
+                filename: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Provided"];
                 };
             };
             /** @description Validation Error */

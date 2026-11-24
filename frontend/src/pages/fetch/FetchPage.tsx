@@ -22,6 +22,12 @@ export function FetchPage({ run, stage }: { run: RunDetail; stage: StageSummary 
       </header>
       {stage.gate && <CheckpointCard run={run} gate={stage.gate} showStageLink={false} />}
       {stage.status === "failed" && <FailureCard run={run} stage={stage} />}
+      {downloads.data?.can_upload && (
+        <p className="text-sm text-ink-soft">
+          For a resource that is not public, add its files below (small files only) or copy them into its folder on the cluster, then
+          continue at the checkpoint above.
+        </p>
+      )}
       {downloads.data?.started ? (
         <DownloadsPanel run={run} />
       ) : (

@@ -7,18 +7,14 @@ measured, and a report of it must not suggest otherwise (docs/roadmap.md, "Valid
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from ...validity.card import Card
+from ...validity.note import latest_cards, statement
 from ..deps import get_run, settings_of
 
 router = APIRouter(tags=["validity"])
-
-CARDS = ".validity-cards"
-NEVER = "A new finding is never claimed as trustworthy: that level needs replication by people."
 
 
 class KindRate(BaseModel):
@@ -41,26 +37,9 @@ class ValidityNote(BaseModel):
     created_at: str
 
 
-def latest_cards(runs_root: Path) -> dict[str, Card]:
-    """The newest card of each pack under ``runs_root``; unreadable files are skipped."""
-    found: dict[str, Card] = {}
-    folder = Path(runs_root).expanduser() / CARDS
-    for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
-        try:
-            card = Card.model_validate_json(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if card.pack not in found or card.created_at > found[card.pack].created_at:
-            found[card.pack] = card
-    return found
-
-
 def note_for(pack: str, card: Card | None) -> ValidityNote:
+    text = statement(pack, card)
     if card is None or not card.runs:
-        text = (
-            f"No validity card exists for the {pack} field on this server, so no level is claimed: the results show "
-            "what this run did, not that rtool is known to get such questions right."
-        )
         return ValidityNote(
             pack=pack,
             measured=False,
@@ -74,14 +53,6 @@ def note_for(pack: str, card: Card | None) -> ValidityNote:
         )
     top = [KindRate(kind=k, k=r.k, n=r.n, low=r.low, high=r.high) for k, r in card.headline.items()]
     fc = card.false_claims
-    model, code = str(card.provenance.get("model", "?")), str(card.provenance.get("code", "?"))
-    parts = ", ".join(f"{t.kind} {t.k}/{t.n}" for t in top)
-    text = (
-        f"Measured on {card.runs} scored benchmark runs of the {pack} field (model {model}, code {code}); runs that "
-        f"reached their case's top level: {parts or 'none finished'}"
-        + (f"; false claims on null cases {fc.k}/{fc.n}" if fc.n else "")
-        + f". {NEVER}"
-    )
     return ValidityNote(
         pack=pack,
         measured=True,
@@ -89,8 +60,8 @@ def note_for(pack: str, card: Card | None) -> ValidityNote:
         runs=card.runs,
         top_level=top,
         false_claims=KindRate(kind="null", k=fc.k, n=fc.n, low=fc.low, high=fc.high) if fc.n else None,
-        model=model,
-        code=code,
+        model=str(card.provenance.get("model", "?")),
+        code=str(card.provenance.get("code", "?")),
         created_at=card.created_at,
     )
 

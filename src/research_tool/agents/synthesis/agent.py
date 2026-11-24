@@ -25,6 +25,7 @@ from ...schemas.common import ResearchBrief
 from ...schemas.literature import Claim, Corpus, KnowledgeMap, Topic
 from ...schemas.report import Check, Report, ReportSection
 from ...tools.report.render import bibtex_subset, reference_list
+from ...validity.note import statement_for
 from ..common import SYSTEM
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
@@ -170,6 +171,14 @@ class SynthesisAgent(Agent):
             for c in used
         )
         sections.append(ReportSection(id="evidence", title="Evidence", template=evidence, origin="llm"))
+        sections.append(
+            ReportSection(
+                id="validity",
+                title="How far this review can be trusted",
+                template=statement_for(ctx.app_config.paths.resolved_runs_root(), brief.domain_pack),
+                origin="rtool",
+            )
+        )
         title = f"Literature review: {brief.topic}"
         body = "\n\n".join(f"## {s.title}\n\n{s.template}" for s in sections)
         markdown = f"# {title}\n\n{body}\n\n## References\n\n{reference_list(corpus, cited)}\n"

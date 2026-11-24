@@ -83,4 +83,17 @@ describe("ResultsTab", () => {
     expect(within(recall).getByText("Better than baseline")).toBeInTheDocument();
     expect(within(recall).getByText(/p adjusted with Holm's method/)).toBeInTheDocument();
   });
+
+  it("mentions GPU-hours only when some were requested", async () => {
+    const run = { project: "sleep", run_id: "r1" } as unknown as RunDetail;
+    const view = (hours: number) => ({ ...resultsView, results: { ...resultsView.results, gpu_hours_requested: hours } });
+    vi.stubGlobal("fetch", vi.fn(async () => json(view(2))));
+    const first = render(wrap(<ResultsTab run={run} />));
+    expect(await screen.findByText(/2 GPU-hours requested/)).toBeInTheDocument();
+    first.unmount();
+    vi.stubGlobal("fetch", vi.fn(async () => json(view(0))));
+    render(wrap(<ResultsTab run={run} />));
+    await screen.findByText("Primary outcome · confirmatory");
+    expect(screen.queryByText(/GPU-hours requested/)).toBeNull(); // a study analysis ran no GPU
+  });
 });

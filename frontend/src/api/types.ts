@@ -60,6 +60,7 @@ export type PlanCheck = Schemas["PlanCheck"];
 export type ClusterView = Schemas["ClusterView"];
 export type PartitionView = Schemas["PartitionView"];
 export type DownloadsView = Schemas["DownloadsView"];
+export type Provided = Schemas["Provided"];
 export type DownloadItem = Schemas["DownloadItem"];
 export type Draft = Schemas["Draft"];
 export type ResourceSpec = Schemas["ResourceSpec"];
