@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agents */
+        get: operations["agents_api_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/artifact-types": {
         parameters: {
             query?: never;
@@ -24,6 +41,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Doctor
+         * @description Whether this machine can run the pipeline with this config (`network`: also reach the paper APIs).
+         */
+        get: operations["doctor_api_doctor_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fields
+         * @description Every pack, as `rtool packs` lists them, and whether this server offers it to new runs.
+         */
+        get: operations["fields_api_fields_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -33,6 +90,23 @@ export interface paths {
         };
         /** Health */
         get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pipelines */
+        get: operations["pipelines_api_pipelines_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -888,6 +962,21 @@ export interface components {
             stage: string;
             status: components["schemas"]["StageStatus"];
         };
+        /** AgentInfo */
+        AgentInfo: {
+            /** Consumes */
+            consumes: string[];
+            /** Description */
+            description: string;
+            /** Name */
+            name: string;
+            /** Optional */
+            optional: string[];
+            /** Produces */
+            produces: string[];
+            /** Uses Llm */
+            uses_llm: boolean;
+        };
         /**
          * AgentRunView
          * @description One run of the tool-calling agent (the Coder with tools): how long it worked and what its tools did.
@@ -1010,6 +1099,15 @@ export interface components {
             name: string;
             /** Ok */
             ok: boolean;
+        };
+        /** CheckInfo */
+        CheckInfo: {
+            /** Detail */
+            detail: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
         };
         /** CheckedEvidence */
         CheckedEvidence: {
@@ -1575,6 +1673,25 @@ export interface components {
             /** Field */
             field: string;
         };
+        /** FieldInfo */
+        FieldInfo: {
+            /** Description */
+            description: string;
+            /** Detail */
+            detail: string;
+            /** Max Gpu Hours */
+            max_gpu_hours: number | null;
+            /** Name */
+            name: string;
+            /** Origin */
+            origin: string;
+            /** Pipeline */
+            pipeline: string;
+            /** State */
+            state: string;
+            /** Title */
+            title: string;
+        };
         /** FileText */
         FileText: {
             /** Content */
@@ -2082,6 +2199,13 @@ export interface components {
         };
         /** PackChoice */
         PackChoice: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Max Gpu Hours */
+            max_gpu_hours: number | null;
             /** Name */
             name: string;
             /** Pipeline */
@@ -2268,6 +2392,15 @@ export interface components {
             seconds: number;
             /** Stage */
             stage: string;
+        };
+        /** PipelineInfo */
+        PipelineInfo: {
+            /** Description */
+            description: string;
+            /** Name */
+            name: string;
+            /** Stages */
+            stages: components["schemas"]["StageInfo"][];
         };
         /** PlaceholderInfo */
         PlaceholderInfo: {
@@ -3041,6 +3174,19 @@ export interface components {
             /** Seconds */
             seconds: number;
         };
+        /** StageInfo */
+        StageInfo: {
+            /** After */
+            after: string[];
+            /** Agent */
+            agent: string;
+            /** Gate */
+            gate: string;
+            /** Id */
+            id: string;
+            /** Produces */
+            produces: string[];
+        };
         /** StageStats */
         StageStats: {
             /**
@@ -3403,6 +3549,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    agents_api_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInfo"][];
+                };
+            };
+        };
+    };
     artifact_types_api_artifact_types_get: {
         parameters: {
             query?: never;
@@ -3425,6 +3591,57 @@ export interface operations {
             };
         };
     };
+    doctor_api_doctor_get: {
+        parameters: {
+            query?: {
+                network?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fields_api_fields_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FieldInfo"][];
+                };
+            };
+        };
+    };
     health_api_health_get: {
         parameters: {
             query?: never;
@@ -3441,6 +3658,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    pipelines_api_pipelines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineInfo"][];
                 };
             };
         };

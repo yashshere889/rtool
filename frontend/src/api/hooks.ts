@@ -19,6 +19,10 @@ import type {
   PlanCheck,
   ProtocolCheck,
   RunStats,
+  FieldInfo,
+  PipelineInfo,
+  AgentInfo,
+  CheckInfo,
   ProtocolView,
   CollectView,
   Received,
@@ -386,6 +390,24 @@ export function useResults(project: string, runId: string, enabled = true) {
     queryKey: ["artifact", project, runId, "results"],
     queryFn: () => api<ResultsView>(`${base(project, runId)}/results`),
     enabled,
+  });
+}
+
+// ------------------------------------------------------------- what this deployment can do
+export const useFields = () => useQuery({ queryKey: ["system", "fields"], queryFn: () => api<FieldInfo[]>("/fields") });
+export const usePipelines = () =>
+  useQuery({ queryKey: ["system", "pipelines"], queryFn: () => api<PipelineInfo[]>("/pipelines"), staleTime: Infinity });
+export const useAgents = () =>
+  useQuery({ queryKey: ["system", "agents"], queryFn: () => api<AgentInfo[]>("/agents"), staleTime: Infinity });
+
+/** The machine's checks; ``network`` also contacts the paper APIs, so it is asked for, never automatic. */
+export function useDoctor(network: boolean, enabled: boolean) {
+  return useQuery({
+    queryKey: ["system", "doctor", network],
+    queryFn: () => api<CheckInfo[]>(`/doctor?network=${network}`),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 

@@ -210,6 +210,53 @@
     "title": "Affected",
     "type": "object"
    },
+   "AgentInfo": {
+    "properties": {
+     "consumes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Consumes",
+      "type": "array"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "optional": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Optional",
+      "type": "array"
+     },
+     "produces": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Produces",
+      "type": "array"
+     },
+     "uses_llm": {
+      "title": "Uses Llm",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "consumes",
+     "description",
+     "name",
+     "optional",
+     "produces",
+     "uses_llm"
+    ],
+    "title": "AgentInfo",
+    "type": "object"
+   },
    "AgentRunView": {
     "description": "One run of the tool-calling agent (the Coder with tools): how long it worked and what its tools did.",
     "properties": {
@@ -458,6 +505,29 @@
      "ok"
     ],
     "title": "Check",
+    "type": "object"
+   },
+   "CheckInfo": {
+    "properties": {
+     "detail": {
+      "title": "Detail",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "detail",
+     "name",
+     "status"
+    ],
+    "title": "CheckInfo",
     "type": "object"
    },
    "CheckedEvidence": {
@@ -2056,6 +2126,61 @@
     "title": "FieldChange",
     "type": "object"
    },
+   "FieldInfo": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "detail": {
+      "title": "Detail",
+      "type": "string"
+     },
+     "max_gpu_hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Gpu Hours"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "origin": {
+      "title": "Origin",
+      "type": "string"
+     },
+     "pipeline": {
+      "title": "Pipeline",
+      "type": "string"
+     },
+     "state": {
+      "title": "State",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "description",
+     "detail",
+     "max_gpu_hours",
+     "name",
+     "origin",
+     "pipeline",
+     "state",
+     "title"
+    ],
+    "title": "FieldInfo",
+    "type": "object"
+   },
    "FileText": {
     "properties": {
      "content": {
@@ -3356,6 +3481,22 @@
    },
    "PackChoice": {
     "properties": {
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "max_gpu_hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Gpu Hours"
+     },
      "name": {
       "title": "Name",
       "type": "string"
@@ -3370,6 +3511,8 @@
      }
     },
     "required": [
+     "description",
+     "max_gpu_hours",
      "name",
      "pipeline",
      "title"
@@ -4020,6 +4163,32 @@
      "stage"
     ],
     "title": "PhaseStats",
+    "type": "object"
+   },
+   "PipelineInfo": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "stages": {
+      "items": {
+       "$ref": "#/components/schemas/StageInfo"
+      },
+      "title": "Stages",
+      "type": "array"
+     }
+    },
+    "required": [
+     "description",
+     "name",
+     "stages"
+    ],
+    "title": "PipelineInfo",
     "type": "object"
    },
    "PlaceholderInfo": {
@@ -6071,6 +6240,45 @@
     "title": "SmokeView",
     "type": "object"
    },
+   "StageInfo": {
+    "properties": {
+     "after": {
+      "items": {
+       "type": "string"
+      },
+      "title": "After",
+      "type": "array"
+     },
+     "agent": {
+      "title": "Agent",
+      "type": "string"
+     },
+     "gate": {
+      "title": "Gate",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "produces": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Produces",
+      "type": "array"
+     }
+    },
+    "required": [
+     "after",
+     "agent",
+     "gate",
+     "id",
+     "produces"
+    ],
+    "title": "StageInfo",
+    "type": "object"
+   },
    "StageStats": {
     "properties": {
      "active_s": {
@@ -6797,6 +7005,31 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/api/agents": {
+   "get": {
+    "operationId": "agents_api_agents_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AgentInfo"
+         },
+         "title": "Response Agents Api Agents Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Agents",
+    "tags": [
+     "system"
+    ]
+   }
+  },
   "/api/artifact-types": {
    "get": {
     "description": "JSON Schema of every artifact type, so pages for new agents can be generated.",
@@ -6821,6 +7054,80 @@
     ]
    }
   },
+  "/api/doctor": {
+   "get": {
+    "description": "Whether this machine can run the pipeline with this config (`network`: also reach the paper APIs).",
+    "operationId": "doctor_api_doctor_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "network",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Network",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CheckInfo"
+         },
+         "title": "Response Doctor Api Doctor Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Doctor",
+    "tags": [
+     "system"
+    ]
+   }
+  },
+  "/api/fields": {
+   "get": {
+    "description": "Every pack, as `rtool packs` lists them, and whether this server offers it to new runs.",
+    "operationId": "fields_api_fields_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/FieldInfo"
+         },
+         "title": "Response Fields Api Fields Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Fields",
+    "tags": [
+     "system"
+    ]
+   }
+  },
   "/api/health": {
    "get": {
     "operationId": "health_api_health_get",
@@ -6839,6 +7146,31 @@
     "summary": "Health",
     "tags": [
      "session"
+    ]
+   }
+  },
+  "/api/pipelines": {
+   "get": {
+    "operationId": "pipelines_api_pipelines_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/PipelineInfo"
+         },
+         "title": "Response Pipelines Api Pipelines Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Pipelines",
+    "tags": [
+     "system"
     ]
    }
   },
