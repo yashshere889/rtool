@@ -117,7 +117,8 @@ function VersionNote({ view }: { view: PlanView }) {
   );
 }
 
-export function PlanPage({ run, stage }: { run: RunDetail; stage: StageSummary }) {
+/** The plan, or (``designOnly``) a study's design: the protocol stage's plan without datasets and compute. */
+export function PlanPage({ run, stage, designOnly = false }: { run: RunDetail; stage: StageSummary; designOnly?: boolean }) {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "read";
   const versionParam = params.get("version");
@@ -175,10 +176,14 @@ export function PlanPage({ run, stage }: { run: RunDetail; stage: StageSummary }
   const header = (
     <header>
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Experiment plan</h1>
+        <h1 className="text-2xl font-semibold">{designOnly ? "Study design" : "Experiment plan"}</h1>
         <StatusBadge stage={stage} run={run} />
       </div>
-      <p className="mt-2 max-w-3xl text-sm text-ink-soft">{STAGES.plan.description}</p>
+      <p className="mt-2 max-w-3xl text-sm text-ink-soft">
+        {designOnly
+          ? "The conditions, outcome, tests and procedure of the study. Applying an edit works out the sample size, the allocation and the checklist again."
+          : STAGES.plan.description}
+      </p>
     </header>
   );
 
@@ -257,7 +262,7 @@ export function PlanPage({ run, stage }: { run: RunDetail; stage: StageSummary }
           </Button>
         </div>
       )}
-      <DownloadsPanel run={run} />
+      {!designOnly && <DownloadsPanel run={run} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <VersionNote view={view} />
@@ -305,7 +310,7 @@ export function PlanPage({ run, stage }: { run: RunDetail; stage: StageSummary }
                 </button>
               </p>
             )}
-            <PlanRead plan={view.plan} cluster={view.cluster} title={view.hypothesis_title} />
+            <PlanRead plan={view.plan} cluster={view.cluster} title={view.hypothesis_title} designOnly={designOnly} />
           </TabsContent>
           <TabsContent value="edit" className="mt-4">
             {draft && (
@@ -316,6 +321,7 @@ export function PlanPage({ run, stage }: { run: RunDetail; stage: StageSummary }
                 cluster={view.cluster}
                 checked={check.data}
                 title={view.hypothesis_title}
+                designOnly={designOnly}
                 hypothesesPath={`${runPath(run.project, run.run_id)}/${run.stages.find((s) => s.agent === "hypothesis")?.id ?? "hypotheses"}`}
               />
             )}

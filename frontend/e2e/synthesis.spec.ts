@@ -29,6 +29,19 @@ test("a literature review: every sentence traced to a quote, checkpoints decided
   await accessible(page, "paper reader (from the review)");
   await page.goBack();
 
+  // rewrite a sentence: refused if it invents a number, kept when it rests on its findings
+  await page.getByRole("button", { name: /Edit the review/ }).click();
+  const sentence = page.getByRole("textbox", { name: /^Sentence 1 of / }).first();
+  const original = await sentence.inputValue();
+  await sentence.fill(`${original.replace(/\.$/, "")}, in 97 % of people.`);
+  await expect(page.getByText(/states numbers its findings do not/)).toBeVisible();
+  await accessible(page, "review editor (a refused sentence)");
+  await sentence.fill(`${original.replace(/\.$/, "")}, as the study reports.`);
+  await expect(page.getByText("Every sentence rests on verified findings.")).toBeVisible();
+  await page.getByRole("button", { name: "Apply my edits" }).click();
+  await expect(page.getByText(/Edited by/)).toBeVisible(LONG);
+  await expect(page.getByText(/as the study reports/).first()).toBeVisible();
+  await accessible(page, "synthesis (edited)");
   await page.getByRole("button", { name: "Approve & finish" }).click();
 
   await openStage(page, /Overview/);

@@ -142,7 +142,17 @@ export function ResourceTable({ plan }: { plan: ExperimentPlan }) {
 }
 
 /** The plan as a document. */
-export function PlanRead({ plan, cluster, title }: { plan: ExperimentPlan; cluster: ClusterView; title: string }) {
+export function PlanRead({
+  plan,
+  cluster,
+  title,
+  designOnly = false,
+}: {
+  plan: ExperimentPlan;
+  cluster: ClusterView;
+  title: string;
+  designOnly?: boolean;
+}) {
   return (
     <div className="space-y-4">
       <Section title="What it tests">
@@ -222,6 +232,8 @@ export function PlanRead({ plan, cluster, title }: { plan: ExperimentPlan; clust
         </ol>
       </Section>
 
+      {!designOnly && (
+        <>
       <Section title="Datasets, models and software">
         <ResourceTable plan={plan} />
       </Section>
@@ -229,6 +241,8 @@ export function PlanRead({ plan, cluster, title }: { plan: ExperimentPlan; clust
       <Section title="Compute">
         <ComputeSummary plan={plan} cluster={cluster} />
       </Section>
+        </>
+      )}
 
       <Section title="Expected results and risks">
         <p className="text-sm leading-relaxed">{plan.expected_results}</p>

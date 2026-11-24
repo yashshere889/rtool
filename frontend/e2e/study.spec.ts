@@ -42,6 +42,18 @@ test("a study goes from the question to an approved report: protocol edited, dat
   await expect(page.getByText(/Version 2 · edited by/)).toBeVisible(LONG);
   await expect(page.getByText(/64 participants per condition/)).toBeVisible();
 
+  // the design behind it: change what is expected, and the protocol is worked out from the design again
+  await page.getByRole("button", { name: /Edit the design/ }).click();
+  await expect(page.getByRole("heading", { name: "Study design", level: 1 })).toBeVisible();
+  await accessible(page, "study design");
+  await page.getByRole("button", { name: /Edit the plan/ }).click();
+  await page.getByLabel("Expected results").fill("Phase-locked clicks give the largest recall gain.");
+  await expect(page.getByText("No problems found.")).toBeVisible();
+  await accessible(page, "study design editor");
+  await page.getByRole("button", { name: "Apply my edits" }).click();
+  await expect(page.getByText(/Version 2 · edited by/)).toBeVisible(LONG);
+  await page.getByRole("button", { name: /Back to the protocol/ }).click();
+  await expect(page.getByText(/64 participants per condition/)).toBeVisible();
   await page.getByRole("button", { name: "Approve protocol" }).click();
 
   // data: a file the protocol rejects, then one that fits

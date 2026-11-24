@@ -914,6 +914,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/synthesis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Synthesis */
+        get: operations["synthesis_api_runs__project___run_id__synthesis_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/synthesis/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check
+         * @description What an edited review would become, or why a sentence would be refused; nothing is stored.
+         */
+        post: operations["check_api_runs__project___run_id__synthesis_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/validity": {
         parameters: {
             query?: never;
@@ -1307,6 +1344,17 @@ export interface components {
             /** Verified */
             verified: boolean;
         };
+        /** ClaimRef */
+        ClaimRef: {
+            /** Bib Key */
+            bib_key: string;
+            /** Paper Id */
+            paper_id: string;
+            /** Quote */
+            quote: string;
+            /** Text */
+            text: string;
+        };
         /** ClaimView */
         ClaimView: {
             /** Dataset */
@@ -1645,6 +1693,15 @@ export interface components {
             value: {
                 [key: string]: unknown;
             };
+        };
+        /** DroppedSentence */
+        DroppedSentence: {
+            /** Claims */
+            claims: string[];
+            /** Reason */
+            reason: string;
+            /** Text */
+            text: string;
         };
         /** EntityView */
         EntityView: {
@@ -2119,6 +2176,15 @@ export interface components {
             state: string | null;
             /** Submitted At */
             submitted_at: string;
+        };
+        /** KeptSentence */
+        KeptSentence: {
+            /** Claims */
+            claims: string[];
+            /** Papers */
+            papers: string[];
+            /** Text */
+            text: string;
         };
         /** KickResult */
         KickResult: {
@@ -3597,6 +3663,70 @@ export interface components {
             name: string;
             /** Paper Ids */
             paper_ids: string[];
+        };
+        /**
+         * Synthesis
+         * @description The review's sentences with the claims each rests on, for checking and scoring (the text is final_report).
+         */
+        Synthesis: {
+            /** Checks */
+            checks: components["schemas"]["Check"][];
+            /** Claims */
+            claims: {
+                [key: string]: components["schemas"]["ClaimRef"];
+            };
+            /** Dropped */
+            dropped: components["schemas"]["DroppedSentence"][];
+            /**
+             * Markdown Path
+             * @default
+             */
+            markdown_path: string;
+            /** Sections */
+            sections: components["schemas"]["SynthesisSection"][];
+            /** Topic */
+            topic: string;
+        };
+        /** SynthesisCheck */
+        SynthesisCheck: {
+            /** Changed */
+            changed: string[];
+            /** Error */
+            error: string;
+            /** Ok */
+            ok: boolean;
+            synthesis: components["schemas"]["Synthesis"] | null;
+        };
+        /** SynthesisSection */
+        SynthesisSection: {
+            /** Sentences */
+            sentences: components["schemas"]["KeptSentence"][];
+            /** Title */
+            title: string;
+        };
+        /** SynthesisView */
+        SynthesisView: {
+            /** By */
+            by: string | null;
+            /** Created At */
+            created_at: string;
+            /** Edit Note */
+            edit_note: string;
+            /** Editable */
+            editable: boolean;
+            /** Edited From */
+            edited_from: number | null;
+            /** Head */
+            head: number;
+            /** Stage */
+            stage: string;
+            synthesis: components["schemas"]["Synthesis"];
+            /** Version */
+            version: number;
+            /** Versions */
+            versions: number[];
+            /** Why Not Editable */
+            why_not_editable: string;
         };
         /** TextSection */
         TextSection: {
@@ -5488,6 +5618,76 @@ export interface operations {
                     "application/json": {
                         [key: string]: string[];
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    synthesis_api_runs__project___run_id__synthesis_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SynthesisView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_api_runs__project___run_id__synthesis_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["research_tool__web__api__plan__CheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SynthesisCheck"];
                 };
             };
             /** @description Validation Error */

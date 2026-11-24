@@ -745,6 +745,34 @@
     "title": "CheckedEvidence",
     "type": "object"
    },
+   "ClaimRef": {
+    "properties": {
+     "bib_key": {
+      "title": "Bib Key",
+      "type": "string"
+     },
+     "paper_id": {
+      "title": "Paper Id",
+      "type": "string"
+     },
+     "quote": {
+      "title": "Quote",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bib_key",
+     "paper_id",
+     "quote",
+     "text"
+    ],
+    "title": "ClaimRef",
+    "type": "object"
+   },
    "ClaimView": {
     "properties": {
      "dataset": {
@@ -1700,6 +1728,32 @@
      "value"
     ],
     "title": "Draft",
+    "type": "object"
+   },
+   "DroppedSentence": {
+    "properties": {
+     "claims": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Claims",
+      "type": "array"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "claims",
+     "reason",
+     "text"
+    ],
+    "title": "DroppedSentence",
     "type": "object"
    },
    "EntityView": {
@@ -3034,6 +3088,35 @@
      "submitted_at"
     ],
     "title": "JobView",
+    "type": "object"
+   },
+   "KeptSentence": {
+    "properties": {
+     "claims": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Claims",
+      "type": "array"
+     },
+     "papers": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Papers",
+      "type": "array"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "claims",
+     "papers",
+     "text"
+    ],
+    "title": "KeptSentence",
     "type": "object"
    },
    "KickResult": {
@@ -6961,6 +7044,195 @@
     "title": "SubtopicView",
     "type": "object"
    },
+   "Synthesis": {
+    "description": "The review's sentences with the claims each rests on, for checking and scoring (the text is final_report).",
+    "properties": {
+     "checks": {
+      "items": {
+       "$ref": "#/components/schemas/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+     },
+     "claims": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/ClaimRef"
+      },
+      "title": "Claims",
+      "type": "object"
+     },
+     "dropped": {
+      "items": {
+       "$ref": "#/components/schemas/DroppedSentence"
+      },
+      "title": "Dropped",
+      "type": "array"
+     },
+     "markdown_path": {
+      "default": "",
+      "title": "Markdown Path",
+      "type": "string"
+     },
+     "sections": {
+      "items": {
+       "$ref": "#/components/schemas/SynthesisSection"
+      },
+      "title": "Sections",
+      "type": "array"
+     },
+     "topic": {
+      "title": "Topic",
+      "type": "string"
+     }
+    },
+    "required": [
+     "checks",
+     "claims",
+     "dropped",
+     "markdown_path",
+     "sections",
+     "topic"
+    ],
+    "title": "Synthesis",
+    "type": "object"
+   },
+   "SynthesisCheck": {
+    "properties": {
+     "changed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Changed",
+      "type": "array"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "synthesis": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Synthesis"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "changed",
+     "error",
+     "ok",
+     "synthesis"
+    ],
+    "title": "SynthesisCheck",
+    "type": "object"
+   },
+   "SynthesisSection": {
+    "properties": {
+     "sentences": {
+      "items": {
+       "$ref": "#/components/schemas/KeptSentence"
+      },
+      "title": "Sentences",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "sentences",
+     "title"
+    ],
+    "title": "SynthesisSection",
+    "type": "object"
+   },
+   "SynthesisView": {
+    "properties": {
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "edit_note": {
+      "title": "Edit Note",
+      "type": "string"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "edited_from": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edited From"
+     },
+     "head": {
+      "title": "Head",
+      "type": "integer"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "synthesis": {
+      "$ref": "#/components/schemas/Synthesis"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     },
+     "why_not_editable": {
+      "title": "Why Not Editable",
+      "type": "string"
+     }
+    },
+    "required": [
+     "by",
+     "created_at",
+     "edit_note",
+     "editable",
+     "edited_from",
+     "head",
+     "stage",
+     "synthesis",
+     "version",
+     "versions",
+     "why_not_editable"
+    ],
+    "title": "SynthesisView",
+    "type": "object"
+   },
    "TextSection": {
     "properties": {
      "text": {
@@ -10396,6 +10668,135 @@
     "summary": "Stop",
     "tags": [
      "runs"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/synthesis": {
+   "get": {
+    "operationId": "synthesis_api_runs__project___run_id__synthesis_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SynthesisView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Synthesis",
+    "tags": [
+     "synthesis"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/synthesis/check": {
+   "post": {
+    "description": "What an edited review would become, or why a sentence would be refused; nothing is stored.",
+    "operationId": "check_api_runs__project___run_id__synthesis_check_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/research_tool__web__api__plan__CheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SynthesisCheck"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Check",
+    "tags": [
+     "synthesis"
     ]
    }
   },

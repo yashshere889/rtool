@@ -69,3 +69,61 @@ def test_a_demo_server_refuses_a_pack_it_cannot_simulate(runs_root: Path) -> Non
         "/api/runs", json={"topic": "Does sound during deep sleep help memory?", "pack": "omics"}, headers=WRITE
     )
     assert refused.status_code == 422 and "offers only" in refused.json()["detail"]
+
+
+REVIEW = "/api/runs/sleep-review-demo/2-review"
+
+
+def test_a_review_is_edited_sentence_by_sentence_and_its_report_follows(pipelines_root: Path) -> None:
+    from research_tool.core.artifacts import ArtifactStore
+    from research_tool.service import run_status
+    from research_tool.web.runner import LocalRunner
+
+    runner = LocalRunner()
+    c = client(pipelines_root, runner)
+    view = c.get(f"{REVIEW}/synthesis").json()
+    assert view["editable"] and view["version"] == view["head"] == 1 and view["stage"] == "synthesis"
+    review = view["synthesis"]
+    first = review["sections"][0]["sentences"][0]
+    claims = list(review["claims"])
+
+    def with_sentence(sentence: dict) -> dict:  # the first sentence of the first section replaced
+        sections = [dict(s) for s in review["sections"]]
+        sections[0] = {**sections[0], "sentences": [sentence, *sections[0]["sentences"][1:]]}
+        return {**review, "sections": sections}
+
+    def check(value: dict) -> dict:
+        return c.post(f"{REVIEW}/synthesis/check", json={"base_version": 1, "value": value}, headers=WRITE).json()
+
+    shorter = {"text": first["text"].rstrip(".") + ", as the study reports", "claims": first["claims"], "papers": []}
+    assert check(with_sentence(shorter))["ok"]
+    invented = check(with_sentence({**shorter, "text": "It helped 97 % of people", "claims": first["claims"]}))
+    assert not invented["ok"] and "states numbers its findings do not: 97" in invented["error"]
+    unknown = check(with_sentence({**shorter, "claims": ["C999"]}))
+    assert not unknown["ok"] and "were not offered: C999" in unknown["error"]
+    assert "cites no finding" in check(with_sentence({**shorter, "claims": []}))["error"]
+    renamed = {**review, "sections": [{**review["sections"][0], "title": "Other"}, *review["sections"][1:]]}
+    assert "cannot be added, removed or renamed" in check(renamed)["error"]
+    assert claims  # the findings offered are the review's, not editable
+
+    body = {"kind": "edit", "payload": {"artifact": "synthesis", "base_version": 1, "value": with_sentence(shorter)}}
+    assert c.post(f"{REVIEW}/actions", json=body, headers=WRITE).status_code == 202
+    run = open_run(pipelines_root, "sleep-review-demo", "2-review")
+    runner.join(run, timeout=120)
+    after = c.get(f"{REVIEW}/synthesis").json()
+    assert (
+        after["version"] == 2
+        and after["by"]
+        and after["synthesis"]["sections"][0]["sentences"][0]["text"] == shorter["text"]
+    )
+    store = ArtifactStore(run.artifacts_dir)
+    report = store.get("final_report")
+    assert store.head("final_report") == 2 and report.sections[0].origin == "human"  # the report was rebuilt with it
+    assert shorter["text"].rstrip(".") in (run.root / report.markdown_path).read_text()
+    assert next(s for s in report.sections if s.id == "validity").origin == "rtool"  # kept as it was, locked
+    assert run_status(run).open_gates[0].summary["artifacts"] == {"synthesis": 2, "final_report": 2}
+    direct = {
+        "kind": "edit",
+        "payload": {"artifact": "final_report", "base_version": 2, "value": report.model_dump(mode="json")},
+    }
+    assert "edited sentence by sentence" in c.post(f"{REVIEW}/actions", json=direct, headers=WRITE).json()["detail"]

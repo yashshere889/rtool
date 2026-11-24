@@ -114,3 +114,69 @@ def test_a_run_without_the_study_stages_has_no_study_pages(runs_root: Path) -> N
     c = web_client(runs_root, StubRunner())
     assert c.get("/api/runs/sleep-demo/1-literature/protocol").status_code == 404
     assert c.get("/api/runs/sleep-demo/1-literature/collect").status_code == 404
+
+
+def test_a_design_edit_rewrites_the_protocol_and_the_checkpoint_can_still_be_approved(pipelines_root: Path) -> None:
+    runner = LocalRunner()
+    c = web_client(pipelines_root, runner)
+    plan = c.get(f"{AT_PROTOCOL}/plan").json()["plan"]
+    design = {
+        **plan,
+        "conditions": [
+            *plan["conditions"],
+            {"name": "Fixed Interval", "description": "untimed clicks", "is_baseline": False},
+        ],
+    }
+    checked = c.post(f"{AT_PROTOCOL}/plan/check", json={"base_version": 1, "value": design}, headers=WRITE).json()
+    assert checked["ok"] and [x["name"] for x in checked["plan"]["conditions"]][-1] == "fixed_interval"
+    assert checked["plan"]["issues"] == []  # no resource checks: the table is uploaded later
+    refused = c.post(
+        f"{AT_PROTOCOL}/plan/check",
+        json={"base_version": 1, "value": {**plan, "conditions": plan["conditions"][:1]}},
+        headers=WRITE,
+    ).json()
+    assert not refused["ok"] and "at least two conditions" in refused["error"]
+
+    body = {"kind": "edit", "payload": {"artifact": "experiment_plan", "base_version": 1, "value": design}}
+    assert c.post(f"{AT_PROTOCOL}/actions", json=body, headers=WRITE).status_code == 202
+    run = open_run(pipelines_root, "sleep-study-demo", "3-protocol")
+    runner.join(run, timeout=120)
+    view = c.get(f"{AT_PROTOCOL}/protocol").json()
+    assert view["version"] == 2 and view["by"] and view["edited_from"] == 1  # the protocol followed the plan
+    protocol = view["protocol"]
+    assert protocol["conditions"] == ["sham", "phase_locked", "fixed_interval"] and protocol["n_per_condition"] > 26
+    assert view["allocation_rows"] == protocol["n_per_condition"] * 3
+    assert c.get(f"{AT_PROTOCOL}/plan").json()["version"] == 2
+    gate = run_status(run).open_gates[0]
+    assert gate.gate == "protocol_review" and gate.summary["artifacts"] == {"experiment_plan": 2, "protocol": 2}
+
+    approve = {"kind": "approve", "stage": "protocol", "gate": "protocol_review"}  # bound to both new versions
+    assert c.post(f"{AT_PROTOCOL}/actions", json=approve, headers=WRITE).status_code == 202
+    runner.join(run, timeout=180)
+    assert [g.gate for g in run_status(run).open_gates] == ["data_upload"]
+    columns = c.get(f"{AT_PROTOCOL}/collect").json()
+    assert columns["conditions"] == ["sham", "phase_locked", "fixed_interval"]
+
+
+def test_a_protocol_edit_that_fails_a_check_puts_it_in_the_plans_problems(pipelines_root: Path) -> None:
+    runner = LocalRunner()
+    c = web_client(pipelines_root, runner)
+    protocol = c.get(f"{AT_PROTOCOL}/protocol").json()["protocol"]
+    body = {
+        "kind": "edit",
+        "payload": {"artifact": "protocol", "base_version": 1, "value": {**protocol, "blinding": ""}},
+    }
+    assert c.post(f"{AT_PROTOCOL}/actions", json=body, headers=WRITE).status_code == 202
+    run = open_run(pipelines_root, "sleep-study-demo", "3-protocol")
+    runner.join(run, timeout=120)
+    plan = c.get(f"{AT_PROTOCOL}/plan").json()
+    assert plan["version"] == 2 and any(
+        i.startswith("protocol checklist: blinding is stated") for i in plan["plan"]["issues"]
+    )
+    fixed = {
+        "kind": "edit",
+        "payload": {"artifact": "protocol", "base_version": 2, "value": {**protocol, "blinding": "double blind"}},
+    }
+    assert c.post(f"{AT_PROTOCOL}/actions", json=fixed, headers=WRITE).status_code == 202
+    runner.join(run, timeout=120)
+    assert not any(i.startswith("protocol checklist") for i in c.get(f"{AT_PROTOCOL}/plan").json()["plan"]["issues"])

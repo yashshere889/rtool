@@ -49,7 +49,8 @@ redone only if the decision changes its outputs.
 
 **Hand edits.** A researcher can replace an output with an edited version
 (`rtool edit`, or the plan, report and final report pages): the owning agent
-registers an editor (`core/editing.py`) that recomputes what follows from the
+registers an editor (`core/editing.py`, found by the artifact and the agent that owns it; an edit may also
+rewrite the stage's other outputs that follow from it) that recomputes what follows from the
 edit and refuses what would break later stages; the new version is made by
 `human:<user>` and stales only what read the old one. Agents may also declare
 files researchers can rewrite while the stage waits for them (`editable_files`,

@@ -137,11 +137,14 @@ CRLF line endings (CSV's own; the walk now handles them).
 (`validity/note.py` is shared by the Writer, the synthesis agent and the web pages); manual resources take small file
 uploads into the folder the open checkpoint names (`PUT …/resources/<name>/inbox`, 60 MB per file, plain file names,
 only while the checkpoint waits for that resource); the Analysis page no longer says "0 GPU-hours requested".
-**Not built, needs a decision:** a synthesis editor, and design edits (conditions, outcome, tests) for study runs.
-Both produce two artifacts from one edit (the review and its final report; the plan and the protocol), and the engine's
-`edit` action stores exactly one, so they need a change to the engine first. A checkpoint's "request changes" with a
-note covers both today. The stale "protocol checklist" lines in the plan's issues after a protocol edit are cosmetic:
-nothing downstream reads them.
+**Then, at the user's go-ahead: the engine change and the two editors it allowed (2026-11-24).** `EditResult.extra`:
+one edit can store several outputs of the same stage, each as its own new version, with the checkpoint bound to all of
+them (`core/editing.py`, `Engine._edit`); editors are now registered by `(artifact, agent)`, which also fixes an edit of
+`experiment_plan` on a study run being sent to the planner's rules. Built on it: a study's design edit (the plan's
+conditions, outcome, tests, procedure and unit; the protocol, allocation and checklist follow), the protocol editor
+now also keeps the plan's problems list current, and a review editor (sentences rewritten, added or removed; each judged
+by the agent's own rule and refused with the reason; the report, Markdown and BibTeX rebuilt, the locked validity
+section carried over). A `final_report` edit on a synthesis run is refused with a pointer to the review.
 
 ## Per-page checklist (from `frontend.md`)
 

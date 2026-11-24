@@ -7,6 +7,12 @@ the edited fields is recomputed and checked, so a hand edit cannot leave the
 artifact inconsistent, and files written from it (e.g. the Markdown write-up)
 are produced again.
 
+An editor is registered for an artifact *and the agent that owns it* (the same
+artifact name can belong to different agents in different pipelines, and an
+edit follows that agent's rules). An edit may also change other outputs of the
+same stage that follow from it (``EditResult.extra``: a study's design edit
+rewrites its protocol too); the engine stores them all as one edit.
+
 Agents register editors here (core never imports agents). The engine applies
 edits as ``edit`` actions under the run lease; the web UI calls the same
 editor to check a draft before it is sent.
@@ -43,17 +49,18 @@ class EditResult:
     value: BaseModel
     files: dict[str, str] = field(default_factory=dict)  # owner workspace-relative path -> text to (re)write
     meta: dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, BaseModel] = field(default_factory=dict)  # other outputs of the same stage the edit changes
 
 
 Editor = Callable[[dict[str, Any], EditContext], EditResult]
-EDITORS: dict[str, Editor] = {}
+EDITORS: dict[tuple[str, str], Editor] = {}  # (artifact, the agent that owns it) -> editor
 
 
-def artifact_editor(name: str) -> Callable[[Editor], Editor]:
-    """Register the function that turns a researcher's edit of ``name`` into a consistent new version."""
+def artifact_editor(name: str, *, agent: str) -> Callable[[Editor], Editor]:
+    """Register the function that turns a researcher's edit of ``name`` (made by ``agent``) into a new version."""
 
     def decorate(fn: Editor) -> Editor:
-        EDITORS[name] = fn
+        EDITORS[(name, agent)] = fn
         return fn
 
     return decorate
@@ -77,8 +84,8 @@ def run_editor(
     run_root: Path,
 ) -> tuple[str, ArtifactEnvelope, EditResult]:
     """Check an edit of ``name`` made on ``base_version`` and normalise it. Raises ActionError if it is refused."""
-    editor = EDITORS.get(name)
     owner = owner_of(pipeline, name)
+    editor = EDITORS.get((name, pipeline.stage(owner).spec.agent)) if owner is not None else None
     if editor is None or owner is None:
         raise ActionError(f"{name or 'this output'} cannot be edited by hand")
     head = store.head(name)
@@ -91,9 +98,13 @@ def run_editor(
     previous = store.envelope(name, head)
     context = EditContext(owner, pipeline.stage(owner).config, app_config, store, previous, run_root)
     try:
-        return owner, previous, EDITORS[name](value, context)
+        result = editor(value, context)
     except ValidationError as exc:
         raise ActionError(f"the edited {name} is not valid: {describe(exc)}") from None
+    for other in result.extra:  # an editor may change the stage's own outputs, never another stage's
+        if other == name or other not in pipeline.stage(owner).produces or store.head(other) is None:
+            raise ActionError(f"an edit of {name} cannot change {other}")
+    return owner, previous, result
 
 
 def edit_refusal(stage: str, st: StageState) -> str | None:

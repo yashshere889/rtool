@@ -61,9 +61,13 @@ browser ──POST /api/runs/<p>/<r>/actions──▶ checks (now, against the r
   `retry`, `note`, `reopen` (a finished stage's checkpoint, e.g. to change the chosen hypothesis
   or add papers).
 * Edits: `edit` replaces an output with your version (`experiment_plan`, `report`,
-  `final_report`). The owning agent's editor (`core/editing.py`, registered by the agent)
-  recomputes everything derived and refuses what would break later stages; the same editor
-  checks drafts live (`POST …/plan/check`, `…/report/check`). `write_file` rewrites a file an
+  `final_report`, `protocol`, `synthesis`). The owning agent's editor (`core/editing.py`, registered for
+  the artifact *and* the agent that owns it) recomputes everything derived and refuses what would break
+  later stages; the same editor checks drafts live (`POST …/plan/check`, `…/report/check`,
+  `…/protocol/check`, `…/synthesis/check`). An edit may change the stage's other outputs that follow from
+  it (`EditResult.extra`): editing a study's design rewrites its protocol, and rewriting a review's
+  sentences rebuilds its report; the engine stores them all as one edit, and the checkpoint is then bound
+  to every new version. `write_file` rewrites a file an
   agent declares editable (`Agent.editable_files`; the Coder's `experiment.py`).
 * Every decision is bound to what the page showed (`payload.expect`: the checkpoint's nonce and
   artifact versions), so a decision made on a stale page is refused, not applied to something
@@ -137,7 +141,7 @@ are loaded when first opened.
 
 1. Give the agent's outputs what a page needs: plain artifacts, `ctx.emit(...)` events for
    progress, and (if researchers may edit an output) an editor registered with
-   `@artifact_editor("<artifact>")` or files in `editable_files`.
+   `@artifact_editor("<artifact>", agent="<your agent>")` or files in `editable_files`.
 2. Add an API module in `src/research_tool/web/api/` that reads the run (`get_run`), returns
    page-shaped Pydantic models, and register it in `api/__init__.py`. Never write engine state:
    changes are actions.

@@ -145,7 +145,7 @@ class WriterAgent(Agent):
         Drafting(ctx, self.config).write()
 
 
-@artifact_editor("report")
+@artifact_editor("report", agent="writer")
 def edit(value: dict[str, Any], ctx: EditContext) -> EditResult:
     return edit_report(value, ctx)
 

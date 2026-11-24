@@ -203,7 +203,7 @@ class ReviewerAgent(Agent):
         Reviewing(ctx, self.config).review()
 
 
-@artifact_editor("final_report")
+@artifact_editor("final_report", agent="reviewer")
 def edit(value: dict[str, Any], ctx: EditContext) -> EditResult:
     """The researcher's last word on the final report (it is not reviewed again)."""
     return edit_report(value, ctx)

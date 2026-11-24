@@ -92,6 +92,7 @@ export function PlanForm({
   checked,
   title,
   hypothesesPath,
+  designOnly = false,
 }: {
   value: Plan;
   base: Plan; // the version being edited
@@ -100,6 +101,7 @@ export function PlanForm({
   checked: PlanCheck | undefined;
   title: string;
   hypothesesPath: string;
+  designOnly?: boolean; // a study's design: no datasets or compute (the protocol and the uploaded table are those)
 }) {
   const ids = { objective: useId(), design: useId(), expected: useId(), seeds: useId(), partition: useId() };
   const computeIds = { gpus: useId(), memory: useId(), hours: useId(), limit: useId(), why: useId() };
@@ -179,6 +181,8 @@ export function PlanForm({
         <TextList items={value.procedure} onChange={(v) => set("procedure", v)} noun="step" numbered multiline />
       </Section>
 
+      {!designOnly && (
+        <>
       <Section title="Datasets, models and software">
         <p className="text-xs text-ink-soft">
           A resource you add or point somewhere else is marked “not checked yet” until the download step fetches it.
@@ -262,6 +266,8 @@ export function PlanForm({
           </div>
         )}
       </Section>
+        </>
+      )}
 
       <Section title="Expected results and risks">
         <Field label="Expected results" htmlFor={ids.expected}>

@@ -18,6 +18,7 @@ from . import (
     runs,
     session,
     study,
+    synthesis,
     system,
     validity,
 )
@@ -36,6 +37,7 @@ for module in (
     code,
     report,
     study,
+    synthesis,
     system,
     validity,
     copies,

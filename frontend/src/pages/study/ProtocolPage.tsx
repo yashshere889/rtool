@@ -16,6 +16,7 @@ import { timeAgo } from "@/lib/format";
 import { STAGES } from "@/lib/stages";
 import { useDebounced } from "@/lib/useDebounced";
 
+import { PlanPage } from "../plan/PlanPage";
 import { Section } from "../plan/PlanRead";
 
 const ARTIFACT = "protocol";
@@ -131,6 +132,7 @@ export function ProtocolPage({ run, stage }: { run: RunDetail; stage: StageSumma
   const protocol = useProtocol(run.project, run.run_id);
   const undo = useUndo(run.project, run.run_id);
   const [editing, setEditing] = useState(false);
+  const [designing, setDesigning] = useState(false);
   const header = (
     <header>
       <div className="flex flex-wrap items-center gap-3">
@@ -157,7 +159,19 @@ export function ProtocolPage({ run, stage }: { run: RunDetail; stage: StageSumma
   }
   const view = protocol.data;
   const { protocol: p, plan } = view;
-  const queuedEdit = run.queued_actions.find((a) => a.kind === "edit" && a.payload.artifact === ARTIFACT);
+  if (designing) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={() => setDesigning(false)}>
+          ← Back to the protocol
+        </Button>
+        <PlanPage run={run} stage={stage} designOnly />
+      </div>
+    );
+  }
+  const queuedEdit = run.queued_actions.find(
+    (a) => a.kind === "edit" && (a.payload.artifact === ARTIFACT || a.payload.artifact === "experiment_plan"),
+  );
   return (
     <div className="space-y-6">
       {header}
@@ -287,8 +301,13 @@ export function ProtocolPage({ run, stage }: { run: RunDetail; stage: StageSumma
           ) : (
             !queuedEdit && view.why_not_editable && <p className="text-sm text-ink-soft">Editing: {view.why_not_editable}.</p>
           )}
+          {view.editable && !queuedEdit && (
+            <Button className="w-full" variant="secondary" onClick={() => setDesigning(true)}>
+              <Pencil /> Edit the design
+            </Button>
+          )}
           <p className="text-xs text-ink-soft">
-            To change the design itself (conditions, outcome, tests), request changes at the checkpoint with a note.
+            The design is the conditions, outcome, tests and procedure. Changing it works the sample size and allocation out again.
           </p>
           {view.by && <Badge tone="info">This version was edited by hand</Badge>}
         </aside>

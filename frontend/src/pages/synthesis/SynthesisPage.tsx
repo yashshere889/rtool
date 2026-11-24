@@ -1,38 +1,28 @@
-import { CircleAlert, CircleCheck, FileText } from "lucide-react";
+import { CircleAlert, CircleCheck, FileText, Pencil, Undo2 } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
 
 import { ApiError, fileUrl } from "@/api/client";
 import { readerPath } from "@/api/client";
-import { useArtifact } from "@/api/hooks";
+import { useSynthesis, useUndo } from "@/api/hooks";
 import type { RunDetail, StageSummary } from "@/api/types";
 import { CheckpointCard } from "@/components/CheckpointCard";
 import { FailureCard } from "@/components/FailureCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { count } from "@/lib/format";
 import { STAGES } from "@/lib/stages";
 
 import { Section } from "../plan/PlanRead";
-
-// the "synthesis" artifact (agents/synthesis/agent.py)
-interface Sentence {
-  text: string;
-  claims: string[];
-  papers: string[];
-}
-interface Synthesis {
-  topic: string;
-  sections: { title: string; sentences: Sentence[] }[];
-  dropped: { text: string; claims: string[]; reason: string }[];
-  claims: Record<string, { paper_id: string; bib_key: string; text: string; quote: string }>;
-  checks: { name: string; ok: boolean; detail: string }[];
-  markdown_path: string;
-}
+import { ReviewEditor } from "./ReviewEditor";
 
 /** The literature review: every sentence with the findings and quotes it rests on, and what was dropped. */
 export function SynthesisPage({ run, stage }: { run: RunDetail; stage: StageSummary }) {
-  const artifact = useArtifact(run.project, run.run_id, "synthesis", undefined, stage.status !== "pending");
+  const artifact = useSynthesis(run.project, run.run_id, stage.status !== "pending");
+  const undo = useUndo(run.project, run.run_id);
+  const [editing, setEditing] = useState(false);
   const literature = run.stages.find((s) => s.agent === "literature")?.id ?? "literature";
   const header = (
     <header>
@@ -60,15 +50,39 @@ export function SynthesisPage({ run, stage }: { run: RunDetail; stage: StageSumm
       </div>
     );
   }
-  const review = artifact.data.payload as unknown as Synthesis;
+  const view = artifact.data;
+  const review = view.synthesis;
+  const queuedEdit = run.queued_actions.find((a) => a.kind === "edit" && a.payload.artifact === "synthesis");
   const kept = review.sections.reduce((n, s) => n + s.sentences.length, 0);
+  if (editing) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <ReviewEditor run={run} view={view} onClose={() => setEditing(false)} />
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       {header}
       {top}
+      {queuedEdit && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-info-soft px-4 py-3 text-sm text-info">
+          Your edits to the review are on their way; they are applied when a worker picks them up.
+          <Button variant="secondary" size="sm" busy={undo.isPending} onClick={() => undo.mutate(queuedEdit.id)}>
+            <Undo2 /> Undo
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge tone="ok">{count(kept, "sentence")} kept</Badge>
         <Badge tone={review.dropped.length ? "warn" : "neutral"}>{count(review.dropped.length, "sentence")} dropped</Badge>
+        {view.by && <Badge tone="info">Edited by {view.by.replace(/ \(web\)$/, "")}</Badge>}
+        {view.editable && !queuedEdit && (
+          <Button variant="secondary" size="sm" className="ml-auto" onClick={() => setEditing(true)}>
+            <Pencil /> Edit the review
+          </Button>
+        )}
         {review.markdown_path && (
           <a className="ml-auto inline-flex items-center gap-1 text-accent underline underline-offset-2" href={fileUrl(run.project, run.run_id, review.markdown_path)} target="_blank" rel="noreferrer">
             <FileText className="size-4" /> The review as a document

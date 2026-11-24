@@ -18,6 +18,8 @@ import type {
   HypothesesView,
   PlanCheck,
   ProtocolCheck,
+  SynthesisView,
+  SynthesisCheck,
   RunStats,
   ValidityNote,
   ValidityCard,
@@ -489,6 +491,29 @@ export function useProtocolCheck(project: string, runId: string, baseVersion: nu
     queryKey: ["protocol-check", project, runId, baseVersion, JSON.stringify(value)],
     queryFn: () =>
       api<ProtocolCheck>(`${base(project, runId)}/protocol/check`, {
+        method: "POST",
+        body: { base_version: baseVersion, value },
+      }),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+}
+
+export function useSynthesis(project: string, runId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "synthesis"],
+    queryFn: () => api<SynthesisView>(`${base(project, runId)}/synthesis`),
+    enabled,
+  });
+}
+
+/** What an edited review would become, or why a sentence would be refused; nothing is stored. */
+export function useSynthesisCheck(project: string, runId: string, baseVersion: number, value: unknown, enabled: boolean) {
+  return useQuery({
+    queryKey: ["synthesis-check", project, runId, baseVersion, JSON.stringify(value)],
+    queryFn: () =>
+      api<SynthesisCheck>(`${base(project, runId)}/synthesis/check`, {
         method: "POST",
         body: { base_version: baseVersion, value },
       }),
