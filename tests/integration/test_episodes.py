@@ -187,6 +187,15 @@ def test_nemotron_overlay_switches_the_model_back() -> None:
     assert cfg.slurm.episode.gpus == 1 and len(cfg.slurm.episode.gpu_choices) == 6
 
 
+@pytest.mark.parametrize("overlay", [None, "barkla-qwen3-coder-next.yaml", "barkla-nemotron.yaml"])
+def test_tool_use_is_on_exactly_where_the_server_parses_tool_calls(overlay: str | None) -> None:
+    configs = Path(__file__).resolve().parents[2] / "configs"
+    files = [configs / "barkla.yaml", *([configs / overlay] if overlay else [])]
+    cfg = load_config(*files, env={"USER": "someone"})
+    assert cfg.llm.tool_calls == ("--tool-call-parser" in cfg.llm.server.extra_args)
+    assert cfg.llm.tool_calls == (overlay != "barkla-nemotron.yaml")
+
+
 def test_llm_needed_looks_only_at_what_can_run_next(runs_root: Path, mock_llm: MockLLM) -> None:
     run = make_run(runs_root, "toy")  # source (LLM, gate) -> analyze (no LLM) -> write (LLM)
     slurm = FakeSlurm(run.jobs_dir / "fake_slurm.json")

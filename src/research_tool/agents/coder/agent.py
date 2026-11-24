@@ -91,9 +91,9 @@ class CoderConfig(BaseModel):
     smoke_all_conditions: bool = True  # False: smoke-test only the baseline
     resource_files: int = Field(default=15, ge=0)  # files listed per resource in the prompt
     # Write and fix experiment.py with the tool-calling loop (files + a smoke_test tool) instead of one
-    # reply per round; rtool's checks, smoke phase and gates still decide. Needs a tool-call parser on the server.
+    # reply per round; rtool's checks, smoke phase and gates still decide. None: whenever llm.tool_calls is set.
     # Each turn is one LLM call (up to tool_turns per write or fix round): raise budgets.max_llm_calls if one is set.
-    tool_agent: bool = False
+    tool_agent: bool | None = None
     tool_turns: int = Field(default=40, ge=1, le=200)  # model turns per write or fix round
 
 
@@ -375,7 +375,8 @@ class CoderSession:
         self.runs_dir, self.scratch, self.results_dir = ws.mkdir("runs"), ws.mkdir("scratch"), ws.mkdir("results")
         self.resources = self.resource_paths()
         root = Path(self.manifest.root)
-        binds = [str(root)] if self.manifest.root and root.is_absolute() else []
+        # apptainer refuses to start with a bind whose source does not exist
+        binds = [str(root)] if self.manifest.root and root.is_absolute() and root.is_dir() else []
         factory = ctx.tools.get("experiment_env")
         self.env: ExperimentEnv = (
             factory(self.experiments, self.code) if factory else ExperimentEnv(self.experiments, self.code, binds=binds)
@@ -383,6 +384,7 @@ class CoderSession:
         self.metric_names = [m.name for m in self.plan.metrics]
         self.conditions = [c.name for c in self.plan.run_conditions()]
         self.plan_hash = plan_hash(self.plan)
+        self.use_tools = cfg.tool_agent if cfg.tool_agent is not None else ctx.app_config.llm.tool_calls
 
     # ------------------------------------------------------------------ driver
     def drive(self) -> None:
@@ -433,7 +435,7 @@ class CoderSession:
 
     def ask_for_code(self, template: str, **variables: Any) -> str | None:
         prompt = self.render(template, **variables)
-        if self.cfg.tool_agent:
+        if self.use_tools:
             return self.code_with_tools(prompt)
         for overrides in ({}, {"reasoning": "off"}):  # second try: no long chain of thought before the code
             reply = self.ctx.llm.chat(prompt, profile="code", system=SYSTEM, **overrides)
@@ -464,7 +466,7 @@ class CoderSession:
                 read_roots=[Path(p) for p in self.available().values()],
                 system=f"{DEFAULT_SYSTEM_PROMPT}\n\n{SYSTEM}",
                 max_turns=self.cfg.tool_turns,
-                name=f"coder-tools-{session}",
+                name=f"coder-tools-{self.ctx.attempt}-{session}",  # a retry must not overwrite earlier logs,
             )
             code = path.read_text(encoding="utf-8") if path.exists() else None
         finally:  # whatever happened, the folder goes back to rtool's last saved state
@@ -610,7 +612,7 @@ class CoderSession:
                 )
             if code is None:
                 raise StageFailed(
-                    "the model did not return experiment.py" + ("" if self.cfg.tool_agent else " in a ```python block"),
+                    "the model did not return experiment.py" + ("" if self.use_tools else " in a ```python block"),
                     needs_human=True,
                 )
             self.save_source(code, "llm")

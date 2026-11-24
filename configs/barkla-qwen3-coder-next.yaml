@@ -12,6 +12,7 @@
 llm:
   model: Qwen/Qwen3-Coder-Next-FP8
   served_model: qwen3-coder-next
+  tool_calls: true
   reasoning_control: none            # no thinking switch at all: the model has no thinking mode
   # `reason`/`code`/`judge` profiles stay reasoning "on", so structured calls keep the same
   # draft-then-format shape as for Nemotron (structured_with_reasoning stays false from barkla.yaml).

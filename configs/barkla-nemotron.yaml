@@ -9,6 +9,7 @@
 llm:
   model: nvidia/NVIDIA-Nemotron-Nano-12B-v2
   served_model: nemotron
+  tool_calls: false                  # no tool-call parser for this model (see server.extra_args)
   reasoning_control: system_flag     # /think or /no_think in the system prompt
   server:
     # Expanded when the server starts, after `module load nemotron/...` sets it. The image has

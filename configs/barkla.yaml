@@ -17,6 +17,7 @@ llm:
   backend: vllm
   model: Qwen/Qwen3.6-35B-A3B
   served_model: qwen3.6
+  tool_calls: true   # the server below runs a tool-call parser: the Coder works with tools
   # Qwen3.6 ignores /think and /no_think: thinking is switched per call with the chat template's
   # enable_thinking argument. (configs/barkla-nemotron.yaml switches back to Nemotron.)
   reasoning_control: chat_template

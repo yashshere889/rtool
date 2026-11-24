@@ -65,8 +65,10 @@ def pipeline(config: dict[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
-def setup(runs_root: Path, tmp_path: Path, config: dict[str, Any] | None = None) -> RunHandle:
-    run = make_run(runs_root, pipeline(config))
+def setup(
+    runs_root: Path, tmp_path: Path, config: dict[str, Any] | None = None, overrides: dict[str, Any] | None = None
+) -> RunHandle:
+    run = make_run(runs_root, pipeline(config), overrides=overrides)
     conditions = [
         Condition(name="base", description="baseline", is_baseline=True),
         Condition(name="new", description="n"),
@@ -541,7 +543,7 @@ def tool_call(name: str, i: int, **args: Any) -> dict[str, Any]:
 def test_the_tool_loop_writes_smoke_tests_and_fixes_the_code(runs_root: Path, tmp_path: Path) -> None:
     from research_tool.llm.types import ChatResponse
 
-    run = setup(runs_root, tmp_path, {"tool_agent": True})
+    run = setup(runs_root, tmp_path, overrides={"llm": {"tool_calls": True}})  # on by default with a tool parser
     turns = [
         [tool_call("write_file", 0, path="experiment.py", content=CRASHES_IN_SMOKE)],
         [tool_call("smoke_test", 1, condition="base")],
@@ -632,3 +634,10 @@ def test_a_server_error_mid_loop_puts_the_last_saved_code_back(runs_root: Path, 
     code = run.root / "work" / "code" / "code"
     assert not (code / "experiment.py").exists()  # nothing was saved before the loop, so nothing is left
     assert "tool_before" not in load_status(run)[1]["code"].agent_state
+
+
+def test_tool_agent_false_keeps_the_one_reply_path_even_with_a_tool_parser(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path, {"tool_agent": False}, overrides={"llm": {"tool_calls": True}})
+    llm = coder_llm(GOOD)
+    advance(run, services(run, llm), Outcome.WAITING_GATE)
+    assert all(r.tools is None for r in llm.calls)

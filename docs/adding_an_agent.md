@@ -192,11 +192,13 @@ if result.stopped:  # max_turns, max_tokens, repeated_denial or context_full
 
 Every turn goes through `ctx.llm` (budget, `llm_call` events). Nobody can approve a call in an episode,
 so anything outside the allow rules is refused with a reason, and shell downloads, pip and Slurm commands
-are always refused (the Coder's `smoke_test` still installs declared requirements through the experiment image). The server needs a tool-call parser (`--enable-auto-tool-choice --tool-call-parser
-qwen3_coder` in `llm.server.extra_args`; set in the Qwen configs). Without writing an agent, the
-`tool_task` stage does this for a task given in the pipeline (`config: {task: "..."}`), and the Coder
-does it for experiment.py with `config: {tool_agent: true}` (its own `smoke_test` tool runs the code
-in the experiment image).
+are always refused (the Coder's `smoke_test` still installs declared requirements through the experiment
+image). The server needs a tool-call parser (`--enable-auto-tool-choice --tool-call-parser qwen3_coder` in
+`llm.server.extra_args`) and `llm.tool_calls: true` to say so; the Qwen configs set both, the Nemotron
+overlay neither. Without writing an agent, the `tool_task` stage does this for a task given in the pipeline
+(`config: {task: "..."}`). The Coder writes and fixes experiment.py this way by default whenever
+`llm.tool_calls` is set (its own `smoke_test` tool runs the code in the experiment image);
+`config: {tool_agent: false}` keeps its one-reply-per-step path.
 
 ## Checklist
 
