@@ -193,7 +193,7 @@ def test_tool_use_is_on_exactly_where_the_server_parses_tool_calls(overlay: str 
     files = [configs / "barkla.yaml", *([configs / overlay] if overlay else [])]
     cfg = load_config(*files, env={"USER": "someone"})
     assert cfg.llm.tool_calls == ("--tool-call-parser" in cfg.llm.server.extra_args)
-    assert cfg.llm.tool_calls == (overlay != "barkla-nemotron.yaml")
+    assert cfg.llm.tool_calls  # all three Barkla models have a tool-call parser
 
 
 def test_llm_needed_looks_only_at_what_can_run_next(runs_root: Path, mock_llm: MockLLM) -> None:
