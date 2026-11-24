@@ -9,6 +9,7 @@ import { FailureCard } from "@/components/FailureCard";
 import { FinishedSummary } from "@/components/FinishedSummary";
 import { useRunContext } from "@/components/layout/RunLayout";
 import { QueuedActions } from "@/components/QueuedActions";
+import { RunTools } from "@/components/RunTools";
 import { StageProgress } from "@/components/StageProgress";
 import { StageStepper } from "@/components/StageStepper";
 import { Button } from "@/components/ui/button";
@@ -204,6 +205,12 @@ export function Overview() {
             <CardHeader title="Where the time went" />
             <CardBody>
               <TimeSpent run={run} />
+            </CardBody>
+          </Card>
+          <Card>
+            <CardHeader title="This run as a whole" />
+            <CardBody>
+              <RunTools run={run} />
             </CardBody>
           </Card>
           <Card>

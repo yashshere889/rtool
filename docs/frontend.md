@@ -25,8 +25,18 @@ generic page (its checkpoint, problems, every version of its outputs as JSON, ac
 | Study protocol (study pipeline) | the design, sample size and the seeded allocation table, materials, blinding, the data format, a checklist | edit the effect size, materials and blinding (the sample size, allocation and checklist are worked out again), approve |
 | Study data | what to bring back, with a template that has the units and conditions filled in | upload data.csv (checked against the protocol before it is kept, every problem listed), then approve the checkpoint |
 | Analysis | results per metric from rtool's own analysis script, and the script | read |
-| Report | the report with linked citations, figures and references | edit prose sections (placeholders and citations as chips, insert pickers), print or save as PDF, download Markdown, BibTeX or everything |
+| Report | the report with linked citations, figures and references, and what its field has been measured at (printed with it) | edit prose sections (placeholders and citations as chips, insert pickers), print or save as PDF, download Markdown, BibTeX or everything |
+| Settings | this server and its API keys; the fields (packs) with the pipeline each runs; every pipeline's stages and every agent; validity cards; machine checks (`rtool doctor`, the paper APIs only when asked) | read |
 | Review | verdict, scores against the bar, automated checks, each issue and what became of it, revision rounds, the final report, the reviewer's edits as a diff | approve and finish, request another round, edit the final report |
+
+On the Overview, "This run as a whole" has two actions. **Redo a stage in a copy** (`rtool replay`) copies the run and
+runs the chosen stage again in the copy from the same inputs; the original is untouched. **Archive this run**
+(`rtool archive`) packs the run into one .tar.gz under `paths.archive_root` in a background thread (a size cap per file,
+200 MB at most; the archive stays on the server). Neither is a decision, so neither goes through the action inbox.
+
+A report states what its field has been measured at: the Report and Review pages show a note built from the field's
+newest validity card (`<runs root>/.validity-cards`, written by `rtool validity score`), or say that no level is
+claimed when there is none. The note is on the page and prints with it; it is not inside the exported Markdown.
 
 What the agents wrote is labelled. Findings carry their quote and whether it was found in the
 paper; AI-written digests and summaries say so and flag numbers the paper does not contain;

@@ -19,6 +19,10 @@ import type {
   PlanCheck,
   ProtocolCheck,
   RunStats,
+  ValidityNote,
+  ValidityCard,
+  Replayed,
+  ArchiveView,
   FieldInfo,
   PipelineInfo,
   AgentInfo,
@@ -408,6 +412,47 @@ export function useDoctor(network: boolean, enabled: boolean) {
     enabled,
     staleTime: 0,
     gcTime: 0,
+  });
+}
+
+// ------------------------------------------------------------- validity, copies, archives
+export const useValidityCards = () =>
+  useQuery({ queryKey: ["system", "validity"], queryFn: () => api<ValidityCard[]>("/validity") });
+
+/** What this run's field has been measured at (nothing, if it has no validity card). */
+export function useRunValidity(project: string, runId: string) {
+  return useQuery({
+    queryKey: ["validity", project, runId],
+    queryFn: () => api<ValidityNote>(`${base(project, runId)}/validity`),
+    staleTime: 60_000,
+  });
+}
+
+export function useReplay(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { stage: string; tag: string }) =>
+      api<Replayed>(`${base(project, runId)}/replay`, { method: "POST", body }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.runs }),
+  });
+}
+
+/** The archive of a run: where it is, or how far along; polled while one is being packed. */
+export function useArchive(project: string, runId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["archive", project, runId],
+    queryFn: () => api<ArchiveView>(`${base(project, runId)}/archive`),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.state === "running" ? 1500 : false),
+  });
+}
+
+export function useStartArchive(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (max_file_mb: number) =>
+      api<ArchiveView>(`${base(project, runId)}/archive`, { method: "POST", body: { max_file_mb } }),
+    onSuccess: (view) => queryClient.setQueryData(["archive", project, runId], view),
   });
 }
 

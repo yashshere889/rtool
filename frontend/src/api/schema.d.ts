@@ -185,6 +185,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive State */
+        get: operations["archive_state_api_runs__project___run_id__archive_get"];
+        put?: never;
+        /**
+         * Archive Start
+         * @description Pack the run into ``paths.archive_root`` in the background; poll GET for the outcome.
+         */
+        post: operations["archive_start_api_runs__project___run_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/artifacts": {
         parameters: {
             query?: never;
@@ -673,6 +694,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay
+         * @description Copy the run and redo ``stage`` in the copy (same inputs); the copy stops at that stage's checkpoint.
+         */
+        post: operations["replay_api_runs__project___run_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/report": {
         parameters: {
             query?: never;
@@ -850,6 +891,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/validity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Validity
+         * @description What this run's field has been measured at (nothing, if it has no card).
+         */
+        get: operations["run_validity_api_runs__project___run_id__validity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -876,6 +937,26 @@ export interface paths {
         };
         /** Server Settings */
         get: operations["server_settings_api_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/validity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cards
+         * @description The newest validity card of each field, as `rtool validity score` wrote it.
+         */
+        get: operations["cards_api_validity_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1001,6 +1082,40 @@ export interface components {
             /** Turns */
             turns: number;
         };
+        /** ArchiveRequest */
+        ArchiveRequest: {
+            /**
+             * Max File Mb
+             * @default 200
+             */
+            max_file_mb: number;
+        };
+        /** ArchiveView */
+        ArchiveView: {
+            /** Bytes */
+            bytes: number;
+            /** Can Archive */
+            can_archive: boolean;
+            /** Default Max File Mb */
+            default_max_file_mb: number;
+            /** Error */
+            error: string;
+            /** Files */
+            files: number;
+            /** Path */
+            path: string;
+            /** Run Bytes */
+            run_bytes: number;
+            /** Skipped */
+            skipped: components["schemas"]["Skipped"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "none" | "running" | "done" | "failed";
+            /** Why Not */
+            why_not: string;
+        };
         /** ArtifactEnvelope */
         ArtifactEnvelope: {
             /** Content Hash */
@@ -1087,6 +1202,55 @@ export interface components {
              * @default
              */
             subject: string;
+        };
+        /** Card */
+        Card: {
+            /** Categories */
+            categories: {
+                [key: string]: string[];
+            };
+            /** Cost */
+            cost: {
+                [key: string]: number;
+            };
+            /** Created At */
+            created_at: string;
+            false_claims: components["schemas"]["Rate"];
+            /** Headline */
+            headline: {
+                [key: string]: components["schemas"]["Rate"];
+            };
+            /** Levels */
+            levels: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Limits */
+            limits: string[];
+            /** Pack */
+            pack: string;
+            /** Provenance */
+            provenance: {
+                [key: string]: unknown;
+            };
+            /**
+             * Runs
+             * @default 0
+             */
+            runs: number;
+            /** Unconfirmed */
+            unconfirmed: {
+                [key: string]: components["schemas"]["Rate"];
+            };
+            /** Unfinished */
+            unfinished: string[];
+            /** Variants */
+            variants: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["Rate"];
+                };
+            };
         };
         /** Check */
         Check: {
@@ -1940,6 +2104,19 @@ export interface components {
             /** Submitted */
             submitted: boolean;
         };
+        /** KindRate */
+        KindRate: {
+            /** High */
+            high: number;
+            /** K */
+            k: number;
+            /** Kind */
+            kind: string;
+            /** Low */
+            low: number;
+            /** N */
+            n: number;
+        };
         /** LLMTotals */
         LLMTotals: {
             /**
@@ -2571,6 +2748,17 @@ export interface components {
             action: components["schemas"]["Action"];
             kick: components["schemas"]["KickResult"];
         };
+        /** Rate */
+        Rate: {
+            /** High */
+            high: number;
+            /** K */
+            k: number;
+            /** Low */
+            low: number;
+            /** N */
+            n: number;
+        };
         /** Received */
         Received: {
             /** Rows */
@@ -2579,6 +2767,24 @@ export interface components {
             units: {
                 [key: string]: number;
             };
+        };
+        /** ReplayRequest */
+        ReplayRequest: {
+            /** Stage */
+            stage: string;
+            /**
+             * Tag
+             * @default again
+             */
+            tag: string;
+        };
+        /** Replayed */
+        Replayed: {
+            kick: components["schemas"]["KickResult"];
+            /** Project */
+            project: string;
+            /** Run Id */
+            run_id: string;
         };
         /** ReportCheck */
         ReportCheck: {
@@ -3156,6 +3362,13 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** Skipped */
+        Skipped: {
+            /** Bytes */
+            bytes: number;
+            /** Path */
+            path: string;
+        };
         /** SmokeView */
         SmokeView: {
             /** Condition */
@@ -3408,6 +3621,26 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** ValidityNote */
+        ValidityNote: {
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at: string;
+            false_claims: components["schemas"]["KindRate"] | null;
+            /** Measured */
+            measured: boolean;
+            /** Model */
+            model: string;
+            /** Pack */
+            pack: string;
+            /** Runs */
+            runs: number;
+            /** Text */
+            text: string;
+            /** Top Level */
+            top_level: components["schemas"]["KindRate"][];
         };
         /** Variable */
         Variable: {
@@ -3855,6 +4088,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_state_api_runs__project___run_id__archive_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_start_api_runs__project___run_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveView"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -4782,6 +5083,42 @@ export interface operations {
             };
         };
     };
+    replay_api_runs__project___run_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Replayed"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     report_api_runs__project___run_id__report_get: {
         parameters: {
             query?: {
@@ -5088,6 +5425,38 @@ export interface operations {
             };
         };
     };
+    run_validity_api_runs__project___run_id__validity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidityNote"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sign_in_api_session_post: {
         parameters: {
             query?: never;
@@ -5135,6 +5504,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ServerSettings"];
+                };
+            };
+        };
+    };
+    cards_api_validity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Card"][];
                 };
             };
         };

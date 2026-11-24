@@ -113,6 +113,13 @@ larger than the 8 MB request cap, so the page shows the folder to copy the files
     here (they do not: nothing is uploaded).
   * Test: API test on a demo run with a small `archive_root`; page test for the disabled and running states.
 
+**Phase 5 as built (2026-11-24).** `GET …/validity` and the page note on Report and Review (built from the newest
+card in `<runs root>/.validity-cards`; no card means "no level is claimed"), a Validity tab in Settings, `POST …/replay`
+and a "Redo a stage in a copy" dialog, `GET/POST …/archive` (background thread, per-file cap of at most 200 MB) and an
+"Archive this run" dialog. **Not done:** the writer does not put the statement into the report's own Markdown, so an
+exported .md or the bundle does not carry it (the page, and a PDF printed from it, do). Cards are read from the runs
+root, not from the committed `benchmarks/*/CARD.md`, which have no machine-readable form.
+
 ### Phase 6: end-to-end coverage and docs
 
 * e2e today walks the research pipeline only. Add one walk each for `study` (including data upload) and

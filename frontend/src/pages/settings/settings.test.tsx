@@ -37,6 +37,18 @@ const fetchFor = (extra: (url: string) => unknown) =>
         { name: "omics", title: "Omics", description: "", pipeline: "research", origin: "built-in", state: "not_offered", detail: "", max_gpu_hours: null },
         { name: "dup", title: "", description: "", pipeline: "", origin: "acme 1.0", state: "shadowed", detail: "another pack has this name, so this one is never used", max_gpu_hours: null },
       ]);
+    if (url.endsWith("/validity"))
+      return json(
+        url.includes("none")
+          ? []
+          : [
+              {
+                pack: "generic", created_at: "2026-11-22T05:32:18+00:00", provenance: { model: "Qwen", code: "1abc" }, runs: 5, unfinished: [],
+                headline: { null: { k: 0, n: 3, low: 0, high: 0.56 } }, levels: {}, false_claims: { k: 2, n: 3, low: 0.21, high: 0.94 },
+                variants: {}, unconfirmed: {}, categories: { plan_issue: ["a", "b"] }, cost: {}, limits: ["Every number is for the model and code named."],
+              },
+            ],
+      );
     if (url.endsWith("/pipelines"))
       return json([
         { name: "study", description: "A study.", stages: [{ id: "protocol", agent: "protocol", after: [], gate: "protocol_review", produces: ["protocol"] }] },
@@ -84,6 +96,19 @@ describe("Settings", () => {
     expect(fetch.mock.calls.some(([u]) => String(u).includes("network=true"))).toBe(false);
     await userEvent.click(screen.getByRole("button", { name: "Also reach the paper APIs" }));
     await waitFor(() => expect(fetch.mock.calls.some(([u]) => String(u).endsWith("/doctor?network=true"))).toBe(true));
+  });
+});
+
+describe("Validity tab", () => {
+  it("shows what each field was measured at, with the intervals, and what the card does not measure", async () => {
+    vi.stubGlobal("fetch", fetchFor(() => []));
+    render(wrap(<Settings />));
+    await userEvent.click(await screen.findByRole("tab", { name: "Validity" }));
+    await screen.findByText("generic field");
+    expect(screen.getByText(/0 of 3 \(0 %; true rate between 0 % and 56 %, 95 % interval\)/)).toBeInTheDocument();
+    expect(screen.getByText(/2 of 3 \(between 21 % and\s+94 %\)/)).toBeInTheDocument();
+    expect(screen.getByText("plan_issue")).toBeInTheDocument();
+    expect(screen.getByText(/5 scored runs · model Qwen · code 1abc/)).toBeInTheDocument();
   });
 });
 

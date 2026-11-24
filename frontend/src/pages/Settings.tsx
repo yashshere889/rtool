@@ -6,7 +6,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { ErrorNote, Loading } from "@/components/ui/states";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { ChecksTab, FieldsTab, PipelinesTab } from "./settings/SystemTabs";
+import { ChecksTab, FieldsTab, PipelinesTab, ValidityTab } from "./settings/SystemTabs";
 
 const KEY_HELP: Record<string, string> = {
   OPENALEX_API_KEY: "OpenAlex search (free key from openalex.org)",
@@ -29,6 +29,7 @@ export function Settings() {
           <TabsTrigger value="server">This server</TabsTrigger>
           <TabsTrigger value="fields">Fields</TabsTrigger>
           <TabsTrigger value="pipelines">Pipelines & agents</TabsTrigger>
+          <TabsTrigger value="validity">Validity</TabsTrigger>
           <TabsTrigger value="checks">Checks</TabsTrigger>
         </TabsList>
         <TabsContent value="server" className="mt-4 space-y-6">
@@ -71,6 +72,9 @@ export function Settings() {
         </TabsContent>
         <TabsContent value="pipelines" className="mt-4">
           <PipelinesTab />
+        </TabsContent>
+        <TabsContent value="validity" className="mt-4">
+          <ValidityTab />
         </TabsContent>
         <TabsContent value="checks" className="mt-4">
           <ChecksTab />

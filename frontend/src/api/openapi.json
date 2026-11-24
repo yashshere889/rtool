@@ -314,6 +314,86 @@
     "title": "AgentRunView",
     "type": "object"
    },
+   "ArchiveRequest": {
+    "properties": {
+     "max_file_mb": {
+      "default": 200.0,
+      "exclusiveMinimum": 0.0,
+      "maximum": 200.0,
+      "title": "Max File Mb",
+      "type": "number"
+     }
+    },
+    "title": "ArchiveRequest",
+    "type": "object"
+   },
+   "ArchiveView": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "can_archive": {
+      "title": "Can Archive",
+      "type": "boolean"
+     },
+     "default_max_file_mb": {
+      "title": "Default Max File Mb",
+      "type": "number"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "files": {
+      "title": "Files",
+      "type": "integer"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "run_bytes": {
+      "title": "Run Bytes",
+      "type": "integer"
+     },
+     "skipped": {
+      "items": {
+       "$ref": "#/components/schemas/Skipped"
+      },
+      "title": "Skipped",
+      "type": "array"
+     },
+     "state": {
+      "enum": [
+       "none",
+       "running",
+       "done",
+       "failed"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "why_not": {
+      "title": "Why Not",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bytes",
+     "can_archive",
+     "default_max_file_mb",
+     "error",
+     "files",
+     "path",
+     "run_bytes",
+     "skipped",
+     "state",
+     "why_not"
+    ],
+    "title": "ArchiveView",
+    "type": "object"
+   },
    "ArtifactEnvelope": {
     "properties": {
      "content_hash": {
@@ -481,6 +561,113 @@
      "subject"
     ],
     "title": "AuditFinding",
+    "type": "object"
+   },
+   "Card": {
+    "properties": {
+     "categories": {
+      "additionalProperties": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "title": "Categories",
+      "type": "object"
+     },
+     "cost": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Cost",
+      "type": "object"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "false_claims": {
+      "$ref": "#/components/schemas/Rate"
+     },
+     "headline": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/Rate"
+      },
+      "title": "Headline",
+      "type": "object"
+     },
+     "levels": {
+      "additionalProperties": {
+       "additionalProperties": {
+        "type": "integer"
+       },
+       "type": "object"
+      },
+      "title": "Levels",
+      "type": "object"
+     },
+     "limits": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Limits",
+      "type": "array"
+     },
+     "pack": {
+      "title": "Pack",
+      "type": "string"
+     },
+     "provenance": {
+      "additionalProperties": true,
+      "title": "Provenance",
+      "type": "object"
+     },
+     "runs": {
+      "default": 0,
+      "title": "Runs",
+      "type": "integer"
+     },
+     "unconfirmed": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/Rate"
+      },
+      "title": "Unconfirmed",
+      "type": "object"
+     },
+     "unfinished": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Unfinished",
+      "type": "array"
+     },
+     "variants": {
+      "additionalProperties": {
+       "additionalProperties": {
+        "$ref": "#/components/schemas/Rate"
+       },
+       "type": "object"
+      },
+      "title": "Variants",
+      "type": "object"
+     }
+    },
+    "required": [
+     "categories",
+     "cost",
+     "created_at",
+     "false_claims",
+     "headline",
+     "levels",
+     "limits",
+     "pack",
+     "provenance",
+     "runs",
+     "unconfirmed",
+     "unfinished",
+     "variants"
+    ],
+    "title": "Card",
     "type": "object"
    },
    "Check": {
@@ -2874,6 +3061,39 @@
     "title": "KickResult",
     "type": "object"
    },
+   "KindRate": {
+    "properties": {
+     "high": {
+      "title": "High",
+      "type": "number"
+     },
+     "k": {
+      "title": "K",
+      "type": "integer"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "low": {
+      "title": "Low",
+      "type": "number"
+     },
+     "n": {
+      "title": "N",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "high",
+     "k",
+     "kind",
+     "low",
+     "n"
+    ],
+    "title": "KindRate",
+    "type": "object"
+   },
    "LLMTotals": {
     "properties": {
      "busy_s": {
@@ -4655,6 +4875,34 @@
     "title": "Queued",
     "type": "object"
    },
+   "Rate": {
+    "properties": {
+     "high": {
+      "title": "High",
+      "type": "number"
+     },
+     "k": {
+      "title": "K",
+      "type": "integer"
+     },
+     "low": {
+      "title": "Low",
+      "type": "number"
+     },
+     "n": {
+      "title": "N",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "high",
+     "k",
+     "low",
+     "n"
+    ],
+    "title": "Rate",
+    "type": "object"
+   },
    "Received": {
     "properties": {
      "rows": {
@@ -4674,6 +4922,47 @@
      "units"
     ],
     "title": "Received",
+    "type": "object"
+   },
+   "ReplayRequest": {
+    "properties": {
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "tag": {
+      "default": "again",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,30}$",
+      "title": "Tag",
+      "type": "string"
+     }
+    },
+    "required": [
+     "stage"
+    ],
+    "title": "ReplayRequest",
+    "type": "object"
+   },
+   "Replayed": {
+    "properties": {
+     "kick": {
+      "$ref": "#/components/schemas/KickResult"
+     },
+     "project": {
+      "title": "Project",
+      "type": "string"
+     },
+     "run_id": {
+      "title": "Run Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "kick",
+     "project",
+     "run_id"
+    ],
+    "title": "Replayed",
     "type": "object"
    },
    "ReportCheck": {
@@ -6203,6 +6492,24 @@
     "title": "SessionRequest",
     "type": "object"
    },
+   "Skipped": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bytes",
+     "path"
+    ],
+    "title": "Skipped",
+    "type": "object"
+   },
    "SmokeView": {
     "properties": {
      "condition": {
@@ -6775,6 +7082,68 @@
      "type"
     ],
     "title": "ValidationError",
+    "type": "object"
+   },
+   "ValidityNote": {
+    "properties": {
+     "code": {
+      "title": "Code",
+      "type": "string"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "false_claims": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KindRate"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "measured": {
+      "title": "Measured",
+      "type": "boolean"
+     },
+     "model": {
+      "title": "Model",
+      "type": "string"
+     },
+     "pack": {
+      "title": "Pack",
+      "type": "string"
+     },
+     "runs": {
+      "title": "Runs",
+      "type": "integer"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "top_level": {
+      "items": {
+       "$ref": "#/components/schemas/KindRate"
+      },
+      "title": "Top Level",
+      "type": "array"
+     }
+    },
+    "required": [
+     "code",
+     "created_at",
+     "false_claims",
+     "measured",
+     "model",
+     "pack",
+     "runs",
+     "text",
+     "top_level"
+    ],
+    "title": "ValidityNote",
     "type": "object"
    },
    "Variable": {
@@ -7458,6 +7827,117 @@
     "summary": "Action State",
     "tags": [
      "actions"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/archive": {
+   "get": {
+    "operationId": "archive_state_api_runs__project___run_id__archive_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ArchiveView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Archive State",
+    "tags": [
+     "copies"
+    ]
+   },
+   "post": {
+    "description": "Pack the run into ``paths.archive_root`` in the background; poll GET for the outcome.",
+    "operationId": "archive_start_api_runs__project___run_id__archive_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ArchiveRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ArchiveView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Archive Start",
+    "tags": [
+     "copies"
     ]
    }
   },
@@ -9181,6 +9661,68 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/replay": {
+   "post": {
+    "description": "Copy the run and redo ``stage`` in the copy (same inputs); the copy stops at that stage's checkpoint.",
+    "operationId": "replay_api_runs__project___run_id__replay_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReplayRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Replayed"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Replay",
+    "tags": [
+     "copies"
+    ]
+   }
+  },
   "/api/runs/{project}/{run_id}/report": {
    "get": {
     "description": "The report (``which=report``) or the final report after the review, as sections with what they render to.",
@@ -9748,6 +10290,58 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/validity": {
+   "get": {
+    "description": "What this run's field has been measured at (nothing, if it has no card).",
+    "operationId": "run_validity_api_runs__project___run_id__validity_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ValidityNote"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Run Validity",
+    "tags": [
+     "validity"
+    ]
+   }
+  },
   "/api/session": {
    "post": {
     "operationId": "sign_in_api_session_post",
@@ -9800,6 +10394,32 @@
     "summary": "Server Settings",
     "tags": [
      "session"
+    ]
+   }
+  },
+  "/api/validity": {
+   "get": {
+    "description": "The newest validity card of each field, as `rtool validity score` wrote it.",
+    "operationId": "cards_api_validity_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Card"
+         },
+         "title": "Response Cards Api Validity Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Cards",
+    "tags": [
+     "validity"
     ]
    }
   }

@@ -8,6 +8,7 @@ from . import (
     actions,
     artifacts,
     code,
+    copies,
     drafts,
     events,
     hypotheses,
@@ -18,6 +19,7 @@ from . import (
     session,
     study,
     system,
+    validity,
 )
 
 router = APIRouter()
@@ -35,5 +37,7 @@ for module in (
     report,
     study,
     system,
+    validity,
+    copies,
 ):
     router.include_router(module.router)

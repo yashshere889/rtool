@@ -1,13 +1,13 @@
 import { CircleAlert, CircleCheck, CircleMinus } from "lucide-react";
 import { useState } from "react";
 
-import { useAgents, useDoctor, useFields, usePipelines } from "@/api/hooks";
+import { useAgents, useDoctor, useFields, usePipelines, useValidityCards } from "@/api/hooks";
 import type { CheckInfo, FieldInfo } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { ErrorNote, Loading } from "@/components/ui/states";
-import { humanize } from "@/lib/format";
+import { dateTime, humanize } from "@/lib/format";
 import type { Tone } from "@/lib/stages";
 
 const FIELD_STATE: Record<FieldInfo["state"], { label: string; tone: Tone }> = {
@@ -155,5 +155,83 @@ export function ChecksTab() {
         )}
       </CardBody>
     </Card>
+  );
+}
+
+const pct = (x: number) => `${Math.round(100 * x)} %`;
+
+/** How often rtool got the right answer on benchmark cases of each field, with the honest intervals (a read of the cards). */
+export function ValidityTab() {
+  const cards = useValidityCards();
+  if (cards.isPending) return <Loading />;
+  if (cards.isError) return <ErrorNote error={cards.error} />;
+  if (!cards.data.length) {
+    return (
+      <Card>
+        <CardHeader title="Validity cards" />
+        <CardBody className="space-y-2 text-sm">
+          <p>No field has been measured on this server yet, so no report claims a level.</p>
+          <p className="text-ink-soft">
+            A card is made by running the benchmark cases of a field (<code className="font-mono">rtool validity submit</code>) and scoring them (
+            <code className="font-mono">rtool validity score</code>); it appears here once written.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+  return (
+    <div className="space-y-6">
+      {cards.data.map((c) => (
+        <Card key={c.pack}>
+          <CardHeader
+            title={`${c.pack} field`}
+            description={`${c.runs} scored runs · model ${String(c.provenance.model ?? "?")} · code ${String(c.provenance.code ?? "?")} · ${dateTime(c.created_at)}`}
+          />
+          <CardBody className="space-y-4 text-sm">
+            <div>
+              <h3 className="font-semibold">Runs that reached their case's top level</h3>
+              <ul className="mt-1 space-y-0.5">
+                {Object.entries(c.headline).map(([kind, r]) => (
+                  <li key={kind}>
+                    <span className="font-medium">{kind}</span>: {r.k} of {r.n} ({pct(r.k / r.n)}; true rate between {pct(r.low)} and {pct(r.high)}, 95 % interval)
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {c.false_claims.n > 0 && (
+              <p>
+                <span className="font-semibold">False claims</span> on null cases (the report says supported): {c.false_claims.k} of {c.false_claims.n} (between {pct(c.false_claims.low)} and{" "}
+                {pct(c.false_claims.high)})
+              </p>
+            )}
+            {Object.keys(c.categories).length > 0 && (
+              <div>
+                <h3 className="font-semibold">How runs failed</h3>
+                <ul className="mt-1 space-y-0.5">
+                  {Object.entries(c.categories).map(([category, ids]) => (
+                    <li key={category}>
+                      <code className="font-mono text-xs">{category}</code>: {ids.length}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {Object.keys(c.unconfirmed).length > 0 && (
+              <p className="text-ink-soft">
+                Not in the headline (nobody has confirmed their expected outcome yet): {Object.keys(c.unconfirmed).join(", ")}.
+              </p>
+            )}
+            <details>
+              <summary className="cursor-pointer text-ink-soft">What this card does not measure</summary>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-ink-soft">
+                {c.limits.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </details>
+          </CardBody>
+        </Card>
+      ))}
+    </div>
   );
 }
