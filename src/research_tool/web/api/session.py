@@ -84,6 +84,10 @@ def server_settings(request: Request) -> ServerSettings:
         packs = offered_packs(load_app_config(settings.config_files, runs_root=settings.runs_root).packs.allowed)
     except RToolError:
         packs = []  # a broken site config is reported when a run is created; settings still load
+    if settings.runs_locally:  # a demo server can only simulate the packs it has a scenario for
+        from ...testing.demo_run import DEMO_PACKS
+
+        packs = [p for p in packs if p.name in DEMO_PACKS]
     return ServerSettings(
         version=__version__,
         mode=settings.mode,

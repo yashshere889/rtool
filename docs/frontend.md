@@ -87,7 +87,7 @@ browser. See the [Barkla runbook](barkla_runbook.md#the-web-ui).
 ## Development
 
 ```bash
-.venv/bin/python -m research_tool.testing.demo_run runs/demo     # demo runs, one stopped at each checkpoint
+.venv/bin/python -m research_tool.testing.demo_run runs/demo     # demo runs of the research, study and synthesis pipelines, one stopped at each checkpoint
 .venv/bin/rtool ui --mode local --runs-root runs/demo --token-file runs/ui-token
 cd frontend && npm ci && npm run dev                              # Vite on :5173, /api forwarded to :8765
 ```

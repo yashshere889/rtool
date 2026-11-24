@@ -120,10 +120,17 @@ def new_run(body: NewRun, request: Request) -> Created:
     questions = [q.strip() for q in body.questions if q.strip()]
     try:
         if settings.runs_locally:
-            from ...testing.demo_run import create_demo_run
+            from ...testing.demo_run import DEMO_PACKS, create_demo_run
 
+            if body.pack not in DEMO_PACKS:
+                raise HTTPException(422, f"this demo server offers only: {', '.join(DEMO_PACKS)}")
             run = create_demo_run(
-                settings.runs_root, project=project, topic=body.topic.strip(), questions=questions, overrides=overrides
+                settings.runs_root,
+                project=project,
+                topic=body.topic.strip(),
+                questions=questions,
+                overrides=overrides,
+                pack=body.pack,
             )
         else:
             config = load_app_config(settings.config_files, runs_root=settings.runs_root, overrides=overrides)

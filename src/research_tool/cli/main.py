@@ -666,10 +666,11 @@ def ui(
             raise RToolError(f"the web UI needs the web extra: pip install -e '.[web]' ({exc})") from None
         load_secrets()
         if mode == "local" and demo and not list_all_runs(root):
-            from ..testing.demo_run import build_demo_runs
+            from ..testing.demo_run import SCENARIOS, build_demo_runs
 
-            console.print("building the demo runs (about ten seconds)...")
-            build_demo_runs(root)
+            console.print("building the demo runs (research, study and synthesis; about half a minute)...")
+            for name in SCENARIOS:
+                build_demo_runs(root, name)
         token = new_token()
         settings = UISettings(runs_root=root, token=token, mode=mode, config_files=list(config))  # type: ignore[arg-type]
         if mode != "job":

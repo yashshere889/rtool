@@ -32,10 +32,15 @@ class StubRunner:
 
 
 def web_client(
-    runs_root: Path, runner: Any = None, *, signed_in: bool = True, config_files: list[Path] | None = None
+    runs_root: Path,
+    runner: Any = None,
+    *,
+    signed_in: bool = True,
+    config_files: list[Path] | None = None,
+    mode: str = "local",
 ) -> TestClient:
-    """A test client for a local-mode server over ``runs_root``, signed in unless asked otherwise."""
-    settings = UISettings(runs_root=runs_root, token=TOKEN, mode="local", config_files=config_files or [])
+    """A test client for a server over ``runs_root`` (default: a local demo server), signed in unless told not to."""
+    settings = UISettings(runs_root=runs_root, token=TOKEN, mode=mode, config_files=config_files or [])  # type: ignore[arg-type]
     app = create_app(settings, runner=runner or StubRunner())
     client = TestClient(app, base_url=BASE)
     if signed_in:

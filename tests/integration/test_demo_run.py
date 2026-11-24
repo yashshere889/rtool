@@ -57,3 +57,27 @@ def test_a_demo_run_stopped_at_the_hypothesis_checkpoint(runs_root: Path) -> Non
     run = build_demo_run(runs_root, "hypothesis_selection")
     gate = run_status(run).open_gates[0]
     assert gate.gate == "hypothesis_selection" and gate.kind == "select" and len(gate.summary["options"]) == 3
+
+
+def test_a_finished_study_demo_run(runs_root: Path) -> None:
+    run = build_demo_run(runs_root, "done", pipeline="study")
+    assert is_demo(run) and run_status(run).last_outcome == "done" and run.spec.pack == "study"
+    store = ArtifactStore(run.artifacts_dir)
+    protocol, results = store.get("protocol"), store.get("experiment_results")
+    assert protocol.n_per_condition == 26 and store.get("study_data").units == {"sham": 26, "phase_locked": 26}
+    primary = results.comparison("phase_locked", "recall_gain")
+    assert primary.significant and primary.better  # the demo data hold a real effect for the report to state
+    assert "{{" not in (run.root / store.get("final_report").markdown_path).read_text()
+
+
+def test_a_study_demo_run_waits_for_its_data(runs_root: Path) -> None:
+    run = build_demo_run(runs_root, "data_upload", pipeline="study")
+    assert [g.gate for g in run_status(run).open_gates] == ["data_upload"]
+    assert not (run.work_dir("collect") / "inbox" / "data.csv").exists()  # the researcher's upload comes later
+
+
+def test_a_finished_synthesis_demo_run(runs_root: Path) -> None:
+    run = build_demo_run(runs_root, "done", pipeline="synthesis")
+    assert run_status(run).last_outcome == "done" and run.spec.pack == "medicine"
+    review = ArtifactStore(run.artifacts_dir).get("synthesis")
+    assert review.kept() and review.dropped  # the sentence no finding supports is shown as dropped
