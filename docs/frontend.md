@@ -121,10 +121,13 @@ are loaded when first opened.
     `npm run typecheck`, `npm run lint`;
   * `.venv/bin/pytest tests/web` for the API (security, every page's routes, actions through the
     engine on demo runs);
-  * `npm run build && npm run e2e`: Playwright drives the built app against a real local server,
-    takes a new question through every checkpoint, and checks each page for WCAG 2.1 A/AA
-    problems with axe, in the light and the dark theme. Playwright's own Chromium does not run on
-    macOS 13, so the installed Google Chrome is used, with a fresh temporary profile.
+  * `npm run build && npm run e2e`: Playwright drives the built app against a real local server and
+    takes a new question through every checkpoint of each pipeline (research; study, with the protocol
+    edited and a refused and an accepted data upload; synthesis), plus the Settings tabs and the run-level
+    dialogs, and checks each page for WCAG 2.1 A/AA problems with axe, in the light and the dark theme.
+    Playwright's own Chromium does not run on macOS 13, so the installed Google Chrome is used, with a
+    fresh temporary profile. `RTOOL=<path to rtool>` names another `rtool` (default `../.venv/bin/rtool`),
+    and the path may contain spaces.
 * Node: pinned to versions that run on Node 22.0 (Vite 6, Vitest 3). `npm audit` reports two
   moderate advisories in Vitest's mocker, which only runs in development.
 

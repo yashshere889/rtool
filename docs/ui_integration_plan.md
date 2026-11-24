@@ -126,6 +126,13 @@ root, not from the committed `benchmarks/*/CARD.md`, which have no machine-reada
   `synthesis`; keep the axe checks in light and dark.
 * Update `docs/frontend.md` (pages table, "Adding a page" already describes the steps).
 
+**Phase 6 as built (2026-11-24).** One end-to-end walk per pipeline: research (as before), study (protocol edited,
+a refused then an accepted data upload, analysis, review), synthesis (a sentence's findings opened and followed into
+the paper), plus Settings and the run-level dialogs; axe in light and dark on each. The walks found and fixed three
+things: dialogs taller than the window could not reach their buttons (the shared dialog now scrolls), the paper
+reader's scrolling text could not be reached from the keyboard when opened at a quote, and the data template uses
+CRLF line endings (CSV's own; the walk now handles them).
+
 ## Per-page checklist (from `frontend.md`)
 
 API module in `web/api/` → regenerate types → hooks → page under `src/pages/<name>/` → `PAGES` +
