@@ -265,6 +265,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/collect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Collect */
+        get: operations["collect_api_runs__project___run_id__collect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/collect/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload
+         * @description The study's data.csv as the request body. It is kept only if it follows the protocol.
+         */
+        put: operations["upload_api_runs__project___run_id__collect_inbox_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/downloads": {
         parameters: {
             query?: never;
@@ -519,6 +556,43 @@ export interface paths {
          * @description What an edited plan would become (recomputed, checked), without storing anything.
          */
         post: operations["check_api_runs__project___run_id__plan_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/protocol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Protocol */
+        get: operations["protocol_api_runs__project___run_id__protocol_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{project}/{run_id}/protocol/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check
+         * @description What an edited protocol would become (sample size, allocation, checklist), without storing anything.
+         */
+        post: operations["check_api_runs__project___run_id__protocol_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1006,6 +1080,35 @@ export interface components {
             tested_sha: string | null;
             /** Why Not Editable */
             why_not_editable: string;
+        };
+        /** CollectView */
+        CollectView: {
+            /** Can Upload */
+            can_upload: boolean;
+            /** Columns */
+            columns: string[];
+            /** Conditions */
+            conditions: string[];
+            /** Data Format */
+            data_format: string;
+            /** Inbox File */
+            inbox_file: boolean;
+            /** N Per Condition */
+            n_per_condition: number;
+            /** Paired */
+            paired: boolean;
+            received: components["schemas"]["StudyData"] | null;
+            /** Stage */
+            stage: string;
+            status: components["schemas"]["StageStatus"];
+            /** Template */
+            template: string;
+            /** Unit */
+            unit: string;
+            /** Waiting */
+            waiting: boolean;
+            /** Why Not */
+            why_not: string;
         };
         /**
          * Comparison
@@ -2008,6 +2111,85 @@ export interface components {
              */
             token: string;
         };
+        /** Protocol */
+        Protocol: {
+            /** Allocation Path */
+            allocation_path: string;
+            /** Alpha */
+            alpha: number;
+            /** Baseline */
+            baseline: string;
+            /** Blinding */
+            blinding: string;
+            /** Checklist */
+            checklist: components["schemas"]["Check"][];
+            /** Conditions */
+            conditions: string[];
+            /** Data Format */
+            data_format: string;
+            /** Effect Size */
+            effect_size: number;
+            /**
+             * Markdown Path
+             * @default
+             */
+            markdown_path: string;
+            /** Materials */
+            materials: string[];
+            /** N Per Condition */
+            n_per_condition: number;
+            /** Paired */
+            paired: boolean;
+            /** Power */
+            power: number;
+            /** Primary Metric */
+            primary_metric: string;
+            /** Unit */
+            unit: string;
+        };
+        /** ProtocolCheck */
+        ProtocolCheck: {
+            /** Changed */
+            changed: string[];
+            /** Error */
+            error: string;
+            /** Ok */
+            ok: boolean;
+            protocol: components["schemas"]["Protocol"] | null;
+        };
+        /** ProtocolView */
+        ProtocolView: {
+            /** Allocation Preview */
+            allocation_preview: {
+                [key: string]: string;
+            }[];
+            /** Allocation Rows */
+            allocation_rows: number;
+            /** By */
+            by: string | null;
+            /** Created At */
+            created_at: string;
+            /** Edit Note */
+            edit_note: string;
+            /** Editable */
+            editable: boolean;
+            /** Edited From */
+            edited_from: number | null;
+            /** Head */
+            head: number;
+            /** Hypothesis Title */
+            hypothesis_title: string;
+            plan: components["schemas"]["ExperimentPlan"];
+            protocol: components["schemas"]["Protocol"];
+            /** Stage */
+            stage: string;
+            /** Version */
+            version: number;
+            /** Versions */
+            versions: number[];
+            /** Why Not Editable */
+            why_not_editable: string;
+        };
         /**
          * QualityCheck
          * @description One measured property of the literature stage's output, for the researcher at the review gate.
@@ -2029,6 +2211,15 @@ export interface components {
         Queued: {
             action: components["schemas"]["Action"];
             kick: components["schemas"]["KickResult"];
+        };
+        /** Received */
+        Received: {
+            /** Rows */
+            rows: number;
+            /** Units */
+            units: {
+                [key: string]: number;
+            };
         };
         /** ReportCheck */
         ReportCheck: {
@@ -2644,6 +2835,19 @@ export interface components {
              * @default false
              */
             experiments: boolean;
+        };
+        /** StudyData */
+        StudyData: {
+            /** Path */
+            path: string;
+            /** Rows */
+            rows: number;
+            /** Sha256 */
+            sha256: string;
+            /** Units */
+            units: {
+                [key: string]: number;
+            };
         };
         /** SubtopicView */
         SubtopicView: {
@@ -3280,6 +3484,70 @@ export interface operations {
             };
         };
     };
+    collect_api_runs__project___run_id__collect_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_api_runs__project___run_id__collect_inbox_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Received"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     downloads_api_runs__project___run_id__downloads_get: {
         parameters: {
             query?: never;
@@ -3781,6 +4049,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    protocol_api_runs__project___run_id__protocol_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_api_runs__project___run_id__protocol_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["research_tool__web__api__plan__CheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolCheck"];
                 };
             };
             /** @description Validation Error */

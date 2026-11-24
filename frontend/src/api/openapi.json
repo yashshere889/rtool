@@ -784,6 +784,95 @@
     "title": "CodeView",
     "type": "object"
    },
+   "CollectView": {
+    "properties": {
+     "can_upload": {
+      "title": "Can Upload",
+      "type": "boolean"
+     },
+     "columns": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Columns",
+      "type": "array"
+     },
+     "conditions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "data_format": {
+      "title": "Data Format",
+      "type": "string"
+     },
+     "inbox_file": {
+      "title": "Inbox File",
+      "type": "boolean"
+     },
+     "n_per_condition": {
+      "title": "N Per Condition",
+      "type": "integer"
+     },
+     "paired": {
+      "title": "Paired",
+      "type": "boolean"
+     },
+     "received": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/StudyData"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/StageStatus"
+     },
+     "template": {
+      "title": "Template",
+      "type": "string"
+     },
+     "unit": {
+      "title": "Unit",
+      "type": "string"
+     },
+     "waiting": {
+      "title": "Waiting",
+      "type": "boolean"
+     },
+     "why_not": {
+      "title": "Why Not",
+      "type": "string"
+     }
+    },
+    "required": [
+     "can_upload",
+     "columns",
+     "conditions",
+     "data_format",
+     "inbox_file",
+     "n_per_condition",
+     "paired",
+     "received",
+     "stage",
+     "status",
+     "template",
+     "unit",
+     "waiting",
+     "why_not"
+    ],
+    "title": "CollectView",
+    "type": "object"
+   },
    "Comparison": {
     "description": "One condition against the baseline on one metric.",
     "properties": {
@@ -3565,6 +3654,240 @@
     "title": "Producer",
     "type": "object"
    },
+   "Protocol": {
+    "properties": {
+     "allocation_path": {
+      "title": "Allocation Path",
+      "type": "string"
+     },
+     "alpha": {
+      "title": "Alpha",
+      "type": "number"
+     },
+     "baseline": {
+      "title": "Baseline",
+      "type": "string"
+     },
+     "blinding": {
+      "title": "Blinding",
+      "type": "string"
+     },
+     "checklist": {
+      "items": {
+       "$ref": "#/components/schemas/Check"
+      },
+      "title": "Checklist",
+      "type": "array"
+     },
+     "conditions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "data_format": {
+      "title": "Data Format",
+      "type": "string"
+     },
+     "effect_size": {
+      "title": "Effect Size",
+      "type": "number"
+     },
+     "markdown_path": {
+      "default": "",
+      "title": "Markdown Path",
+      "type": "string"
+     },
+     "materials": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Materials",
+      "type": "array"
+     },
+     "n_per_condition": {
+      "title": "N Per Condition",
+      "type": "integer"
+     },
+     "paired": {
+      "title": "Paired",
+      "type": "boolean"
+     },
+     "power": {
+      "title": "Power",
+      "type": "number"
+     },
+     "primary_metric": {
+      "title": "Primary Metric",
+      "type": "string"
+     },
+     "unit": {
+      "title": "Unit",
+      "type": "string"
+     }
+    },
+    "required": [
+     "allocation_path",
+     "alpha",
+     "baseline",
+     "blinding",
+     "checklist",
+     "conditions",
+     "data_format",
+     "effect_size",
+     "markdown_path",
+     "materials",
+     "n_per_condition",
+     "paired",
+     "power",
+     "primary_metric",
+     "unit"
+    ],
+    "title": "Protocol",
+    "type": "object"
+   },
+   "ProtocolCheck": {
+    "properties": {
+     "changed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Changed",
+      "type": "array"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "protocol": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Protocol"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "changed",
+     "error",
+     "ok",
+     "protocol"
+    ],
+    "title": "ProtocolCheck",
+    "type": "object"
+   },
+   "ProtocolView": {
+    "properties": {
+     "allocation_preview": {
+      "items": {
+       "additionalProperties": {
+        "type": "string"
+       },
+       "type": "object"
+      },
+      "title": "Allocation Preview",
+      "type": "array"
+     },
+     "allocation_rows": {
+      "title": "Allocation Rows",
+      "type": "integer"
+     },
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "edit_note": {
+      "title": "Edit Note",
+      "type": "string"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "edited_from": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edited From"
+     },
+     "head": {
+      "title": "Head",
+      "type": "integer"
+     },
+     "hypothesis_title": {
+      "title": "Hypothesis Title",
+      "type": "string"
+     },
+     "plan": {
+      "$ref": "#/components/schemas/ExperimentPlan"
+     },
+     "protocol": {
+      "$ref": "#/components/schemas/Protocol"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     },
+     "why_not_editable": {
+      "title": "Why Not Editable",
+      "type": "string"
+     }
+    },
+    "required": [
+     "allocation_preview",
+     "allocation_rows",
+     "by",
+     "created_at",
+     "edit_note",
+     "editable",
+     "edited_from",
+     "head",
+     "hypothesis_title",
+     "plan",
+     "protocol",
+     "stage",
+     "version",
+     "versions",
+     "why_not_editable"
+    ],
+    "title": "ProtocolView",
+    "type": "object"
+   },
    "QualityCheck": {
     "description": "One measured property of the literature stage's output, for the researcher at the review gate.",
     "properties": {
@@ -3609,6 +3932,27 @@
      "kick"
     ],
     "title": "Queued",
+    "type": "object"
+   },
+   "Received": {
+    "properties": {
+     "rows": {
+      "title": "Rows",
+      "type": "integer"
+     },
+     "units": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Units",
+      "type": "object"
+     }
+    },
+    "required": [
+     "rows",
+     "units"
+    ],
+    "title": "Received",
     "type": "object"
    },
    "ReportCheck": {
@@ -5154,6 +5498,37 @@
     "title": "StopRequest",
     "type": "object"
    },
+   "StudyData": {
+    "properties": {
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "rows": {
+      "title": "Rows",
+      "type": "integer"
+     },
+     "sha256": {
+      "title": "Sha256",
+      "type": "string"
+     },
+     "units": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Units",
+      "type": "object"
+     }
+    },
+    "required": [
+     "path",
+     "rows",
+     "sha256",
+     "units"
+    ],
+    "title": "StudyData",
+    "type": "object"
+   },
    "SubtopicView": {
     "properties": {
      "name": {
@@ -6279,6 +6654,109 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/collect": {
+   "get": {
+    "operationId": "collect_api_runs__project___run_id__collect_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CollectView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Collect",
+    "tags": [
+     "study"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/collect/inbox": {
+   "put": {
+    "description": "The study's data.csv as the request body. It is kept only if it follows the protocol.",
+    "operationId": "upload_api_runs__project___run_id__collect_inbox_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Received"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload",
+    "tags": [
+     "study"
+    ]
+   }
+  },
   "/api/runs/{project}/{run_id}/downloads": {
    "get": {
     "description": "The datasets and models the approved plan needs, as the download step got (or is getting) them.",
@@ -7295,6 +7773,135 @@
     "summary": "Check",
     "tags": [
      "plan"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/protocol": {
+   "get": {
+    "operationId": "protocol_api_runs__project___run_id__protocol_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProtocolView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Protocol",
+    "tags": [
+     "study"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/protocol/check": {
+   "post": {
+    "description": "What an edited protocol would become (sample size, allocation, checklist), without storing anything.",
+    "operationId": "check_api_runs__project___run_id__protocol_check_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/research_tool__web__api__plan__CheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProtocolCheck"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Check",
+    "tags": [
+     "study"
     ]
    }
   },

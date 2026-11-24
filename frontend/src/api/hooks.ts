@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { useEffect } from "react";
 import { toast } from "sonner";
 
-import { api, ApiError } from "./client";
+import { api, ApiError, uploadStudyData } from "./client";
 import type {
   ActionRequest,
   ActionState,
@@ -17,6 +17,10 @@ import type {
   Draft,
   HypothesesView,
   PlanCheck,
+  ProtocolCheck,
+  ProtocolView,
+  CollectView,
+  Received,
   PlanView,
   ReportCheck,
   ReportView,
@@ -381,6 +385,44 @@ export function useResults(project: string, runId: string, enabled = true) {
     queryKey: ["artifact", project, runId, "results"],
     queryFn: () => api<ResultsView>(`${base(project, runId)}/results`),
     enabled,
+  });
+}
+
+// ------------------------------------------------------------- study: protocol, data
+export function useProtocol(project: string, runId: string, version?: number) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "protocol", version ?? "head"],
+    queryFn: () => api<ProtocolView>(`${base(project, runId)}/protocol${version ? `?version=${version}` : ""}`),
+  });
+}
+
+/** What an edited protocol would become (sample size, allocation, checklist); nothing is stored. */
+export function useProtocolCheck(project: string, runId: string, baseVersion: number, value: unknown, enabled: boolean) {
+  return useQuery({
+    queryKey: ["protocol-check", project, runId, baseVersion, JSON.stringify(value)],
+    queryFn: () =>
+      api<ProtocolCheck>(`${base(project, runId)}/protocol/check`, {
+        method: "POST",
+        body: { base_version: baseVersion, value },
+      }),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+}
+
+export function useCollect(project: string, runId: string) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "collect"],
+    queryFn: () => api<CollectView>(`${base(project, runId)}/collect`),
+  });
+}
+
+export function useUploadData(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => uploadStudyData<Received>(project, runId, file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["artifact", project, runId, "collect"] }),
   });
 }
 

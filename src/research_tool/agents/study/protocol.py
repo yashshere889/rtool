@@ -163,61 +163,75 @@ class ProtocolAgent(Agent):
 
     @staticmethod
     def protocol(ctx: AgentContext, plan: ExperimentPlan, draft: ProtocolDraft, seed: int) -> Protocol:
-        names = [c.name for c in plan.run_conditions()]
-        baseline = next((c.name for c in plan.conditions if c.is_baseline), names[0])
-        family = family_of_tests(plan.statistical_tests)[0]
-        paired = family == "wilcoxon" or any("paired" in t.test.lower() for t in plan.statistical_tests)
-        n = sample_size(draft.expected_effect_size, paired=paired, comparisons=len(names) - 1)
-        rows = allocation(names, n, paired=paired, seed=seed)
-        buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
-        allocation_path = ctx.workspace.write_text("allocation.csv", buffer.getvalue())
-        metric_names = [m.name for m in plan.metrics]
-        data_format = (
-            f"{DATA_FILE}: a CSV file with a header row and one row per unit and condition; columns unit (the "
-            f"{plan.unit or 'unit'} id), condition (one of {', '.join(names)}), {', '.join(metric_names)} (numbers), "
-            "and optionally batch (site, run or plate)"
+        protocol, allocation_csv = make_protocol(
+            plan, draft.expected_effect_size, draft.materials, draft.blinding, seed
         )
-        primary = plan.primary_metric()
-        unit_problems = pseudoreplication_issues(plan, None)
-        checklist = [
-            Check(name="a control condition", ok=any(c.is_baseline for c in plan.conditions), detail=baseline),
-            Check(name="the primary outcome is fixed before any data", ok=True, detail=primary.name),
-            Check(
-                name="the sample size is computed",
-                ok=n >= 2,
-                detail=f"{n} {'units in all, each under every condition' if paired else 'units per condition'} for "
-                f"d = {draft.expected_effect_size:g}, alpha {ALPHA:g}, power {POWER:g}",
-            ),
-            Check(
-                name="the unit of analysis is independent",
-                ok=not unit_problems,
-                detail=unit_problems[0] if unit_problems else plan.unit,
-            ),
-            Check(name="materials are listed", ok=bool(draft.materials), detail=", ".join(draft.materials[:5])),
-            Check(name="blinding is stated", ok=bool(draft.blinding.strip()), detail=draft.blinding[:120]),
-        ]
-        protocol = Protocol(
-            unit=plan.unit,
-            conditions=names,
-            baseline=baseline,
-            primary_metric=primary.name,
-            effect_size=draft.expected_effect_size,
-            alpha=ALPHA,
-            power=POWER,
-            paired=paired,
-            n_per_condition=n,
-            allocation_path=ctx.relative(allocation_path),
-            materials=draft.materials,
-            blinding=draft.blinding,
-            data_format=data_format,
-            checklist=checklist,
-        )
+        protocol.allocation_path = ctx.relative(ctx.workspace.write_text("allocation.csv", allocation_csv))
         markdown = ctx.workspace.write_text("protocol.md", render_protocol(plan, protocol))
         protocol.markdown_path = ctx.relative(markdown)
         return protocol
+
+
+def make_protocol(
+    plan: ExperimentPlan, effect_size: float, materials: list[str], blinding: str, seed: int
+) -> tuple[Protocol, str]:
+    """The protocol for ``plan`` (paths left empty) and the text of its allocation table.
+
+    The agent calls this once; the researcher's editor calls it again when the effect size, materials or
+    blinding change, so the sample size, the allocation and the checklist always follow from them.
+    """
+    names = [c.name for c in plan.run_conditions()]
+    baseline = next((c.name for c in plan.conditions if c.is_baseline), names[0])
+    family = family_of_tests(plan.statistical_tests)[0]
+    paired = family == "wilcoxon" or any("paired" in t.test.lower() for t in plan.statistical_tests)
+    n = sample_size(effect_size, paired=paired, comparisons=len(names) - 1)
+    rows = allocation(names, n, paired=paired, seed=seed)
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0]))
+    writer.writeheader()
+    writer.writerows(rows)
+    metric_names = [m.name for m in plan.metrics]
+    data_format = (
+        f"{DATA_FILE}: a CSV file with a header row and one row per unit and condition; columns unit (the "
+        f"{plan.unit or 'unit'} id), condition (one of {', '.join(names)}), {', '.join(metric_names)} (numbers), "
+        "and optionally batch (site, run or plate)"
+    )
+    primary = plan.primary_metric()
+    unit_problems = pseudoreplication_issues(plan, None)
+    checklist = [
+        Check(name="a control condition", ok=any(c.is_baseline for c in plan.conditions), detail=baseline),
+        Check(name="the primary outcome is fixed before any data", ok=True, detail=primary.name),
+        Check(
+            name="the sample size is computed",
+            ok=n >= 2,
+            detail=f"{n} {'units in all, each under every condition' if paired else 'units per condition'} for "
+            f"d = {effect_size:g}, alpha {ALPHA:g}, power {POWER:g}",
+        ),
+        Check(
+            name="the unit of analysis is independent",
+            ok=not unit_problems,
+            detail=unit_problems[0] if unit_problems else plan.unit,
+        ),
+        Check(name="materials are listed", ok=bool(materials), detail=", ".join(materials[:5])),
+        Check(name="blinding is stated", ok=bool(blinding.strip()), detail=blinding[:120]),
+    ]
+    protocol = Protocol(
+        unit=plan.unit,
+        conditions=names,
+        baseline=baseline,
+        primary_metric=primary.name,
+        effect_size=effect_size,
+        alpha=ALPHA,
+        power=POWER,
+        paired=paired,
+        n_per_condition=n,
+        allocation_path="",
+        materials=materials,
+        blinding=blinding,
+        data_format=data_format,
+        checklist=checklist,
+    )
+    return protocol, buffer.getvalue()
 
 
 def render_protocol(plan: ExperimentPlan, protocol: Protocol, **_: Any) -> str:

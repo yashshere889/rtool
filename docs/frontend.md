@@ -20,6 +20,9 @@ generic page (its checkpoint, problems, every version of its outputs as JSON, ac
 | Hypotheses | the shortlist side by side: design, novelty, feasibility, scores and judges' comments, papers used, citations with "show in paper", references; a comparison table; the other drafts and why they were set aside | choose, edit and choose (with a note for the planner), ask for new ones, change your choice later |
 | Experiment plan | the plan as a document; datasets and models with links; compute against the budget; downloads after approval | edit any part (form or JSON) with live checks, see what applying redoes, approve |
 | Code & runs | progress strip; every file; smoke tests; what the tool repaired; a condition × seed grid of runs with logs; results per metric | edit `experiment.py` (tested again before any GPU time), compare with the generated code, approve GPU time, cancel jobs, download the code |
+| Study protocol (study pipeline) | the design, sample size and the seeded allocation table, materials, blinding, the data format, a checklist | edit the effect size, materials and blinding (the sample size, allocation and checklist are worked out again), approve |
+| Study data | what to bring back, with a template that has the units and conditions filled in | upload data.csv (checked against the protocol before it is kept, every problem listed), then approve the checkpoint |
+| Analysis | results per metric from rtool's own analysis script, and the script | read |
 | Report | the report with linked citations, figures and references | edit prose sections (placeholders and citations as chips, insert pickers), print or save as PDF, download Markdown, BibTeX or everything |
 | Review | verdict, scores against the bar, automated checks, each issue and what became of it, revision rounds, the final report, the reviewer's edits as a diff | approve and finish, request another round, edit the final report |
 

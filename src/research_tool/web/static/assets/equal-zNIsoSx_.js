@@ -1,0 +1,1 @@
+function y(r,e){if(r===e)return!0;if(typeof r!="object"||typeof e!="object"||r===null||e===null||Array.isArray(r)!==Array.isArray(e))return!1;if(Array.isArray(r)&&Array.isArray(e))return r.length===e.length&&r.every((t,f)=>y(t,e[f]));const s=r,n=e;return[...new Set([...Object.keys(s),...Object.keys(n)])].every(t=>y(s[t],n[t]))}export{y as s};
