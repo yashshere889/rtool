@@ -111,7 +111,7 @@ class VLLMBackend:
         return {}
 
     def build_payload(self, request: ChatRequest) -> dict[str, Any]:
-        messages = [m.model_dump() for m in request.messages]
+        messages = [m.model_dump(exclude_none=True) for m in request.messages]
         if self.reasoning_control == "system_flag":
             messages = apply_reasoning_flag(messages, request.reasoning)
         payload: dict[str, Any] = {
@@ -131,6 +131,9 @@ class VLLMBackend:
             payload["chat_template_kwargs"] = {"enable_thinking": request.reasoning == "on"}
         if request.json_schema is not None:
             payload.update(self._structured_fields(request.json_schema))
+        if request.tools:  # needs a server started with --enable-auto-tool-choice --tool-call-parser
+            payload["tools"] = request.tools
+            payload["tool_choice"] = "auto"
         return payload
 
     def _request(self, method: str, url: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -171,6 +174,7 @@ class VLLMBackend:
         usage = data.get("usage") or {}
         return ChatResponse(
             text=content,
+            tool_calls=[c for c in message.get("tool_calls") or [] if isinstance(c, dict) and c.get("function")],
             reasoning=reasoning,
             finish_reason=choice.get("finish_reason") or "stop",
             usage=TokenUsage(

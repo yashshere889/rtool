@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from research_tool.agents.planner.checks import results_schema
 from research_tool.core.actions import ActionInbox, ActionKind
 from research_tool.core.artifacts import ArtifactStore, Producer
@@ -63,8 +65,10 @@ def pipeline(config: dict[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
-def setup(runs_root: Path, tmp_path: Path, config: dict[str, Any] | None = None) -> RunHandle:
-    run = make_run(runs_root, pipeline(config))
+def setup(
+    runs_root: Path, tmp_path: Path, config: dict[str, Any] | None = None, overrides: dict[str, Any] | None = None
+) -> RunHandle:
+    run = make_run(runs_root, pipeline(config), overrides=overrides)
     conditions = [
         Condition(name="base", description="baseline", is_baseline=True),
         Condition(name="new", description="n"),
@@ -530,3 +534,110 @@ def test_a_mocked_experiment_is_flagged_at_the_gate_and_in_the_results(runs_root
     assert any("under 1 s, although the plan expects about 0.5 h" in w for w in results.warnings)
     assert sum(n.startswith("Warning: ") for n in results.notes) == len(results.warnings)
     assert "## Warnings: check before trusting these numbers" in (run.root / results.tables_path).read_text()
+
+
+def tool_call(name: str, i: int, **args: Any) -> dict[str, Any]:
+    return {"id": f"c{i}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+def test_the_tool_loop_writes_smoke_tests_and_fixes_the_code(runs_root: Path, tmp_path: Path) -> None:
+    from research_tool.llm.types import ChatResponse
+
+    run = setup(runs_root, tmp_path, overrides={"llm": {"tool_calls": True}})  # on by default with a tool parser
+    turns = [
+        [tool_call("write_file", 0, path="experiment.py", content=CRASHES_IN_SMOKE)],
+        [tool_call("smoke_test", 1, condition="base")],
+        [
+            tool_call("write_file", 2, path="experiment.py", content=GOOD),
+            tool_call("write_file", 3, path="t.py", content=""),
+        ],
+        [tool_call("smoke_test", 4, condition="base"), tool_call("smoke_test", 5, condition="new")],
+        [],
+    ]
+    llm = MockLLM().add(
+        lambda r: r.tools is not None, lambda r: ChatResponse(text="" if turns[0] else "done", tool_calls=turns.pop(0))
+    )
+
+    gate = advance(run, services(run, llm), Outcome.WAITING_GATE).open_gates[0]
+
+    assert gate["gate"] == "gpu_runs" and "base ok" in gate["summary"]["smoke"]  # rtool's own smoke phase agrees
+    code = run.root / "work" / "code" / "code"
+    assert (code / "experiment.py").read_text() == GOOD and not (code / "t.py").exists()
+    assert json.loads((code / ".rtool.json").read_text())["origin"] == "llm"  # not mistaken for a hand edit
+    tool_results = [m.content for m in llm.calls[-1].messages if m.role == "tool"]
+    assert "KeyError" in tool_results[1] and tool_results[1].startswith("Error: failed")
+    assert all(r.startswith("passed") for r in tool_results[-2:])
+    assert all(r.tools is not None for r in llm.calls)  # no one-shot "write the file" prompt was sent
+
+
+class Preempted(BaseException):
+    pass
+
+
+def test_a_tool_loop_cut_off_by_preemption_leaves_no_half_written_code(
+    runs_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from research_tool.agents.coder.agent import CoderSession
+    from research_tool.llm.types import ChatResponse
+
+    run = setup(runs_root, tmp_path, {"tool_agent": True})
+    write = ChatResponse(text="", tool_calls=[tool_call("write_file", 0, path="experiment.py", content="half = 1\n")])
+    replies = [write]
+
+    def reply(r: ChatRequest) -> ChatResponse:
+        if not replies:
+            raise Preempted  # the episode dies mid-loop
+        return replies.pop(0)
+
+    restore = CoderSession.restore_code
+    monkeypatch.setattr(CoderSession, "restore_code", lambda self, before: None)  # killed: no cleanup runs
+    with pytest.raises(Preempted):
+        advance(run, services(run, MockLLM().add(lambda r: r.tools is not None, reply)), Outcome.WAITING_GATE)
+    code = run.root / "work" / "code" / "code"
+    assert (code / "experiment.py").read_text() == "half = 1\n"  # what the dead episode left behind
+    monkeypatch.setattr(CoderSession, "restore_code", restore)
+
+    turns = [
+        [tool_call("write_file", 1, path="experiment.py", content=GOOD)],
+        *[[tool_call("smoke_test", i, condition=c)] for i, c in ((2, "base"), (3, "new"))],
+        [],
+    ]
+    at_start: list[bool] = []
+
+    def resumed(r: ChatRequest) -> ChatResponse:
+        if not at_start:
+            at_start.append((code / "experiment.py").exists())
+        return ChatResponse(text="" if turns[0] else "ok", tool_calls=turns.pop(0))
+
+    llm = MockLLM().add(lambda r: r.tools is not None, resumed)
+    advance(run, services(run, llm), Outcome.WAITING_GATE)
+
+    assert at_start == [False]  # the half-written file was removed before the new loop began
+    assert "Write the complete Python file" in llm.calls[0].messages[-1].content
+    assert json.loads((code / ".rtool.json").read_text())["origin"] == "llm"
+
+
+def test_a_server_error_mid_loop_puts_the_last_saved_code_back(runs_root: Path, tmp_path: Path) -> None:
+    from research_tool.llm.types import ChatResponse
+    from research_tool.llm.vllm_backend import LLMRequestError
+
+    run = setup(runs_root, tmp_path, {"tool_agent": True})
+    replies = [ChatResponse(text="", tool_calls=[tool_call("write_file", 0, path="experiment.py", content="half\n")])]
+
+    def reply(r: ChatRequest) -> ChatResponse:
+        if replies:
+            return replies.pop(0)
+        raise LLMRequestError("server rejected the request (HTTP 400): bad request")
+
+    Engine(run, services(run, MockLLM().add(lambda r: r.tools is not None, reply))).advance()
+
+    code = run.root / "work" / "code" / "code"
+    assert not (code / "experiment.py").exists()  # nothing was saved before the loop, so nothing is left
+    assert "tool_before" not in load_status(run)[1]["code"].agent_state
+
+
+def test_tool_agent_false_keeps_the_one_reply_path_even_with_a_tool_parser(runs_root: Path, tmp_path: Path) -> None:
+    run = setup(runs_root, tmp_path, {"tool_agent": False}, overrides={"llm": {"tool_calls": True}})
+    llm = coder_llm(GOOD)
+    advance(run, services(run, llm), Outcome.WAITING_GATE)
+    assert all(r.tools is None for r in llm.calls)

@@ -28,6 +28,7 @@ from typing import Any
 import jinja2
 from pydantic import BaseModel, Field
 
+from ...codeagent import DEFAULT_SYSTEM_PROMPT
 from ...core.agent import Agent
 from ...core.context import AgentContext
 from ...core.errors import ConfigError, StageFailed
@@ -41,6 +42,7 @@ from ...schemas.code import CodeBundle, CodeFile, ExperimentResults, FixRecord, 
 from ...schemas.common import ResearchBrief
 from ...schemas.plan import ExperimentPlan, FetchedResource, ResourceManifest
 from ...tools.resources.fetch import tree_size
+from ..tool_agent import run_tool_agent
 from . import sanity
 from .env import ExperimentEnv
 from .playbook import Diagnosis, declared_requirements, diagnose, halve_batch_size, merge_requirements
@@ -59,6 +61,7 @@ from .results import (
     validate,
     variation_notes,
 )
+from .smoke_tool import SmokeTestTool
 from .stats import flat
 
 SYSTEM = (
@@ -72,6 +75,13 @@ EDITABLE = "code/experiment.py"  # workspace-relative: the one file researchers 
 GENERATED = "generated/experiment.py"  # the latest version the tool wrote (outside the code: for the diff)
 _BLOCK = re.compile(r"```(?:python|py)?[ \t]*\r?\n(.*?)```", re.S)
 RUN_ARGS = ("condition", "seed", "resources", "smoke", "workdir")
+TOOLS_NOTE = """
+
+Work with your tools instead of replying with a code block: write the complete program to experiment.py
+(read_file it first if it exists, then edit_file or write_file), run smoke_test for every condition until each
+one passes, then reply with a short summary and call no tool. Keep all code in experiment.py: rtool restores
+run.py, launch.py and config.json afterwards and removes any other new file. Read-only tools can read the
+resource paths listed above."""
 BROAD = ("Exception", "BaseException")
 
 
@@ -80,6 +90,11 @@ class CoderConfig(BaseModel):
     max_rerun_rounds: int = Field(default=2, ge=0, le=5)  # repairs after failed full runs
     smoke_all_conditions: bool = True  # False: smoke-test only the baseline
     resource_files: int = Field(default=15, ge=0)  # files listed per resource in the prompt
+    # Write and fix experiment.py with the tool-calling loop (files + a smoke_test tool) instead of one
+    # reply per round; rtool's checks, smoke phase and gates still decide. None: whenever llm.tool_calls is set.
+    # Each turn is one LLM call (up to tool_turns per write or fix round): raise budgets.max_llm_calls if one is set.
+    tool_agent: bool | None = None
+    tool_turns: int = Field(default=40, ge=1, le=200)  # model turns per write or fix round
 
 
 def extract_code(text: str) -> str | None:
@@ -360,7 +375,8 @@ class CoderSession:
         self.runs_dir, self.scratch, self.results_dir = ws.mkdir("runs"), ws.mkdir("scratch"), ws.mkdir("results")
         self.resources = self.resource_paths()
         root = Path(self.manifest.root)
-        binds = [str(root)] if self.manifest.root and root.is_absolute() else []
+        # apptainer refuses to start with a bind whose source does not exist
+        binds = [str(root)] if self.manifest.root and root.is_absolute() and root.is_dir() else []
         factory = ctx.tools.get("experiment_env")
         self.env: ExperimentEnv = (
             factory(self.experiments, self.code) if factory else ExperimentEnv(self.experiments, self.code, binds=binds)
@@ -368,6 +384,7 @@ class CoderSession:
         self.metric_names = [m.name for m in self.plan.metrics]
         self.conditions = [c.name for c in self.plan.run_conditions()]
         self.plan_hash = plan_hash(self.plan)
+        self.use_tools = cfg.tool_agent if cfg.tool_agent is not None else ctx.app_config.llm.tool_calls
 
     # ------------------------------------------------------------------ driver
     def drive(self) -> None:
@@ -378,6 +395,8 @@ class CoderSession:
             "submit": self.submit,
             "collect": self.collect,
         }
+        if "tool_before" in self.state:  # a preempted tool loop left its half-done file: put the saved one back
+            self.restore_code(self.state.pop("tool_before"))
         if "phase" not in self.state:
             self.goto("write")
         while (phase := self.state["phase"]) != "finish":
@@ -416,12 +435,64 @@ class CoderSession:
 
     def ask_for_code(self, template: str, **variables: Any) -> str | None:
         prompt = self.render(template, **variables)
+        if self.use_tools:
+            return self.code_with_tools(prompt)
         for overrides in ({}, {"reasoning": "off"}):  # second try: no long chain of thought before the code
             reply = self.ctx.llm.chat(prompt, profile="code", system=SYSTEM, **overrides)
             code = extract_code(reply.text)
             if code is not None:
                 return code
         return None
+
+    def code_with_tools(self, prompt: str) -> str | None:
+        """Let the tool-calling loop write and smoke-test experiment.py; return its file, the folder as it was.
+
+        The callers then treat the result like a code block from the model (condition check, save_source).
+        """
+        self.require_llm()  # a CPU episode hands over before anything changes
+        path = self.code / "experiment.py"
+        before = path.read_text(encoding="utf-8") if path.exists() else None
+        existing = set(self.code.iterdir())  # top level only: code/.venv is the experiment env's
+        session = self.state["tool_sessions"] = self.state.get("tool_sessions", 0) + 1
+        self.state["tool_before"] = before  # drive() restores it if the episode dies mid-loop
+        self.ctx.checkpoint()
+        code, extra = None, []
+        try:
+            result = run_tool_agent(
+                self.ctx,
+                prompt + TOOLS_NOTE,
+                workspace=self.code,
+                tools=[SmokeTestTool(self)],
+                read_roots=[Path(p) for p in self.available().values()],
+                system=f"{DEFAULT_SYSTEM_PROMPT}\n\n{SYSTEM}",
+                max_turns=self.cfg.tool_turns,
+                name=f"coder-tools-{self.ctx.attempt}-{session}",  # a retry must not overwrite earlier logs,
+            )
+            code = path.read_text(encoding="utf-8") if path.exists() else None
+        finally:  # whatever happened, the folder goes back to rtool's last saved state
+            keep = {path, self.code / "requirements.txt"}
+            extra = sorted(p for p in self.code.iterdir() if p.is_file() and p not in existing and p not in keep)
+            for p in extra:
+                p.unlink()
+            self.restore_code(self.state.pop("tool_before"))
+        self.ctx.log(
+            f"tool loop {session}: {result.turns} turns, calls {result.tool_calls}"
+            + (f", stopped ({result.stopped})" if result.stopped else "")
+            + (f", removed {[p.name for p in extra]}" if extra else "")
+        )
+        if code is None or code == before or not re.search(r"^def run\(", code, re.M):
+            return None
+        return code.strip() + "\n"
+
+    def restore_code(self, before: str | None) -> None:
+        """experiment.py as it was before a tool loop, and the harness and config.json as rtool wrote them."""
+        path = self.code / "experiment.py"
+        if before is None:
+            path.unlink(missing_ok=True)
+        else:
+            atomic_write_text(path, before)
+        self.prepare()
+        self.ctx.checkpoint()
 
     # ---------------------------------------------------------------- files
     def resource_paths(self) -> dict[str, str]:
@@ -540,7 +611,10 @@ class CoderSession:
                     skeleton=self.skeleton(),
                 )
             if code is None:
-                raise StageFailed("the model did not return experiment.py in a ```python block", needs_human=True)
+                raise StageFailed(
+                    "the model did not return experiment.py" + ("" if self.use_tools else " in a ```python block"),
+                    needs_human=True,
+                )
             self.save_source(code, "llm")
         self.state.pop("gate_feedback", None)
         self.check()

@@ -17,6 +17,7 @@ llm:
   backend: vllm
   model: Qwen/Qwen3.6-35B-A3B
   served_model: qwen3.6
+  tool_calls: true   # the server below runs a tool-call parser: the Coder works with tools
   # Qwen3.6 ignores /think and /no_think: thinking is switched per call with the chat template's
   # enable_thinking argument. (configs/barkla-nemotron.yaml switches back to Nemotron.)
   reasoning_control: chat_template
@@ -41,8 +42,10 @@ llm:
     # content and then emits only newlines until max_tokens (the planner's ResourcePlan, 2026-10-12:
     # 32 lines of JSON, then 8192 tokens, three tries). xgrammar reads this only from the server
     # config, and only with the backend named explicitly.
+    # Tool calling for run_tool_agent / the Coder's tool_agent option: the Qwen3.6 card's own flags.
     extra_args: [--tensor-parallel-size, "2", --language-model-only, --safetensors-load-strategy, eager,
-                 --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}']
+                 --structured-outputs-config, '{"backend": "xgrammar", "disable_any_whitespace": true}',
+                 --enable-auto-tool-choice, --tool-call-parser, qwen3_coder]
     reasoning_parser: qwen3
     # FlashInfer's and DeepGEMM's MoE kernels JIT-compile into the read-only image (seen with Qwen3-Coder-Next
     # FP8, 2026-11-14: "Read-only file system: .../flashinfer/data/csrc"). Switching them off makes vLLM use

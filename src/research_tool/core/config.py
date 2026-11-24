@@ -158,6 +158,9 @@ class LLMConfig(_Section):
     # Spell out each JSON field (name, type, description) at the end of structured prompts, and require
     # every field in the constraint: the constraint alone never shows the model what a field is for.
     describe_schema: bool = True
+    # The server parses tool calls (vLLM --enable-auto-tool-choice --tool-call-parser ...). When set, agents that
+    # can work with tools (the Coder) do so by default; without a parser they keep their one-reply-per-step path.
+    tool_calls: bool = False
     server: LLMServerConfig = Field(default_factory=LLMServerConfig)
     profiles: dict[str, LLMProfile] = Field(default_factory=_default_profiles)
 

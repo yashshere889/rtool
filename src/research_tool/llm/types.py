@@ -8,8 +8,12 @@ from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
-    role: Literal["system", "user", "assistant"]
+    role: Literal["system", "user", "assistant", "tool"]
     content: str
+    # tool calling (OpenAI shape): an assistant turn's calls, and the call a "tool" message answers
+    tool_calls: list[dict[str, Any]] | None = None
+    tool_call_id: str | None = None
+    name: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -23,6 +27,7 @@ class ChatRequest(BaseModel):
     max_tokens: int = 2048
     thinking_budget: int | None = None
     json_schema: dict[str, Any] | None = None  # constrain the answer to this JSON Schema
+    tools: list[dict[str, Any]] | None = None  # OpenAI-style function tools the model may call
     stop: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)  # stage, purpose... (logging only)
 
@@ -34,6 +39,7 @@ class TokenUsage(BaseModel):
 
 class ChatResponse(BaseModel):
     text: str  # the answer, with any reasoning removed
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)  # OpenAI shape: id, type, function
     reasoning: str | None = None
     finish_reason: str = "stop"
     usage: TokenUsage = Field(default_factory=TokenUsage)
