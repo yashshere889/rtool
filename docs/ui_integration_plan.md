@@ -74,6 +74,13 @@ Backend items continue the old numbering from B19.
 * **Refusals**: when a run or plan is refused, show the reason as a clear card (today only an error toast
   via `lib/events.ts`). Reading the existing events is enough; no new backend.
 
+**Phase 3 as built (2026-11-24).** Synthesis page (read-only; no editor, as the plan said to ask first), fetch
+page (the existing downloads panel plus the `manual_resources` checkpoint), plan editor catch-up (all 12 resource
+sources with links; units plans show units instead of a seed count), `GET …/stats` and a "Where the time went" card,
+the tool-calling agent's sessions in the Code page's Tests tab, and a refusal wording in the failure card.
+**Not built: uploading files for a manual resource.** Those folders can lie outside the run, and datasets are far
+larger than the 8 MB request cap, so the page shows the folder to copy the files into on the cluster instead.
+
 ### Phase 4: operator views in Settings (read-only)
 
 * B25: `GET /packs`, `/pipelines`, `/agents`, `/doctor` wrapping the code behind the CLI commands.

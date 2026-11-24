@@ -24,6 +24,8 @@ const PAGES: Record<string, StageView> = {
   hypothesis: lazy(() => import("@/pages/hypotheses/HypothesesPage").then((m) => ({ default: m.HypothesesPage }))),
   planner: lazy(() => import("@/pages/plan/PlanPage").then((m) => ({ default: m.PlanPage }))),
   coder: lazy(() => import("@/pages/code/CodePage").then((m) => ({ default: m.CodePage }))),
+  synthesis: lazy(() => import("@/pages/synthesis/SynthesisPage").then((m) => ({ default: m.SynthesisPage }))),
+  fetch_resources: lazy(() => import("@/pages/fetch/FetchPage").then((m) => ({ default: m.FetchPage }))),
   protocol: lazy(() => import("@/pages/study/ProtocolPage").then((m) => ({ default: m.ProtocolPage }))),
   collect_data: lazy(() => import("@/pages/study/CollectPage").then((m) => ({ default: m.CollectPage }))),
   analyse_table: lazy(() => import("@/pages/study/AnalysePage").then((m) => ({ default: m.AnalysePage }))),

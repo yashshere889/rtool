@@ -210,6 +210,63 @@
     "title": "Affected",
     "type": "object"
    },
+   "AgentRunView": {
+    "description": "One run of the tool-calling agent (the Coder with tools): how long it worked and what its tools did.",
+    "properties": {
+     "denials": {
+      "title": "Denials",
+      "type": "integer"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "seconds": {
+      "title": "Seconds",
+      "type": "number"
+     },
+     "stopped": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stopped"
+     },
+     "tool_calls": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Tool Calls",
+      "type": "object"
+     },
+     "tool_errors": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Tool Errors",
+      "type": "object"
+     },
+     "turns": {
+      "title": "Turns",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "denials",
+     "name",
+     "seconds",
+     "stopped",
+     "tool_calls",
+     "tool_errors",
+     "turns"
+    ],
+    "title": "AgentRunView",
+    "type": "object"
+   },
    "ArtifactEnvelope": {
     "properties": {
      "content_hash": {
@@ -593,6 +650,14 @@
    },
    "CodeView": {
     "properties": {
+     "agent_runs": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/AgentRunView"
+      },
+      "title": "Agent Runs",
+      "type": "array"
+     },
      "baseline": {
       "anyOf": [
        {
@@ -758,6 +823,7 @@
      }
     },
     "required": [
+     "agent_runs",
      "baseline",
      "bundle_version",
      "code_root",
@@ -1399,6 +1465,282 @@
     "title": "EntityView",
     "type": "object"
    },
+   "EpisodeStats": {
+    "properties": {
+     "after_jobs": {
+      "items": {
+       "type": "string"
+      },
+      "title": "After Jobs",
+      "type": "array"
+     },
+     "attempt": {
+      "default": 1,
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "busy_fraction": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Busy Fraction"
+     },
+     "completion_tokens": {
+      "default": 0,
+      "title": "Completion Tokens",
+      "type": "integer"
+     },
+     "ended": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ended"
+     },
+     "episode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Episode"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "first_llm_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Llm S"
+     },
+     "gpu": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gpu"
+     },
+     "job": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job"
+     },
+     "kind": {
+      "default": "local",
+      "title": "Kind",
+      "type": "string"
+     },
+     "llm_busy_s": {
+      "default": 0.0,
+      "title": "Llm Busy S",
+      "type": "number"
+     },
+     "llm_calls": {
+      "default": 0,
+      "title": "Llm Calls",
+      "type": "integer"
+     },
+     "node": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Node"
+     },
+     "outcome": {
+      "default": "",
+      "title": "Outcome",
+      "type": "string"
+     },
+     "partition": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Partition"
+     },
+     "prompt_tokens": {
+      "default": 0,
+      "title": "Prompt Tokens",
+      "type": "integer"
+     },
+     "queue_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Queue S"
+     },
+     "ran": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Ran",
+      "type": "array"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "run_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Run S"
+     },
+     "server_failures": {
+      "default": 0,
+      "title": "Server Failures",
+      "type": "integer"
+     },
+     "server_ready": {
+      "default": false,
+      "title": "Server Ready",
+      "type": "boolean"
+     },
+     "server_start_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Server Start S"
+     },
+     "started": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started"
+     },
+     "submitted": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Submitted"
+     },
+     "truncated": {
+      "default": 0,
+      "title": "Truncated",
+      "type": "integer"
+     },
+     "wait_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wait S"
+     }
+    },
+    "required": [
+     "after_jobs",
+     "attempt",
+     "busy_fraction",
+     "completion_tokens",
+     "ended",
+     "episode",
+     "error",
+     "first_llm_s",
+     "gpu",
+     "job",
+     "kind",
+     "llm_busy_s",
+     "llm_calls",
+     "node",
+     "outcome",
+     "partition",
+     "prompt_tokens",
+     "queue_s",
+     "ran",
+     "reason",
+     "run_s",
+     "server_failures",
+     "server_ready",
+     "server_start_s",
+     "started",
+     "submitted",
+     "truncated",
+     "wait_s"
+    ],
+    "title": "EpisodeStats",
+    "type": "object"
+   },
    "EventPage": {
     "properties": {
      "cursor": {
@@ -1846,6 +2188,107 @@
      "paper_ids"
     ],
     "title": "GapView",
+    "type": "object"
+   },
+   "GateStats": {
+    "properties": {
+     "apply_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Apply S"
+     },
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "decided": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decided"
+     },
+     "gate": {
+      "title": "Gate",
+      "type": "string"
+     },
+     "human_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Human S"
+     },
+     "in_stage": {
+      "default": false,
+      "title": "In Stage",
+      "type": "boolean"
+     },
+     "opened": {
+      "title": "Opened",
+      "type": "string"
+     },
+     "resolved": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Resolved"
+     },
+     "result": {
+      "default": "open",
+      "title": "Result",
+      "type": "string"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "wait_s": {
+      "default": 0.0,
+      "title": "Wait S",
+      "type": "number"
+     }
+    },
+    "required": [
+     "apply_s",
+     "by",
+     "decided",
+     "gate",
+     "human_s",
+     "in_stage",
+     "opened",
+     "resolved",
+     "result",
+     "stage",
+     "wait_s"
+    ],
+    "title": "GateStats",
     "type": "object"
    },
    "HTTPValidationError": {
@@ -2304,6 +2747,58 @@
      "submitted"
     ],
     "title": "KickResult",
+    "type": "object"
+   },
+   "LLMTotals": {
+    "properties": {
+     "busy_s": {
+      "default": 0.0,
+      "title": "Busy S",
+      "type": "number"
+     },
+     "by_profile": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "By Profile",
+      "type": "object"
+     },
+     "calls": {
+      "default": 0,
+      "title": "Calls",
+      "type": "integer"
+     },
+     "completion_tokens": {
+      "default": 0,
+      "title": "Completion Tokens",
+      "type": "integer"
+     },
+     "latency_s": {
+      "default": 0.0,
+      "title": "Latency S",
+      "type": "number"
+     },
+     "prompt_tokens": {
+      "default": 0,
+      "title": "Prompt Tokens",
+      "type": "integer"
+     },
+     "truncated": {
+      "default": 0,
+      "title": "Truncated",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "busy_s",
+     "by_profile",
+     "calls",
+     "completion_tokens",
+     "latency_s",
+     "prompt_tokens",
+     "truncated"
+    ],
+    "title": "LLMTotals",
     "type": "object"
    },
    "LiteratureView": {
@@ -3468,6 +3963,63 @@
      "preemptible"
     ],
     "title": "PartitionView",
+    "type": "object"
+   },
+   "PhaseStats": {
+    "properties": {
+     "attempt": {
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "ended": {
+      "title": "Ended",
+      "type": "string"
+     },
+     "included": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Included"
+     },
+     "papers": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Papers"
+     },
+     "phase": {
+      "title": "Phase",
+      "type": "string"
+     },
+     "seconds": {
+      "title": "Seconds",
+      "type": "number"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "attempt",
+     "ended",
+     "included",
+     "papers",
+     "phase",
+     "seconds",
+     "stage"
+    ],
+    "title": "PhaseStats",
     "type": "object"
    },
    "PlaceholderInfo": {
@@ -4972,6 +5524,106 @@
     "title": "RunState",
     "type": "object"
    },
+   "RunStats": {
+    "properties": {
+     "auto_gates": {
+      "default": 0,
+      "title": "Auto Gates",
+      "type": "integer"
+     },
+     "episodes": {
+      "items": {
+       "$ref": "#/components/schemas/EpisodeStats"
+      },
+      "title": "Episodes",
+      "type": "array"
+     },
+     "first": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First"
+     },
+     "gates": {
+      "items": {
+       "$ref": "#/components/schemas/GateStats"
+      },
+      "title": "Gates",
+      "type": "array"
+     },
+     "last": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last"
+     },
+     "llm": {
+      "$ref": "#/components/schemas/LLMTotals"
+     },
+     "notes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+     },
+     "phases": {
+      "items": {
+       "$ref": "#/components/schemas/PhaseStats"
+      },
+      "title": "Phases",
+      "type": "array"
+     },
+     "run": {
+      "default": "",
+      "title": "Run",
+      "type": "string"
+     },
+     "servers": {
+      "items": {
+       "$ref": "#/components/schemas/ServerStart"
+      },
+      "title": "Servers",
+      "type": "array"
+     },
+     "stages": {
+      "items": {
+       "$ref": "#/components/schemas/StageStats"
+      },
+      "title": "Stages",
+      "type": "array"
+     },
+     "wall": {
+      "$ref": "#/components/schemas/WallTime"
+     }
+    },
+    "required": [
+     "auto_gates",
+     "episodes",
+     "first",
+     "gates",
+     "last",
+     "llm",
+     "notes",
+     "phases",
+     "run",
+     "servers",
+     "stages",
+     "wall"
+    ],
+    "title": "RunStats",
+    "type": "object"
+   },
    "RunSummary": {
     "properties": {
      "created_at": {
@@ -5254,6 +5906,121 @@
     "title": "ServerSettings",
     "type": "object"
    },
+   "ServerStart": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "episode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Episode"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "gpu": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gpu"
+     },
+     "model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "node": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Node"
+     },
+     "ok": {
+      "default": true,
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "partition": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Partition"
+     },
+     "seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seconds"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     }
+    },
+    "required": [
+     "at",
+     "episode",
+     "error",
+     "gpu",
+     "model",
+     "node",
+     "ok",
+     "partition",
+     "seconds",
+     "stage"
+    ],
+    "title": "ServerStart",
+    "type": "object"
+   },
    "SessionRequest": {
     "properties": {
      "token": {
@@ -5302,6 +6069,96 @@
      "seconds"
     ],
     "title": "SmokeView",
+    "type": "object"
+   },
+   "StageStats": {
+    "properties": {
+     "active_s": {
+      "default": 0.0,
+      "title": "Active S",
+      "type": "number"
+     },
+     "attempts": {
+      "default": 0,
+      "title": "Attempts",
+      "type": "integer"
+     },
+     "completion_tokens": {
+      "default": 0,
+      "title": "Completion Tokens",
+      "type": "integer"
+     },
+     "first_started": {
+      "title": "First Started",
+      "type": "string"
+     },
+     "last": {
+      "default": "",
+      "title": "Last",
+      "type": "string"
+     },
+     "last_ended": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Ended"
+     },
+     "llm_busy_s": {
+      "default": 0.0,
+      "title": "Llm Busy S",
+      "type": "number"
+     },
+     "llm_calls": {
+      "default": 0,
+      "title": "Llm Calls",
+      "type": "integer"
+     },
+     "prompt_tokens": {
+      "default": 0,
+      "title": "Prompt Tokens",
+      "type": "integer"
+     },
+     "server_start_s": {
+      "default": 0.0,
+      "title": "Server Start S",
+      "type": "number"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "truncated": {
+      "default": 0,
+      "title": "Truncated",
+      "type": "integer"
+     },
+     "turns": {
+      "default": 0,
+      "title": "Turns",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "active_s",
+     "attempts",
+     "completion_tokens",
+     "first_started",
+     "last",
+     "last_ended",
+     "llm_busy_s",
+     "llm_calls",
+     "prompt_tokens",
+     "server_start_s",
+     "stage",
+     "truncated",
+     "turns"
+    ],
+    "title": "StageStats",
     "type": "object"
    },
    "StageStatus": {
@@ -5737,6 +6594,93 @@
      "values"
     ],
     "title": "Variable",
+    "type": "object"
+   },
+   "WallTime": {
+    "description": "The run's wall time split into exclusive parts (an instant counts for the first that applies).",
+    "properties": {
+     "failed_s": {
+      "default": 0.0,
+      "title": "Failed S",
+      "type": "number"
+     },
+     "gpu_cold_start_s": {
+      "default": 0.0,
+      "title": "Gpu Cold Start S",
+      "type": "number"
+     },
+     "gpu_episodes": {
+      "default": 0,
+      "title": "Gpu Episodes",
+      "type": "integer"
+     },
+     "gpu_llm_busy_s": {
+      "default": 0.0,
+      "title": "Gpu Llm Busy S",
+      "type": "number"
+     },
+     "gpu_run_s": {
+      "default": 0.0,
+      "title": "Gpu Run S",
+      "type": "number"
+     },
+     "gpu_startup_bounded": {
+      "default": 0,
+      "title": "Gpu Startup Bounded",
+      "type": "integer"
+     },
+     "gpu_startup_s": {
+      "default": 0.0,
+      "title": "Gpu Startup S",
+      "type": "number"
+     },
+     "idle_s": {
+      "default": 0.0,
+      "title": "Idle S",
+      "type": "number"
+     },
+     "jobs_s": {
+      "default": 0.0,
+      "title": "Jobs S",
+      "type": "number"
+     },
+     "person_s": {
+      "default": 0.0,
+      "title": "Person S",
+      "type": "number"
+     },
+     "queue_s": {
+      "default": 0.0,
+      "title": "Queue S",
+      "type": "number"
+     },
+     "running_s": {
+      "default": 0.0,
+      "title": "Running S",
+      "type": "number"
+     },
+     "total_s": {
+      "default": 0.0,
+      "title": "Total S",
+      "type": "number"
+     }
+    },
+    "required": [
+     "failed_s",
+     "gpu_cold_start_s",
+     "gpu_episodes",
+     "gpu_llm_busy_s",
+     "gpu_run_s",
+     "gpu_startup_bounded",
+     "gpu_startup_s",
+     "idle_s",
+     "jobs_s",
+     "person_s",
+     "queue_s",
+     "running_s",
+     "total_s"
+    ],
+    "title": "WallTime",
     "type": "object"
    },
    "WorkerState": {
@@ -8349,6 +9293,58 @@
     "summary": "Impact",
     "tags": [
      "actions"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/stats": {
+   "get": {
+    "description": "Where the run's wall time went (what `rtool stats` prints), read from its event log.",
+    "operationId": "stats_api_runs__project___run_id__stats_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunStats"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Stats",
+    "tags": [
+     "runs"
     ]
    }
   },

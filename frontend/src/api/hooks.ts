@@ -18,6 +18,7 @@ import type {
   HypothesesView,
   PlanCheck,
   ProtocolCheck,
+  RunStats,
   ProtocolView,
   CollectView,
   Received,
@@ -385,6 +386,15 @@ export function useResults(project: string, runId: string, enabled = true) {
     queryKey: ["artifact", project, runId, "results"],
     queryFn: () => api<ResultsView>(`${base(project, runId)}/results`),
     enabled,
+  });
+}
+
+/** Where the run's wall time went (what `rtool stats` prints). */
+export function useRunStats(project: string, runId: string) {
+  return useQuery({
+    queryKey: ["stats", project, runId],
+    queryFn: () => api<RunStats>(`${base(project, runId)}/stats`),
+    staleTime: 30_000,
   });
 }
 

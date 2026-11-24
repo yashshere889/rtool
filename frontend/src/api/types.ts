@@ -73,6 +73,8 @@ export type LogText = Schemas["LogText"];
 export type ResultsView = Schemas["ResultsView"];
 export type ExperimentResults = Schemas["ExperimentResults"];
 
+export type RunStats = Schemas["RunStats"];
+export type AgentRunView = Schemas["AgentRunView"];
 export type ProtocolView = Schemas["ProtocolView"];
 export type Protocol = Schemas["Protocol"];
 export type ProtocolCheck = Schemas["ProtocolCheck"];

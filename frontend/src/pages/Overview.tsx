@@ -1,7 +1,7 @@
 import { CirclePause, Loader, Play, Square } from "lucide-react";
 import { useState } from "react";
 
-import { useResume, useSettings, useStop } from "@/api/hooks";
+import { useResume, useRunStats, useSettings, useStop } from "@/api/hooks";
 import type { RunDetail } from "@/api/types";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { CheckpointCard } from "@/components/CheckpointCard";
@@ -13,7 +13,7 @@ import { StageProgress } from "@/components/StageProgress";
 import { StageStepper } from "@/components/StageStepper";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { compactNumber, dateTime, timeAgo } from "@/lib/format";
+import { compactNumber, dateTime, duration, timeAgo } from "@/lib/format";
 import { runHeadline, stageTitle } from "@/lib/stages";
 
 function RightNow({ run }: { run: RunDetail }) {
@@ -100,6 +100,48 @@ function Usage({ run }: { run: RunDetail }) {
   );
 }
 
+/** Where the run's wall time went, split into who was working: the tool, a person, the cluster queue. */
+function TimeSpent({ run }: { run: RunDetail }) {
+  const stats = useRunStats(run.project, run.run_id);
+  if (!stats.data) return <p className="text-sm text-ink-soft">{stats.isError ? "Nothing recorded yet." : "Loading…"}</p>;
+  const w = stats.data.wall;
+  const parts: [string, number][] = [
+    ["The tool was working", w.running_s],
+    ["Waiting for a decision", w.person_s],
+    ["Waiting for cluster jobs", w.jobs_s],
+    ["In the cluster queue", w.queue_s],
+    ["A failed stage waited for you", w.failed_s],
+  ];
+  return (
+    <div className="space-y-3 text-sm">
+      <p>
+        <span className="text-ink-soft">Since the start:</span> <span className="font-semibold">{duration(w.total_s)}</span>
+      </p>
+      <dl className="space-y-1">
+        {parts
+          .filter(([, seconds]) => seconds >= 1)
+          .map(([label, seconds]) => (
+            <div key={label} className="flex justify-between gap-3">
+              <dt className="text-ink-soft">{label}</dt>
+              <dd className="tabular-nums">{duration(seconds)}</dd>
+            </div>
+          ))}
+      </dl>
+      <details>
+        <summary className="cursor-pointer text-ink-soft">By stage</summary>
+        <dl className="mt-2 space-y-1">
+          {stats.data.stages.map((s) => (
+            <div key={s.stage} className="flex justify-between gap-3">
+              <dt>{stageTitle(s.stage)}</dt>
+              <dd className="tabular-nums">{duration(s.active_s)}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </div>
+  );
+}
+
 export function Overview() {
   const { run } = useRunContext();
   const [feedStage, setFeedStage] = useState("");
@@ -156,6 +198,12 @@ export function Overview() {
             <CardHeader title="Usage" />
             <CardBody>
               <Usage run={run} />
+            </CardBody>
+          </Card>
+          <Card>
+            <CardHeader title="Where the time went" />
+            <CardBody>
+              <TimeSpent run={run} />
             </CardBody>
           </Card>
           <Card>

@@ -8,6 +8,11 @@ import { num, repairLabel } from "@/lib/code";
 import { LogDialog } from "./LogDialog";
 import { Section } from "../plan/PlanRead";
 
+const STOPPED: Record<string, string> = {
+  max_turns: "Stopped: too many turns",
+  max_tokens: "Stopped: answer cut off",
+  context_full: "Stopped: conversation too long",
+};
 const PHASES: Record<string, string> = { check: "before running", smoke: "CPU test", full: "cluster runs" };
 
 /** The CPU smoke tests, what the tool repaired along the way, and the logs. */
@@ -16,6 +21,37 @@ export function TestsTab({ run, view }: { run: RunDetail; view: CodeView }) {
   const smokeLog = (condition: string) => view.logs.find((l) => l.name === `logs/smoke-${condition}.log`);
   return (
     <div className="space-y-4">
+      {view.agent_runs.length > 0 && (
+        <Section title="The coding agent's tools">
+          <p className="text-sm text-ink-soft">
+            When the model can call tools, it writes and runs the code itself. Each row is one working session.
+          </p>
+          <ul className="divide-y divide-line text-sm">
+            {view.agent_runs.map((a, i) => {
+              const errors = Object.values(a.tool_errors).reduce((n, v) => n + v, 0);
+              const calls = Object.values(a.tool_calls).reduce((n, v) => n + v, 0);
+              return (
+                <li key={i} className="space-y-1 py-2">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{a.name}</span>
+                    <span className="text-ink-soft tabular-nums">
+                      {a.turns} turns · {calls} tool calls · {a.seconds.toFixed(0)} s
+                    </span>
+                    {errors > 0 && <Badge tone="warn">{errors} tool errors</Badge>}
+                    {a.denials > 0 && <Badge tone="warn">{a.denials} refused by the sandbox</Badge>}
+                    {a.stopped && <Badge tone="bad">{STOPPED[a.stopped] ?? a.stopped}</Badge>}
+                  </p>
+                  <p className="text-xs text-ink-soft">
+                    {Object.entries(a.tool_calls)
+                      .map(([tool, n]) => `${tool} ×${n}`)
+                      .join(", ")}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
       <Section title="Smoke tests on a CPU">
         <p className="text-sm text-ink-soft">
           Each condition runs once on a tiny problem before any GPU time is asked for, to catch crashes and wrong

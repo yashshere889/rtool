@@ -57,6 +57,18 @@ class SmokeView(BaseModel):
     error: str = ""
 
 
+class AgentRunView(BaseModel):
+    """One run of the tool-calling agent (the Coder with tools): how long it worked and what its tools did."""
+
+    name: str
+    turns: int
+    stopped: str | None  # why it stopped early (max_turns, max_tokens, context_full), None: it finished
+    tool_calls: dict[str, int]
+    tool_errors: dict[str, int]
+    denials: int  # tool calls the sandbox refused
+    seconds: float
+
+
 class FixView(BaseModel):
     ts: str
     phase: str
@@ -108,6 +120,7 @@ class CodeView(BaseModel):
     metrics: list[str]
     smoke: list[SmokeView]  # the latest round of smoke tests
     fixes: list[FixView]
+    agent_runs: list[AgentRunView] = []
     jobs: list[JobView]
     runs: list[RunCell]
     logs: list[LogView]
@@ -347,6 +360,20 @@ def code_view(project: str, run_id: str, request: Request) -> CodeView:
         metrics=[m.name for m in plan.metrics] if plan else [],
         smoke=smoke,
         fixes=fixes,
+        agent_runs=[
+            AgentRunView(
+                name=str(d.get("name", "")),
+                turns=int(d.get("turns") or 0),
+                stopped=d.get("stopped"),
+                tool_calls=dict(d.get("tool_calls") or {}),
+                tool_errors=dict(d.get("tool_errors") or {}),
+                denials=int(d.get("denials") or 0),
+                seconds=float(d.get("seconds") or 0),
+            )
+            for e in events
+            if e.get("kind") == "tool_agent"
+            for d in [e.get("data") or {}]
+        ],
         jobs=jobs,
         runs=_runs(code, plan, jobs),
         logs=logs,

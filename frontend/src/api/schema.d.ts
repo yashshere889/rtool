@@ -739,6 +739,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{project}/{run_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stats
+         * @description Where the run's wall time went (what `rtool stats` prints), read from its event log.
+         */
+        get: operations["stats_api_runs__project___run_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{project}/{run_id}/stop": {
         parameters: {
             query?: never;
@@ -867,6 +887,30 @@ export interface components {
             /** Stage */
             stage: string;
             status: components["schemas"]["StageStatus"];
+        };
+        /**
+         * AgentRunView
+         * @description One run of the tool-calling agent (the Coder with tools): how long it worked and what its tools did.
+         */
+        AgentRunView: {
+            /** Denials */
+            denials: number;
+            /** Name */
+            name: string;
+            /** Seconds */
+            seconds: number;
+            /** Stopped */
+            stopped: string | null;
+            /** Tool Calls */
+            tool_calls: {
+                [key: string]: number;
+            };
+            /** Tool Errors */
+            tool_errors: {
+                [key: string]: number;
+            };
+            /** Turns */
+            turns: number;
         };
         /** ArtifactEnvelope */
         ArtifactEnvelope: {
@@ -1037,6 +1081,11 @@ export interface components {
         };
         /** CodeView */
         CodeView: {
+            /**
+             * Agent Runs
+             * @default []
+             */
+            agent_runs: components["schemas"]["AgentRunView"][];
             /** Baseline */
             baseline: string | null;
             /** Bundle Version */
@@ -1316,6 +1365,95 @@ export interface components {
             /** Paper Ids */
             paper_ids: string[];
         };
+        /** EpisodeStats */
+        EpisodeStats: {
+            /** After Jobs */
+            after_jobs: string[];
+            /**
+             * Attempt
+             * @default 1
+             */
+            attempt: number;
+            /** Busy Fraction */
+            busy_fraction: number | null;
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /** Ended */
+            ended: string | null;
+            /** Episode */
+            episode: string | null;
+            /** Error */
+            error: string | null;
+            /** First Llm S */
+            first_llm_s: number | null;
+            /** Gpu */
+            gpu: string | null;
+            /** Job */
+            job: string | null;
+            /**
+             * Kind
+             * @default local
+             */
+            kind: string;
+            /**
+             * Llm Busy S
+             * @default 0
+             */
+            llm_busy_s: number;
+            /**
+             * Llm Calls
+             * @default 0
+             */
+            llm_calls: number;
+            /** Node */
+            node: string | null;
+            /**
+             * Outcome
+             * @default
+             */
+            outcome: string;
+            /** Partition */
+            partition: string | null;
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /** Queue S */
+            queue_s: number | null;
+            /** Ran */
+            ran: string[];
+            /** Reason */
+            reason: string | null;
+            /** Run S */
+            run_s: number | null;
+            /**
+             * Server Failures
+             * @default 0
+             */
+            server_failures: number;
+            /**
+             * Server Ready
+             * @default false
+             */
+            server_ready: boolean;
+            /** Server Start S */
+            server_start_s: number | null;
+            /** Started */
+            started: string | null;
+            /** Submitted */
+            submitted: string | null;
+            /**
+             * Truncated
+             * @default 0
+             */
+            truncated: number;
+            /** Wait S */
+            wait_s: number | null;
+        };
         /** EventPage */
         EventPage: {
             /** Cursor */
@@ -1497,6 +1635,40 @@ export interface components {
             /** Paper Ids */
             paper_ids: string[];
         };
+        /** GateStats */
+        GateStats: {
+            /** Apply S */
+            apply_s: number | null;
+            /** By */
+            by: string | null;
+            /** Decided */
+            decided: string | null;
+            /** Gate */
+            gate: string;
+            /** Human S */
+            human_s: number | null;
+            /**
+             * In Stage
+             * @default false
+             */
+            in_stage: boolean;
+            /** Opened */
+            opened: string;
+            /** Resolved */
+            resolved: string | null;
+            /**
+             * Result
+             * @default open
+             */
+            result: string;
+            /** Stage */
+            stage: string;
+            /**
+             * Wait S
+             * @default 0
+             */
+            wait_s: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1650,6 +1822,43 @@ export interface components {
             job_id: string | null;
             /** Submitted */
             submitted: boolean;
+        };
+        /** LLMTotals */
+        LLMTotals: {
+            /**
+             * Busy S
+             * @default 0
+             */
+            busy_s: number;
+            /** By Profile */
+            by_profile: {
+                [key: string]: number;
+            };
+            /**
+             * Calls
+             * @default 0
+             */
+            calls: number;
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /**
+             * Latency S
+             * @default 0
+             */
+            latency_s: number;
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /**
+             * Truncated
+             * @default 0
+             */
+            truncated: number;
         };
         /** LiteratureView */
         LiteratureView: {
@@ -2042,6 +2251,23 @@ export interface components {
             note: string;
             /** Preemptible */
             preemptible: boolean;
+        };
+        /** PhaseStats */
+        PhaseStats: {
+            /** Attempt */
+            attempt: number;
+            /** Ended */
+            ended: string;
+            /** Included */
+            included: number | null;
+            /** Papers */
+            papers: number | null;
+            /** Phase */
+            phase: string;
+            /** Seconds */
+            seconds: number;
+            /** Stage */
+            stage: string;
         };
         /** PlaceholderInfo */
         PlaceholderInfo: {
@@ -2624,6 +2850,37 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** RunStats */
+        RunStats: {
+            /**
+             * Auto Gates
+             * @default 0
+             */
+            auto_gates: number;
+            /** Episodes */
+            episodes: components["schemas"]["EpisodeStats"][];
+            /** First */
+            first: string | null;
+            /** Gates */
+            gates: components["schemas"]["GateStats"][];
+            /** Last */
+            last: string | null;
+            llm: components["schemas"]["LLMTotals"];
+            /** Notes */
+            notes: string[];
+            /** Phases */
+            phases: components["schemas"]["PhaseStats"][];
+            /**
+             * Run
+             * @default
+             */
+            run: string;
+            /** Servers */
+            servers: components["schemas"]["ServerStart"][];
+            /** Stages */
+            stages: components["schemas"]["StageStats"][];
+            wall: components["schemas"]["WallTime"];
+        };
         /** RunSummary */
         RunSummary: {
             /**
@@ -2735,6 +2992,32 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** ServerStart */
+        ServerStart: {
+            /** At */
+            at: string;
+            /** Episode */
+            episode: string | null;
+            /** Error */
+            error: string | null;
+            /** Gpu */
+            gpu: string | null;
+            /** Model */
+            model: string | null;
+            /** Node */
+            node: string | null;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Partition */
+            partition: string | null;
+            /** Seconds */
+            seconds: number | null;
+            /** Stage */
+            stage: string | null;
+        };
         /** SessionRequest */
         SessionRequest: {
             /** Token */
@@ -2757,6 +3040,65 @@ export interface components {
             ok: boolean;
             /** Seconds */
             seconds: number;
+        };
+        /** StageStats */
+        StageStats: {
+            /**
+             * Active S
+             * @default 0
+             */
+            active_s: number;
+            /**
+             * Attempts
+             * @default 0
+             */
+            attempts: number;
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /** First Started */
+            first_started: string;
+            /**
+             * Last
+             * @default
+             */
+            last: string;
+            /** Last Ended */
+            last_ended: string | null;
+            /**
+             * Llm Busy S
+             * @default 0
+             */
+            llm_busy_s: number;
+            /**
+             * Llm Calls
+             * @default 0
+             */
+            llm_calls: number;
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /**
+             * Server Start S
+             * @default 0
+             */
+            server_start_s: number;
+            /** Stage */
+            stage: string;
+            /**
+             * Truncated
+             * @default 0
+             */
+            truncated: number;
+            /**
+             * Turns
+             * @default 0
+             */
+            turns: number;
         };
         /**
          * StageStatus
@@ -2932,6 +3274,77 @@ export interface components {
              * @description Levels or settings, for independent variables
              */
             values: string[];
+        };
+        /**
+         * WallTime
+         * @description The run's wall time split into exclusive parts (an instant counts for the first that applies).
+         */
+        WallTime: {
+            /**
+             * Failed S
+             * @default 0
+             */
+            failed_s: number;
+            /**
+             * Gpu Cold Start S
+             * @default 0
+             */
+            gpu_cold_start_s: number;
+            /**
+             * Gpu Episodes
+             * @default 0
+             */
+            gpu_episodes: number;
+            /**
+             * Gpu Llm Busy S
+             * @default 0
+             */
+            gpu_llm_busy_s: number;
+            /**
+             * Gpu Run S
+             * @default 0
+             */
+            gpu_run_s: number;
+            /**
+             * Gpu Startup Bounded
+             * @default 0
+             */
+            gpu_startup_bounded: number;
+            /**
+             * Gpu Startup S
+             * @default 0
+             */
+            gpu_startup_s: number;
+            /**
+             * Idle S
+             * @default 0
+             */
+            idle_s: number;
+            /**
+             * Jobs S
+             * @default 0
+             */
+            jobs_s: number;
+            /**
+             * Person S
+             * @default 0
+             */
+            person_s: number;
+            /**
+             * Queue S
+             * @default 0
+             */
+            queue_s: number;
+            /**
+             * Running S
+             * @default 0
+             */
+            running_s: number;
+            /**
+             * Total S
+             * @default 0
+             */
+            total_s: number;
         };
         /**
          * WorkerState
@@ -4355,6 +4768,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Affected"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stats_api_runs__project___run_id__stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunStats"];
                 };
             };
             /** @description Validation Error */

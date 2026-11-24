@@ -58,4 +58,20 @@ describe("FailureCard", () => {
     expect(screen.getByText("Technical details (for whoever maintains rtool)")).toBeInTheDocument();
     expect(screen.getByText(/Traceback \.\.\./)).toBeInTheDocument();
   });
+
+  it("says a refusal is a rule, not a fault", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ cursor: 0, events: [] }))));
+    const refused = { ...stage, id: "protocol", agent: "protocol", last_error: "rtool refuses to write this protocol: it designs a toxin" } as unknown as StageSummary;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <FailureCard run={run} stage={refused} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/rtool will not do this/)).toBeInTheDocument();
+    expect(screen.getByText(/a rule that applies to every field, not a fault/)).toBeInTheDocument();
+    expect(screen.getByText(/it designs a toxin/)).toBeInTheDocument();
+  });
 });

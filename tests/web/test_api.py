@@ -255,3 +255,12 @@ def test_a_stage_error_names_run_files_without_server_paths(runs_root: Path, mon
     run = c.get("/api/runs/sleep-demo/1-literature").json()
     assert run["stages"][0]["last_error"] == "Fix work/code/experiment.py by hand."
     assert str(runs_root) not in c.get("/api/runs").text  # the projects list carries the stage errors too
+
+
+def test_where_the_time_went(runs_root: Path) -> None:
+    c = client(runs_root)
+    stats = c.get("/api/runs/sleep-demo/6-done/stats").json()
+    assert stats["wall"]["total_s"] >= 0 and {s["stage"] for s in stats["stages"]} >= {"literature", "plan", "code"}
+    assert stats["llm"]["calls"] > 0 and any(g["gate"] == "final_report" for g in stats["gates"])
+    assert str(runs_root) not in json.dumps(stats)
+    assert c.get("/api/runs/sleep-demo/nope/stats").status_code == 404

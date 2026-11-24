@@ -89,7 +89,7 @@ export function ComputeSummary({ plan, cluster }: { plan: ExperimentPlan; cluste
         <div>
           <dt className="text-xs text-ink-soft">Runs</dt>
           <dd>
-            {c.runs} ({plan.conditions.length + plan.ablations.length} conditions × {plan.seeds.length} seeds)
+            {c.runs} ({plan.conditions.length + plan.ablations.length} conditions{plan.replicates === "units" ? "" : ` × ${plan.seeds.length} seeds`})
           </dd>
         </div>
         {c.justification && (
@@ -208,7 +208,9 @@ export function PlanRead({ plan, cluster, title }: { plan: ExperimentPlan; clust
           rows={plan.statistical_tests.map((t) => [t.test, t.comparison, String(t.alpha), t.correction])}
         />
         <p className="text-sm">
-          {plan.seeds.length} independent runs (seeds) per condition.
+          {plan.replicates === "units"
+            ? `The repetitions are ${plan.unit || "units"}, each one an independent unit of analysis.`
+            : `${plan.seeds.length} independent runs (seeds) per condition.`}
         </p>
       </Section>
 

@@ -163,9 +163,15 @@ export function PlanForm({
         <Sub title="Statistical tests">
           <RecordList items={value.statistical_tests} onChange={(v) => set("statistical_tests", v)} fields={TEST} blank={BLANK.test as never} noun="test" />
         </Sub>
-        <Field label="Independent runs (seeds) per condition" hint={`The planner asks for at least ${cluster.min_seeds}.`} htmlFor={ids.seeds} className="max-w-xs">
-          <NumberInput id={ids.seeds} min={1} max={50} value={value.seeds.length} onValue={(n) => set("seeds", seedList(n))} />
-        </Field>
+        {value.replicates === "units" ? (
+          <p className="text-sm text-ink-soft">
+            The repetitions are {value.unit || "units"}, each one an independent unit of analysis, so there is no seed count to set.
+          </p>
+        ) : (
+          <Field label="Independent runs (seeds) per condition" hint={`The planner asks for at least ${cluster.min_seeds}.`} htmlFor={ids.seeds} className="max-w-xs">
+            <NumberInput id={ids.seeds} min={1} max={50} value={value.seeds.length} onValue={(n) => set("seeds", seedList(n))} />
+          </Field>
+        )}
       </Section>
 
       <Section title="Procedure">

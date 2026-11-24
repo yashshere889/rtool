@@ -14,12 +14,14 @@ generic page (its checkpoint, problems, every version of its outputs as JSON, ac
 |---|---|---|
 | Projects | every run with its stage dots and a one-line status | open one, start new research |
 | New research | question, review mode, optional questions, constraints, start queries, field, GPU-hour cap | start |
-| Overview | open checkpoints, failures, stage stepper, activity feed, queued decisions, usage | decide, retry, undo, resume, stop |
+| Overview | open checkpoints, failures, stage stepper, activity feed, queued decisions, usage, where the wall time went | decide, retry, undo, resume, stop |
 | Literature | a card per paper (relevance, how it was found, read in full or not, AI summary), filters; Map, Gaps, State of the art, full-text Search | open the paper, Summary / Methodology / Key findings / Limitations / Gaps / Datasets / References / Cite, upload a PDF you have, mark papers Keep or Drop, approve or request changes, reopen the checkpoint later |
 | Paper reader | the PDF or web copy, or the text with every verified finding (or a quoted passage) marked | jump from a finding to its sentence |
 | Hypotheses | the shortlist side by side: design, novelty, feasibility, scores and judges' comments, papers used, citations with "show in paper", references; a comparison table; the other drafts and why they were set aside | choose, edit and choose (with a note for the planner), ask for new ones, change your choice later |
 | Experiment plan | the plan as a document; datasets and models with links; compute against the budget; downloads after approval | edit any part (form or JSON) with live checks, see what applying redoes, approve |
 | Code & runs | progress strip; every file; smoke tests; what the tool repaired; a condition × seed grid of runs with logs; results per metric | edit `experiment.py` (tested again before any GPU time), compare with the generated code, approve GPU time, cancel jobs, download the code |
+| Datasets & models | each dataset and model of the approved plan: found, downloaded, installed later, or needs you (with the folder to put its files in) | continue or request plan changes at the "datasets you have to provide" checkpoint |
+| Literature review (synthesis pipeline) | every sentence with the findings and quotes it rests on, the sentences left out and why, the checks | open a quote in the paper, approve or request another round |
 | Study protocol (study pipeline) | the design, sample size and the seeded allocation table, materials, blinding, the data format, a checklist | edit the effect size, materials and blinding (the sample size, allocation and checklist are worked out again), approve |
 | Study data | what to bring back, with a template that has the units and conditions filled in | upload data.csv (checked against the protocol before it is kept, every problem listed), then approve the checkpoint |
 | Analysis | results per metric from rtool's own analysis script, and the script | read |
