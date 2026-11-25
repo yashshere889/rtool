@@ -162,7 +162,7 @@ class GrepTool(Tool[GrepInput]):
         target = os.path.relpath(base, ctx.cwd) if base.is_relative_to(ctx.cwd) else str(base)
         args += ["--", inp.pattern] + ([] if target == "." else [target])
         proc = await asyncio.create_subprocess_exec(
-            *args, cwd=ctx.cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            *args, cwd=ctx.cwd, env=ctx.env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         try:
             out, err = await proc.communicate()

@@ -44,6 +44,7 @@ from ..codeagent import (
 )
 from ..codeagent import Agent as ToolLoop
 from ..codeagent.tools.bash import _subject, split_command  # the same split the permission engine uses
+from ..core.secrets import without_secrets
 from ..llm.vllm_backend import LLMRequestError
 from .base import Agent, AgentContext, StageFailed, artifact_type, register_agent
 
@@ -115,7 +116,8 @@ async def _run(
     max_turns: int,
     name: str,
 ) -> ToolAgentResult:
-    tctx = ToolContext(workspace=workspace, scratch_dir=ctx.workspace.mkdir("scratch") / name)
+    # the model's commands never see the API keys (`echo $HF_TOKEN` counts as read-only and runs unasked)
+    tctx = ToolContext(workspace=workspace, scratch_dir=ctx.workspace.mkdir("scratch") / name, env=without_secrets())
     allow, deny = [*ALLOW, *allow], [*DENY, *deny]
     allow_rules = [Rule.parse(r) for r in allow]
     roots = [p.resolve() for p in read_roots]

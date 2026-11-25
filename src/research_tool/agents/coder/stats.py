@@ -1,8 +1,8 @@
 """Small, dependency-free statistics for experiment results (no scipy on the orchestrator).
 
 Means with t-based 95 % confidence intervals, paired and Welch t-tests, exact
-Wilcoxon signed-rank and Mann-Whitney U tests for the small samples typical of
-seeds-per-condition, Cohen's d, and Holm/Bonferroni corrections. Every number
+Wilcoxon signed-rank and Mann-Whitney U tests (a normal approximation, named as
+such, only for samples too big to count exactly), Cohen's d, and Holm/Bonferroni corrections. Every number
 the Writer reports comes from here, deterministically. When nothing varies
 across seeds there is no noise to test against, and no difference is significant;
 the same holds when both conditions vary but differ by the same amount every seed.
@@ -10,7 +10,6 @@ the same holds when both conditions vary but differ by the same amount every see
 
 from __future__ import annotations
 
-import itertools
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -203,8 +202,52 @@ def _ranks(values: Sequence[float]) -> list[float]:
     return ranks
 
 
+EXACT_WORK = 20_000_000  # table cells an exact rank test may fill (about a second); above it, a normal approximation
+APPROXIMATE = " (normal approximation)"  # added to a rank test's name when its p-value is not exact
+
+
+def _sum_counts(values: Sequence[int], size: int | None = None) -> list[int] | None:
+    """How many subsets of ``values`` (non-negative integers) have each sum: ``counts[s]``.
+
+    With ``size``, only subsets of exactly that many values. None if the table would pass ``EXACT_WORK``.
+    This is the exact null distribution of a rank sum, counted instead of enumerated (2^n or C(n, k) subsets).
+    """
+    total, n = sum(values), len(values)
+    if n * ((size or 0) + 1) * (total + 1) > EXACT_WORK:
+        return None
+    if size is None:
+        counts = [1] + [0] * total
+        for v in values:
+            for s in range(total, v - 1, -1):
+                counts[s] += counts[s - v]
+        return counts
+    table = [[1] + [0] * total] + [[0] * (total + 1) for _ in range(size)]  # table[k][s]: k values summing to s
+    for i, v in enumerate(values):
+        for k in range(min(i + 1, size), 0, -1):
+            row, below = table[k], table[k - 1]
+            for s in range(total, v - 1, -1):
+                row[s] += below[s - v]
+    return table[size]
+
+
+def _tie_term(values: Sequence[float]) -> int:
+    """Sum of t^3 - t over groups of t tied values (the variance correction for ties)."""
+    groups: dict[float, int] = {}
+    for v in values:
+        groups[v] = groups.get(v, 0) + 1
+    return sum(t**3 - t for t in groups.values())
+
+
+def _normal_p(deviation: float, variance: float) -> float:
+    """Two-sided p for |statistic - mean| = ``deviation``, with a continuity correction of 0.5."""
+    if variance <= 0:
+        return 1.0
+    z = max(0.0, deviation - 0.5) / math.sqrt(variance)
+    return min(1.0, math.erfc(z / math.sqrt(2)))
+
+
 def wilcoxon_signed_rank(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> TestResult:
-    """Exact two-sided test over all sign flips (fine for the handful of seeds per condition)."""
+    """Exact two-sided test over all sign flips; a normal approximation, named as such, past ``EXACT_WORK``."""
     paired = paired_t(a, b, alpha)  # the CI and effect size reported alongside
     result = _like(paired, "Wilcoxon signed-rank", p_value=None)
     if paired.no_variation or paired.constant_difference:  # no noise: six equal differences would give p = 0.031
@@ -214,42 +257,48 @@ def wilcoxon_signed_rank(a: Sequence[float], b: Sequence[float], alpha: float = 
     if not d:
         result.p_value = 1.0
         return result
-    if len(d) > 20:  # too many sign patterns to enumerate; the t-test is a fine approximation there
-        result.p_value = paired.p_value
-        return result
     ranks = _ranks([abs(x) for x in d])
+    doubled = [round(2 * r) for r in ranks]  # tied ranks end in .5: doubled, every rank is a whole number
     w_plus = sum(r for r, x in zip(ranks, d, strict=True) if x > 0)
-    centre = sum(ranks) / 2
-    observed = abs(w_plus - centre)
-    extreme = sum(
-        1
-        for signs in itertools.product((0, 1), repeat=len(d))
-        if abs(sum(r for r, s in zip(ranks, signs, strict=True) if s) - centre) >= observed - 1e-12
-    )
-    result.statistic, result.p_value = w_plus, extreme / 2 ** len(d)
+    result.statistic = w_plus
+    total, observed = sum(doubled), round(2 * w_plus)
+    counts = _sum_counts(doubled)
+    if counts is None:
+        n = len(d)
+        variance = n * (n + 1) * (2 * n + 1) / 24 - _tie_term([abs(x) for x in d]) / 48
+        result.test += APPROXIMATE
+        result.p_value = _normal_p(abs(w_plus - n * (n + 1) / 4), variance)
+        return result
+    # a sign pattern is as extreme as the data when its W+ is at least as far from the centre (total / 4 in ranks)
+    extreme = sum(c for s, c in enumerate(counts) if abs(2 * s - total) >= abs(2 * observed - total))
+    result.p_value = extreme / 2 ** len(d)
     return result
 
 
 def mann_whitney(a: Sequence[float], b: Sequence[float], alpha: float = ALPHA) -> TestResult:
-    """Exact two-sided permutation version of the Mann-Whitney U test."""
+    """Exact two-sided permutation version of the Mann-Whitney U test; a normal approximation past ``EXACT_WORK``."""
     welch = welch_t(a, b, alpha)
     na, nb = len(a), len(b)
     result = _like(welch, "Mann-Whitney U", p_value=welch.p_value)
     if welch.no_variation:  # two fixed values: complete separation would look significant from 4 seeds each
         return result
-    if na == 0 or nb == 0 or math.comb(na + nb, na) > 200_000:
-        return result  # too many arrangements to enumerate; keep the Welch p-value
+    if na == 0 or nb == 0:
+        return result
     ranks = _ranks([*a, *b])
-    centre = na * (na + 1) / 2 + na * nb / 2  # expected rank sum of group a
-
-    def rank_sum(indices: Sequence[int]) -> float:
-        return sum(ranks[i] for i in indices)
-
-    observed = abs(rank_sum(range(na)) - centre)
-    combos = list(itertools.combinations(range(na + nb), na))
-    extreme = sum(1 for combo in combos if abs(rank_sum(combo) - centre) >= observed - 1e-12)
-    result.statistic = rank_sum(range(na)) - na * (na + 1) / 2  # U for group a
-    result.p_value = extreme / len(combos)
+    doubled = [round(2 * r) for r in ranks]
+    rank_sum = sum(ranks[:na])
+    result.statistic = rank_sum - na * (na + 1) / 2  # U for group a
+    centre = na * (na + 1) + na * nb  # expected rank sum of group a, doubled
+    observed = round(2 * rank_sum)
+    counts = _sum_counts(doubled, size=na)
+    if counts is None:
+        n = na + nb
+        variance = na * nb / 12 * ((n + 1) - _tie_term([*a, *b]) / (n * (n - 1)))
+        result.test += APPROXIMATE
+        result.p_value = _normal_p(abs(result.statistic - na * nb / 2), variance)
+        return result
+    extreme = sum(c for s, c in enumerate(counts) if abs(s - centre) >= abs(observed - centre))
+    result.p_value = extreme / math.comb(na + nb, na)
     return result
 
 

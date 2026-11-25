@@ -18,13 +18,12 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
-import re
 import shutil
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from ...core.fs import atomic_write_text
+from ...core.fs import SAFE_NAME, atomic_write_text
 from ...packs.refusals import controlled_access
 from ...schemas.plan import FetchedResource, ResourceSpec
 from ..http import HttpError, PoliteHttp
@@ -32,7 +31,6 @@ from .models import biomodels_files, download_url, sbml_problem
 from .omics import cellxgene_latest, geo_files, h5ad_asset
 from .structures import RCSB_FILES, accession, alphafold_models, pdb_id, uniprot_fasta
 
-_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 Snapshot = Callable[..., str]
 Torchvision = Callable[[str, Path], str]  # (identifier, target folder) -> the torchvision class it resolved to
 
@@ -122,7 +120,7 @@ class Fetcher:
         if resource.source == "local":
             return self._provided(resource, base)
         if resource.source == "manual":
-            target = self.root / "manual" / _SAFE.sub("_", resource.name)
+            target = self.root / "manual" / SAFE_NAME.sub("_", resource.name)
             target.mkdir(parents=True, exist_ok=True)
             return FetchedResource(
                 **base, status="manual", path=str(target), note=f"place the files for '{resource.name}' in {target}"
@@ -228,7 +226,7 @@ class Fetcher:
         if source is None or not source.exists():
             return FetchedResource(**base, status="failed", note=f"no local dataset {resource.identifier!r} on disk")
         digest = content_hash(source)
-        target = self.root / "local" / f"{_SAFE.sub('_', resource.identifier)}-{digest[:12]}"
+        target = self.root / "local" / f"{SAFE_NAME.sub('_', resource.identifier)}-{digest[:12]}"
         if not target.exists():  # the same content is copied once; changed content gets a new folder
             partial = target.with_name(target.name + ".partial")
             shutil.rmtree(partial, ignore_errors=True)
@@ -255,7 +253,7 @@ class Fetcher:
             return FetchedResource(
                 **base, status="ready", path=path, bytes=size, files=files, note="already on the cluster"
             )
-        target = self.root / "hf" / f"{repo_type}s" / _SAFE.sub("--", resource.identifier)
+        target = self.root / "hf" / f"{repo_type}s" / SAFE_NAME.sub("--", resource.identifier)
         path = self.snapshot(
             repo_id=resource.identifier, repo_type=repo_type, local_dir=str(target), token=self.hf_token
         )
@@ -267,7 +265,7 @@ class Fetcher:
         # shortcut: two runs fetching the same dataset at the same moment write the same files (as two Hugging
         # Face snapshots would); lock the folder if fetches ever run in parallel. A later fetch is safe: torchvision
         # checks what is there and downloads nothing twice.
-        target = self.root / "torchvision" / _SAFE.sub("_", resource.identifier)
+        target = self.root / "torchvision" / SAFE_NAME.sub("_", resource.identifier)
         name = self.torchvision(resource.identifier, target)
         size, files = tree_size(target)
         return FetchedResource(
@@ -277,8 +275,8 @@ class Fetcher:
     def _url(self, resource: ResourceSpec, base: dict[str, Any]) -> FetchedResource:
         if self.http is None:
             return FetchedResource(**base, status="failed", note="no HTTP client configured")
-        name = _SAFE.sub("_", resource.identifier.rstrip("/").rsplit("/", 1)[-1]) or "download"
-        target = self.root / "url" / _SAFE.sub("_", resource.name) / name
+        name = SAFE_NAME.sub("_", resource.identifier.rstrip("/").rsplit("/", 1)[-1]) or "download"
+        target = self.root / "url" / SAFE_NAME.sub("_", resource.name) / name
         result = self.http.download(resource.identifier, target, max_bytes=self.max_url_bytes, accept=())
         return FetchedResource(
             **base, status="ready", path=str(result.path), bytes=result.bytes, files=1, note=result.sha256

@@ -80,6 +80,20 @@ def test_tool_task_stage_writes_files_through_tool_calls(runs_root: Path) -> Non
     assert event["data"]["turns"] == 3 and event["data"]["stopped"] is None
 
 
+def test_the_models_commands_never_see_the_api_keys(runs_root: Path, monkeypatch) -> None:
+    monkeypatch.setenv("HF_TOKEN", "hf_secret_value")  # as load_secrets() leaves it in an episode
+    run = make_run(runs_root, PIPELINE)
+    llm = scripted(
+        ChatResponse(text="", tool_calls=[call("bash", 0, command='echo "token=[$HF_TOKEN] home=[$HOME]"')]),
+        ChatResponse(text="Done."),
+    )
+
+    assert Engine(run, make_services(run, llm)).advance().outcome is Outcome.DONE
+    shown = llm.calls[1].messages[-1]
+    assert shown.role == "tool" and "token=[]" in shown.content and "hf_secret_value" not in shown.content
+    assert "home=[/" in shown.content  # the rest of the environment is still there
+
+
 def test_the_same_refused_call_five_times_stops_the_stage(runs_root: Path) -> None:
     run = make_run(runs_root, PIPELINE)
     again = ChatResponse(text="", tool_calls=[call("bash", 0, command="python run.py")])  # not allowed by default

@@ -136,6 +136,7 @@ class BashTool(Tool[BashInput]):
         proc = await asyncio.create_subprocess_exec(
             "/bin/bash", "-c", inp.command,
             cwd=ctx.cwd,
+            env=ctx.env,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,

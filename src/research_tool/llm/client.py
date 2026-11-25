@@ -41,7 +41,7 @@ def extract_json(text: str) -> str:
     fenced = _FENCE.search(text)
     if fenced:
         text = fenced.group(1).strip()
-    if text[:1] in "{[":
+    if text.startswith(("{", "[")):  # not `text[:1] in "{["`: an empty reply would pass that
         return text
     starts = [i for i in (text.find("{"), text.find("[")) if i >= 0]
     end = max(text.rfind("}"), text.rfind("]"))

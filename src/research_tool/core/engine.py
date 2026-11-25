@@ -37,7 +37,7 @@ from .artifacts import ArtifactStore, Producer, StagedOutputs, artifact_model
 from .budgets import BudgetTracker, Usage
 from .config import GateMode
 from .context import RESUME_WITHOUT_LLM, AgentContext, InputView
-from .editing import describe, edit_refusal, run_editor
+from .editing import EditActions, describe
 from .errors import (
     ActionError,
     ArtifactError,
@@ -49,7 +49,7 @@ from .errors import (
     SuspendRequested,
 )
 from .events import EventLog
-from .fs import FileLease, now_iso, sha256_text
+from .fs import FileLease, now_iso
 from .pipeline import GateKind, GateSpec, ResolvedPipeline, ResolvedStage, get_by_path, resolve_pipeline
 from .registry import AgentRegistry
 from .registry import registry as default_registry
@@ -72,7 +72,6 @@ from .workspace import Workspace
 
 REVISION_LIMIT_GATE = "revision_limit"
 DECISION_KEYS = {"feedback", "note", "expect", "index", "edit", "retest"}  # read by the engine itself
-MAX_EDITED_FILE_BYTES = 1_000_000
 
 
 class Outcome(StrEnum):
@@ -141,7 +140,7 @@ def edit_option(gate: GateSpec, option: Any, edit: Any) -> dict[str, Any]:
         raise ActionError(f"the edited choice is not valid: {describe(exc, 3)}") from None
 
 
-class Engine:
+class Engine(EditActions):
     def __init__(
         self,
         run: RunHandle,
@@ -167,6 +166,7 @@ class Engine:
         self.events = EventLog(run.events_path, run.run_id, self.episode_id)
         self.run_state: RunState | None = None
         self.stages: dict[str, StageState] = {}
+        self._applying: str | None = None  # id of the queued action being applied (stamped on every stage saved)
 
     # ------------------------------------------------------------------ episode
     def advance(self, *, max_seconds: float | None = None) -> AdvanceResult:
@@ -225,6 +225,8 @@ class Engine:
         self.states.save_run(self.run_state)
 
     def _save(self, st: StageState) -> None:
+        if self._applying is not None:
+            st.last_action = self._applying
         self.states.save_stage(st)
 
     def _recover(self) -> None:
@@ -762,12 +764,20 @@ class Engine:
             if action.id in self.run_state.processed_actions:
                 self.inbox.archive(path, action, {"status": "duplicate"})
                 continue
-            try:
-                outcome = {"status": "applied", **self._apply_action(action)}
+            if any(st.last_action == action.id for st in self.stages.values()):
+                # an earlier episode applied it and was killed before recording that: do not apply it twice
+                outcome = {"status": "applied", "recovered": True}
                 self.events.emit("action_applied", action=action.kind.value, by=action.by, outcome=outcome)
-            except ActionError as exc:
-                outcome = {"status": "rejected", "error": str(exc)}
-                self.events.emit("action_rejected", action=action.kind.value, by=action.by, error=str(exc))
+            else:
+                self._applying = action.id
+                try:
+                    outcome = {"status": "applied", **self._apply_action(action)}
+                    self.events.emit("action_applied", action=action.kind.value, by=action.by, outcome=outcome)
+                except ActionError as exc:
+                    outcome = {"status": "rejected", "error": str(exc)}
+                    self.events.emit("action_rejected", action=action.kind.value, by=action.by, error=str(exc))
+                finally:
+                    self._applying = None
             self.run_state.processed_actions.append(action.id)
             self._save_run()
             self.inbox.archive(path, action, outcome)
@@ -926,59 +936,6 @@ class Engine:
         self.events.emit("gate_resolved", stage=sid, gate=gate_state.gate_id, approved=approved, in_stage=True)
         return {"stage_id": sid, "gate": gate_state.gate_id, "approved": approved}
 
-    def _write_file(self, action: Action) -> dict[str, Any]:
-        """Rewrite a file the stage's agent lets researchers edit (e.g. the Coder's experiment.py).
-
-        Allowed while the stage waits at its own checkpoint or after it failed. With ``retest`` the stage
-        then continues: the checkpoint is answered with "test it again", a failed stage resumes.
-        """
-        sid = action.stage
-        if sid is None or sid not in self.stages:
-            raise ActionError("write_file needs a valid --stage")
-        rs = self.pipeline.stage(sid)
-        st = self.stages[sid]
-        payload = action.payload
-        path = str(payload.get("path") or "")
-        if path not in rs.agent_cls.editable_files:
-            allowed = ", ".join(rs.agent_cls.editable_files) or "no file"
-            raise ActionError(f"in stage {sid!r} you can edit {allowed}, not {path!r}")
-        at_gate = (
-            st.status is StageStatus.AWAITING_GATE
-            and st.gate is not None
-            and st.gate.in_stage
-            and st.gate.status is GateStatus.OPEN
-        )
-        if not (at_gate or st.status is StageStatus.FAILED):
-            raise ActionError(
-                f"{path} can be edited while stage {sid!r} waits for your decision or after it failed "
-                f"(it is {st.status.value})"
-            )
-        content = payload.get("content")
-        if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_EDITED_FILE_BYTES:
-            raise ActionError(f"{path} must be text of at most {MAX_EDITED_FILE_BYTES // 1_000_000} MB")
-        workspace = Workspace(self.run.work_dir(sid))
-        target = workspace.path(path)
-        current = target.read_text(encoding="utf-8") if target.exists() else ""
-        base = payload.get("base_sha")
-        if base is not None and sha256_text(current) != base:
-            raise ActionError(f"{path} changed since you opened it; reload it and edit again")
-        changed = content != current
-        if changed:
-            workspace.write_text(path, content)
-            self.events.emit("file_written", stage=sid, path=path, by=action.by, sha=sha256_text(content))
-        outcome: dict[str, Any] = {"stage_id": sid, "path": path, "changed": changed}
-        if payload.get("retest"):
-            if at_gate:
-                outcome.update(self._resolve_in_stage_gate(sid, False, "", {"retest": True}, action.by))
-            else:  # failed: resume where it stopped (the agent re-tests what it finds)
-                st.status = StageStatus.PENDING
-                st.resume = True
-                st.failures = 0
-                st.last_error = None
-                self._save(st)
-                outcome["resumed"] = True
-        return outcome
-
     def _reopen(self, sid: str | None) -> dict[str, Any]:
         """Open a finished stage's checkpoint again: choose differently, keep it as it is, or reject to re-run.
 
@@ -1005,77 +962,6 @@ class Engine:
             "gate_opened", stage=sid, gate=rs.spec.gate, in_stage=False, prompt=rs.gate.prompt, reopened=True
         )
         return {"stage_id": sid, "gate": rs.spec.gate}
-
-    def _edit(self, action: Action) -> dict[str, Any]:
-        """Store a hand-edited output as a new version (normalised by the owning agent's editor).
-
-        The owning stage keeps its state (an open gate stays open, now showing the edited version); later
-        stages that used the old version become stale.
-        """
-        payload = action.payload
-        name = str(payload.get("artifact") or "")
-        value, base = payload.get("value"), payload.get("base_version")
-        owner, previous, result = run_editor(self.pipeline, self.store, self.config, name, value, base, self.run.root)
-        st = self.stages[owner]
-        refusal = edit_refusal(owner, st)
-        if refusal:
-            raise ActionError(refusal)
-        note = str(payload.get("note") or "").strip()
-        rs = self.pipeline.stage(owner)
-        stored: list[tuple[str, int]] = []  # the artifacts this edit made a new version of
-        for artifact, edited in [(name, result.value), *result.extra.items()]:
-            before = previous if artifact == name else self.store.envelope(artifact, self.store.head(artifact))
-            meta = {**before.meta, **(result.meta if artifact == name else {})}
-            meta |= {"edited_from": before.version, "edited_by": action.by}
-            if note:
-                meta["edit_note"] = note
-            version = self.store.put(
-                artifact,
-                edited,
-                producer=Producer(stage=owner, agent=f"human:{action.by}", attempt=st.attempt),  # no token: new version
-                inputs=dict(before.inputs),
-                meta=meta,
-            )
-            if version == before.version:
-                continue
-            st.output_versions[artifact] = version
-            if artifact in rs.all_inputs:
-                st.input_versions[artifact] = version
-            if (
-                st.gate is not None
-                and st.gate.status is GateStatus.OPEN
-                and artifact in st.gate.summary.get("artifacts", {})
-            ):
-                st.gate.summary["artifacts"][artifact] = version  # the checkpoint now asks about the edited version
-            stored.append((artifact, version))
-        if not stored:
-            return {"stage_id": owner, "artifact": name, "version": previous.version, "unchanged": True}
-        workspace = Workspace(self.run.work_dir(owner))
-        for path, text in result.files.items():
-            workspace.write_text(path, text)
-        gate_artifacts = st.gate.summary.get("artifacts", {}) if st.gate is not None else {}
-        if st.gate is not None and st.gate.status is GateStatus.OPEN and any(a in gate_artifacts for a, _ in stored):
-            blocking = self._blocking(rs, st)  # what keeps the checkpoint from being approved, for the edited versions
-            if blocking:
-                st.gate.summary["blocking"] = blocking
-            else:
-                st.gate.summary.pop("blocking", None)
-        self._save(st)
-        for artifact, version in stored:
-            self.events.emit("artifact_committed", stage=owner, artifact=artifact, version=version)
-        before = {sid: self.stages[sid].status for sid in self.pipeline.order}
-        self._propagate_staleness(owner)
-        stale = [
-            s
-            for s in self.pipeline.order
-            if self.stages[s].status is StageStatus.STALE and before[s] is not StageStatus.STALE
-        ]
-        first, version = next((a for a in stored if a[0] == name), stored[0])
-        also = [a for a, _ in stored if a != first]
-        self.events.emit(
-            "artifact_edited", stage=owner, artifact=first, version=version, by=action.by, stale=stale, also=also
-        )
-        return {"stage_id": owner, "artifact": first, "version": version, "stale": stale, "also": also}
 
     # ------------------------------------------------------------------- jobs
     def _poll_jobs(self) -> None:

@@ -103,6 +103,10 @@ def validate_job(spec: JobSpec, config: SlurmConfig, *, allowed_partitions: Iter
             problems.append(f"array of {tasks} tasks exceeds the queue limit ({config.max_jobs_in_queue})")
     except ValueError:
         problems.append(f"invalid array spec {spec.array!r}")
+    # values written into `#SBATCH` lines: a line break would start a line bash runs as a command
+    header = [spec.partition, str(spec.workdir), spec.stdout or "", spec.signal or "", *spec.dependency]
+    header += [spec.gpus.type or ""] if spec.gpus else []
+    problems += [f"job setting {v!r} contains a line break" for v in header if "\n" in v or "\r" in v]
     problems += [f"invalid environment variable name {k!r}" for k in spec.env if not _ENV_NAME.match(k)]
     problems += [f"invalid module name {m!r}" for m in spec.modules if not _MODULE.match(m)]
     return problems

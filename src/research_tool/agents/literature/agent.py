@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 from ...core.agent import Agent
 from ...core.context import AgentContext
 from ...core.errors import StageFailed
-from ...core.fs import sha256_text
+from ...core.fs import SAFE_NAME, sha256_text
 from ...core.registry import register_agent
 from ...hpc.storage import QuotaError, ensure_room
 from ...knowledge.store import KnowledgeStore
@@ -66,7 +66,6 @@ from .toolkit import LiteratureToolkit, build_toolkit
 SYSTEM = "You are a careful research assistant. Follow the instructions exactly and never invent facts or citations."
 PHASES = ("plan", "search", "screen", "snowball", "download", "parse", "extract", "digest", "embed", "map")
 INCLUDED = ("included", "downloaded", "unavailable", "parsed", "extracted", "failed")
-_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 CAP_NOTE = "below the corpus size cap"
 
 
@@ -204,7 +203,7 @@ def paper_stem(paper_id: str) -> str:
     let different papers overwrite each other.
     """
     digest = hashlib.sha1(paper_id.encode("utf-8")).hexdigest()[:8]
-    return f"{_SAFE.sub('_', paper_id)[:100]}-{digest}"
+    return f"{SAFE_NAME.sub('_', paper_id)[:100]}-{digest}"
 
 
 @register_agent("literature")
