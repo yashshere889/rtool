@@ -32,7 +32,7 @@ class ActionKind(StrEnum):
     WRITE_FILE = "write_file"  # rewrite a file the stage lets researchers edit (payload: path, content, base_sha)
 
 
-def _user() -> str:
+def current_user() -> str:
     try:
         return getpass.getuser()
     except Exception:  # noqa: BLE001 - no passwd entry in some containers
@@ -46,7 +46,7 @@ class Action(BaseModel):
     gate: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: str = Field(default_factory=now_iso)
-    by: str = Field(default_factory=_user)
+    by: str = Field(default_factory=current_user)
 
 
 class ActionInbox:

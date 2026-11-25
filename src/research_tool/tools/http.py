@@ -72,30 +72,31 @@ class ResponseCache:
         self.path = Path(path)
         self.ttl_s = ttl_s
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        with self._connect() as db:
-            db.execute(
+        self._lock = threading.Lock()  # one connection, shared by this process's threads
+        self._db = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+        self._db.execute("pragma journal_mode=delete")  # no WAL: network filesystems
+        with self._db:
+            self._db.execute(
                 "create table if not exists responses (key text primary key, url text, fetched_at real, body text)"
             )
 
-    def _connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.path, timeout=30)
-        db.execute("pragma journal_mode=delete")  # no WAL: network filesystems
-        return db
-
     def get(self, key: str) -> str | None:
-        with self._lock, self._connect() as db:
-            row = db.execute("select fetched_at, body from responses where key = ?", (key,)).fetchone()
+        with self._lock:
+            row = self._db.execute("select fetched_at, body from responses where key = ?", (key,)).fetchone()
         if row is None or time.time() - row[0] > self.ttl_s:
             return None
         return row[1]
 
     def put(self, key: str, url: str, body: str) -> None:
-        with self._lock, self._connect() as db:
-            db.execute(
+        with self._lock, self._db:  # the inner `with` commits
+            self._db.execute(
                 "insert or replace into responses (key, url, fetched_at, body) values (?, ?, ?, ?)",
                 (key, url, time.time(), body),
             )
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
 
 
 @dataclass(frozen=True)
@@ -233,3 +234,5 @@ class PoliteHttp:
 
     def close(self) -> None:
         self._client.close()
+        if self.cache is not None:
+            self.cache.close()

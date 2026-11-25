@@ -173,6 +173,29 @@ def test_duplicate_actions_apply_once(runs_root: Path, mock_llm: MockLLM) -> Non
     assert [o["status"] for o in processed_outcomes(run)] == ["applied", "duplicate"]
 
 
+def test_a_decision_is_not_applied_twice_after_a_crash(
+    runs_root: Path, mock_llm: MockLLM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = make_run(runs_root, GATED)
+    services = make_services(run, mock_llm)
+    Engine(run, services).advance()
+    queue(run, ActionKind.APPROVE)
+    applied = Engine._apply_action
+
+    def apply_then_die(self: Engine, action: Action) -> dict:
+        applied(self, action)
+        raise KeyboardInterrupt  # killed after the stage was saved, before the action was recorded
+
+    monkeypatch.setattr(Engine, "_apply_action", apply_then_die)
+    with pytest.raises(KeyboardInterrupt):
+        Engine(run, services).advance()
+    monkeypatch.undo()
+
+    assert Engine(run, services).advance().outcome is Outcome.DONE
+    # before: the second episode applied it again, found no open gate and filed it as "rejected"
+    assert processed_outcomes(run) == [{"status": "applied", "recovered": True}]
+
+
 def test_selection_gate(runs_root: Path) -> None:
     run = make_run(runs_root, SELECT, topic="T")
     services = make_services(run)

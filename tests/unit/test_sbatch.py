@@ -65,6 +65,7 @@ def test_valid_gpu_job_passes(tmp_path: Path) -> None:
         ({"env": {"BAD-NAME": "x"}}, "invalid environment variable"),
         ({"modules": ["cuda; rm -rf /"]}, "invalid module name"),
         ({"name": "has space"}, "job name"),
+        ({"stdout": "/scratch/x.out\nrm -rf ~"}, "contains a line break"),
     ],
 )
 def test_rule_violations(tmp_path: Path, changes: dict, message: str) -> None:

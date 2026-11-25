@@ -108,6 +108,9 @@ class StageState(BaseModel):
     usage: dict[str, float] = Field(default_factory=dict)
     started_at: str | None = None
     finished_at: str | None = None
+    # the last queued decision whose changes this file holds, written with them: an episode killed before it
+    # recorded the decision as processed must not apply it a second time
+    last_action: str | None = None
 
     def pending_feedback(self) -> list[FeedbackItem]:
         return [f for f in self.feedback if f.consumed_by_attempt is None]

@@ -11,6 +11,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import socket
 import tempfile
 import threading
@@ -23,6 +24,8 @@ from pathlib import Path
 from typing import Any
 
 from .errors import LeaseHeld
+
+SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")  # what a file or folder name made from outside text must not keep
 
 
 def now_iso() -> str:

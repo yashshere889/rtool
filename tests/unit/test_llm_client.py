@@ -18,6 +18,8 @@ def test_extract_json_handles_fences_chatter_and_reasoning() -> None:
     assert extract_json('<think>{"draft": 0}</think>{"a": 1}') == '{"a": 1}'
     with pytest.raises(ValueError):
         extract_json("no json here")
+    with pytest.raises(ValueError, match="no JSON object"):
+        extract_json("<think>only reasoning</think>")  # an empty answer, not an empty "JSON" string
 
 
 def test_structured_repairs_invalid_output() -> None:

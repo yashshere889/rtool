@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import getpass
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from ...core.actions import Action, ActionInbox, ActionKind
+from ...core.actions import Action, ActionInbox, ActionKind, current_user
 from ...core.artifacts import ArtifactStore
-from ...core.engine import MAX_EDITED_FILE_BYTES, edit_option
+from ...core.editing import MAX_EDITED_FILE_BYTES
+from ...core.engine import edit_option
 from ...core.errors import RToolError
 from ...core.fs import sha256_text
 from ...core.pipeline import get_by_path, resolve_pipeline
@@ -42,13 +42,6 @@ class ActionState(BaseModel):
     state: Literal["queued", "applied", "rejected", "duplicate", "invalid", "unknown"]
     error: str | None = None
     outcome: dict[str, Any] | None = None
-
-
-def _user() -> str:
-    try:
-        return f"{getpass.getuser()} (web)"
-    except Exception:  # noqa: BLE001
-        return "web"
 
 
 def check_choice_edit(run: RunHandle, gate: OpenGate, index: int, edit: Any) -> None:
@@ -160,7 +153,14 @@ def submit(project: str, run_id: str, body: ActionRequest, request: Request) -> 
     run = get_run(request, project, run_id)
     payload = check(run_status(run), body, run)
     fields: dict[str, Any] = {"id": body.id} if body.id else {}
-    action = Action(kind=ActionKind(body.kind), stage=body.stage, gate=body.gate, payload=payload, by=_user(), **fields)
+    action = Action(
+        kind=ActionKind(body.kind),
+        stage=body.stage,
+        gate=body.gate,
+        payload=payload,
+        by=f"{current_user()} (web)",
+        **fields,
+    )
     state, _ = ActionInbox(run.actions_dir).lookup(action.id)
     if state != "unknown":
         raise HTTPException(409, "this decision was already sent")
