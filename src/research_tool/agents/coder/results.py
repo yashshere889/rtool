@@ -214,7 +214,9 @@ def analysis_notes(plan: ExperimentPlan, comparisons: list[Comparison], records:
         return {r.seed for r in records if r.status == "ok" and r.condition == condition}
 
     paired = {
-        (c.condition, c.baseline): c.n for c in comparisons if c.test in ("paired t-test", "Wilcoxon signed-rank")
+        (c.condition, c.baseline): c.n
+        for c in comparisons
+        if c.test.startswith(("paired t-test", "Wilcoxon signed-rank"))
     }
     for (condition, baseline), n in paired.items():
         left_out = sorted(seeds(condition) ^ seeds(baseline))  # a result on one side only

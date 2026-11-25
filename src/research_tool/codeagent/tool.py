@@ -126,6 +126,7 @@ class ToolContext:
     read_files: dict[Path, int] = field(default_factory=dict)  # path -> mtime_ns when last read
     loaded_tools: set[str] = field(default_factory=set)  # deferred tools loaded via tool_search
     state: dict[str, Any] = field(default_factory=dict)  # free-form, for your own tools
+    env: dict[str, str] | None = None  # environment of the processes tools start (None: this process's own)
 
     def __post_init__(self) -> None:
         self.workspace = Path(self.workspace).resolve()

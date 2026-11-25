@@ -22,6 +22,7 @@ from ..core.engine import REVISION_LIMIT_GATE
 from ..core.fs import atomic_write_json, atomic_write_text
 from ..core.pipeline import find_pipeline, pipeline_from
 from ..core.run import RunHandle, is_valid_name
+from ..core.secrets import without_secrets
 from ..packs import load_pack, pack_refusal, require_offered
 from ..schemas.common import SelectedItem
 from ..schemas.literature import Corpus, KnowledgeMap
@@ -98,6 +99,7 @@ def generate_data(case: Case, variant: str, data_root: Path) -> dict[str, dict[s
                     text=True,
                     timeout=GENERATE_TIMEOUT_S,
                     check=False,
+                    env=without_secrets(),
                 )
             except subprocess.TimeoutExpired:
                 raise CaseError(f"case {case.id!r}: {spec.generator} ran over {GENERATE_TIMEOUT_S} s") from None
