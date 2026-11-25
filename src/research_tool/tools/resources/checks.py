@@ -28,6 +28,65 @@ HF_API = "https://huggingface.co/api"
 PYPI_API = "https://pypi.org/pypi"
 MANUAL_NOTE = "not public: nothing will be downloaded; someone must provide it, or the experiment code must build it"
 HTML_PAGE_NOTE = "a web page (HTML), not a data file: name the direct download URL of the file itself"
+# Every dataset class torchvision has had. Fetch asks the installed torchvision itself (TORCHVISION_SCRIPT in
+# agents/tasks/fetch_resources.py); this list only catches names that never existed, such as ImageNet100.
+TORCHVISION_DATASETS = (
+    "Caltech101",
+    "Caltech256",
+    "CelebA",
+    "CIFAR10",
+    "CIFAR100",
+    "Cityscapes",
+    "CLEVRClassification",
+    "CocoCaptions",
+    "CocoDetection",
+    "Country211",
+    "DTD",
+    "EMNIST",
+    "EuroSAT",
+    "FakeData",
+    "FashionMNIST",
+    "FER2013",
+    "FGVCAircraft",
+    "Flickr8k",
+    "Flickr30k",
+    "Flowers102",
+    "Food101",
+    "GTSRB",
+    "HMDB51",
+    "ImageNet",
+    "Imagenette",
+    "INaturalist",
+    "Kinetics",
+    "Kitti",
+    "KMNIST",
+    "LFWPairs",
+    "LFWPeople",
+    "LSUN",
+    "MNIST",
+    "MovingMNIST",
+    "Omniglot",
+    "OxfordIIITPet",
+    "PCAM",
+    "PhotoTour",
+    "Places365",
+    "QMNIST",
+    "RenderedSST2",
+    "SBDataset",
+    "SBU",
+    "SEMEION",
+    "StanfordCars",
+    "STL10",
+    "SUN397",
+    "SVHN",
+    "UCF101",
+    "USPS",
+    "VOCDetection",
+    "VOCSegmentation",
+    "WIDERFace",
+)
+_COMMON_TORCHVISION = "MNIST, FashionMNIST, KMNIST, EMNIST, CIFAR10, CIFAR100, STL10, SVHN, Flowers102, Food101"
+_DATA_FILES = (".parquet", ".csv", ".tsv", ".json", ".jsonl", ".arrow", ".txt", ".zip", ".gz", ".tar", ".npz", ".h5")
 _PIP_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")  # "pettingzoo[mpe]>=1.24" -> "pettingzoo"
 
 
@@ -41,6 +100,21 @@ class ResourceCheck:
 
 class ResourceChecker(Protocol):
     def check(self, resource: ResourceChoice) -> ResourceCheck: ...
+
+
+def _loose(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", name.lower())  # "CIFAR-10" and "cifar10" agree
+
+
+SCRIPT_ONLY_NOTE = (
+    "script-only: the repository holds a loading script and no data files, which current `datasets` versions "
+    "refuse to run; choose a repository with parquet or csv files"
+)
+
+
+def _script_only(info: dict[str, Any]) -> bool:
+    names = [str(s.get("rfilename") or "") for s in info.get("siblings") or [] if isinstance(s, dict)]
+    return any(n.endswith(".py") for n in names) and not any(n.lower().endswith(_DATA_FILES) for n in names)
 
 
 def _hf_size_gb(info: dict[str, Any]) -> float | None:
@@ -125,6 +199,8 @@ class HubChecker:
                 )
                 gated = info.get("gated")
                 note = f"gated ({gated}): needs HF_TOKEN and accepted terms" if gated else ""
+                if kind == "datasets" and _script_only(info):
+                    note = SCRIPT_ONLY_NOTE
                 return ResourceCheck(True, _hf_license(info), _hf_size_gb(info), note)
             if resource.source == "url":
                 text = self.http.get_text(resource.identifier, cache=False)
@@ -146,6 +222,12 @@ class HubChecker:
                     licence if isinstance(licence, str) and len(licence) <= 40 else "",
                     note="on PyPI; installed with the experiment code",
                 )
+            known = {_loose(n) for n in TORCHVISION_DATASETS}
+            if _loose(resource.identifier) not in known:
+                return ResourceCheck(
+                    False,
+                    note=f"torchvision has no dataset {resource.identifier!r}; it has, e.g. {_COMMON_TORCHVISION}",
+                )
             return ResourceCheck(
                 True, note="a torchvision dataset: downloaded with torchvision when the plan is approved"
             )
@@ -157,20 +239,27 @@ class HubChecker:
                 note += f"; real ids that may fit: {', '.join(found)}" if found else ""
             return ResourceCheck(False, note=note)
 
+    def search(self, kind: str, term: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Hub repositories matching a name, most downloaded first: id, downloads, pipeline tag, gated."""
+        try:
+            hits = self.http.get_json(
+                f"{HF_API}/{'models' if kind == 'model' else 'datasets'}",
+                params={"search": term, "limit": limit, "sort": "downloads", "direction": -1},
+                headers=self.headers,
+            )
+        except HttpError:
+            return []
+        return [
+            {k: h.get(k) for k in ("id", "downloads", "pipeline_tag", "gated")}
+            for h in hits
+            if isinstance(h, dict) and h.get("id")
+        ]
+
     def similar(self, resource: ResourceChoice) -> list[str]:
         """Up to 3 Hub ids close to a missing one, so a repair round picks a real id instead of guessing again."""
-        kind = "models" if resource.kind == "model" else "datasets"
         found: list[str] = []
         for term in dict.fromkeys([resource.name, resource.identifier.rsplit("/", 1)[-1]]):
-            try:
-                hits = self.http.get_json(
-                    f"{HF_API}/{kind}",
-                    params={"search": term, "limit": 3, "sort": "downloads", "direction": -1},
-                    headers=self.headers,
-                )
-            except HttpError:
-                continue
-            found += [h["id"] for h in hits if isinstance(h, dict) and h.get("id") and h["id"] not in found]
+            found += [h["id"] for h in self.search(resource.kind, term, 3) if h["id"] not in found]
             if found:
                 break
         return found[:3]

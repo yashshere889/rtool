@@ -246,6 +246,10 @@ def new(
         None, "--max-minutes-per-run", min=0.1, help="Longest one run (one condition, one seed) may take."
     ),
     dataset: list[str] = typer.Option([], "--dataset", help="A dataset the plan may use (repeatable; default: any)."),
+    model: list[str] = typer.Option([], "--model", help="A model the plan may use (repeatable; default: any)."),
+    no_download: bool = typer.Option(
+        False, "--no-download", help="Download nothing: the experiment makes its own data, models train from scratch."
+    ),
     max_gpu_hours: float | None = typer.Option(None, "--max-gpu-hours", min=0.01, help="GPU budget for the run."),
     config: list[Path] = typer.Option([], "--config", "-c", help="Extra config YAML (repeatable)."),
     set_: list[str] = typer.Option([], "--set", help="Override config, e.g. --set gates.default=auto."),
@@ -269,6 +273,8 @@ def new(
             seeds=seeds,
             max_minutes_per_run=max_minutes,
             datasets=dataset,
+            models=model,
+            no_download=no_download,
             run_id=run_id,
         )
         console.print(f"created run [bold]{run.run_id}[/bold] at {run.root}")
@@ -432,6 +438,9 @@ def approve(
     gate: str | None = typer.Option(None, "--gate", help="Gate id, if several are open."),
     stage: str | None = typer.Option(None, "--stage"),
     note: str = typer.Option("", "--note", "-n", help="Optional comment, kept in the audit log."),
+    acknowledge_issues: bool = typer.Option(
+        False, "--acknowledge-issues", help="Approve a plan although a resource is missing, manual or gated."
+    ),
     now: bool = typer.Option(False, "--now", help="Run the next episode immediately."),
     simulate_jobs: bool = typer.Option(False, "--simulate-jobs"),
     runs_root: Path | None = typer.Option(None, "--runs-root"),
@@ -439,7 +448,10 @@ def approve(
     """Approve the open gate."""
     with _guard():
         run = _open_run(run_ref, runs_root)
-        action = Action(kind=ActionKind.APPROVE, gate=gate, stage=stage, payload={"note": note})
+        payload: dict[str, object] = {"note": note}
+        if acknowledge_issues:
+            payload["acknowledge_issues"] = True
+        action = Action(kind=ActionKind.APPROVE, gate=gate, stage=stage, payload=payload)
         _queue(run, action, now=now, simulate_jobs=simulate_jobs)
 
 

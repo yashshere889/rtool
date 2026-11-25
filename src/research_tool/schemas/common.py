@@ -41,6 +41,8 @@ class ResearchBrief(BaseModel):
     seeds: int | None = Field(default=None, ge=1)  # exactly this many seeds per condition
     max_minutes_per_run: float | None = Field(default=None, gt=0)  # one condition x one seed
     datasets: list[str] = Field(default_factory=list)  # only these datasets; empty: any
+    models: list[str] = Field(default_factory=list)  # only these models (Hub ids or names); empty: any
+    no_download: bool = False  # nothing is downloaded: the experiment makes its own data and trains from scratch
     conditions: list[BriefCondition] = Field(default_factory=list)  # the plan must have these; empty: any
     primary_metric: BriefMetric | None = None  # the plan's primary outcome; None: the planner chooses
 
@@ -53,6 +55,13 @@ class ResearchBrief(BaseModel):
             lines.append(f"Each run (one condition, one seed) must finish within {self.max_minutes_per_run:g} minutes.")
         if self.datasets:
             lines.append(f"Use only these datasets: {', '.join(self.datasets)}.")
+        if self.models:
+            lines.append(f"Use only these models: {', '.join(self.models)}.")
+        if self.no_download:
+            lines.append(
+                "Download no dataset and no model: the experiment makes its own data in code and trains any model "
+                "from scratch. List no dataset or model as a resource."
+            )
         if self.conditions:
             arms = "; ".join(
                 f"`{c.name}`{' (the baseline)' if c.baseline else ''}{': ' + c.description if c.description else ''}"

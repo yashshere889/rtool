@@ -35,6 +35,7 @@ from ...schemas.hypothesis import (
 )
 from ...schemas.literature import Corpus, KnowledgeMap, PaperRecord
 from ..common import SYSTEM, compute_profile, open_corpus_kb
+from ..common import loose_key as _key
 
 CRITERIA = ("novelty", "feasibility", "testability", "significance", "clarity")
 
@@ -233,6 +234,7 @@ class _HypothesisRun:
                 "draft.j2",
                 topic=self.brief.topic,
                 questions=self.brief.questions,
+                requirements=self.brief.requirements(),
                 feedback=self.feedback,
                 opportunity=op,
                 papers=related,
@@ -311,6 +313,18 @@ class _HypothesisRun:
             if not result.novel and result.closest_paper_id in self.papers:
                 h.rejected_reason = f"already tested by {result.closest_paper_id}"
 
+    def brief_conflicts(self, h: Hypothesis) -> list[str]:
+        """Where the hypothesis names data the brief does not allow (seen: ImageNet-100 for "MNIST or CIFAR-10")."""
+        brief = self.brief
+        if brief.no_download and h.datasets:
+            return [f"the brief says nothing is downloaded, but this names {', '.join(h.datasets)}"]
+        if brief.datasets:
+            allowed = {_key(d) for d in brief.datasets}
+            odd = [d for d in h.datasets if _key(d) not in allowed]
+            if odd:
+                return [f"the brief allows only {', '.join(brief.datasets)}, but this names {', '.join(odd)}"]
+        return []
+
     def check_feasibility(self, live: list[Hypothesis]) -> None:
         budget = self.ctx.app_config.budgets.run.max_gpu_hours
         partitions = self.ctx.app_config.slurm.experiment_partitions
@@ -322,6 +336,8 @@ class _HypothesisRun:
                 h.feasibility_notes.append("no GPU partitions are allowed for experiments")
             if not h.datasets:
                 h.feasibility_notes.append("no dataset named yet; the planner must find one")
+            for note in self.brief_conflicts(h):
+                h.feasibility_notes.append(note)
 
     def score(self, live: list[Hypothesis]) -> None:
         samples = self.cfg.judge_samples or self.ctx.app_config.llm.profile("judge").samples
