@@ -401,7 +401,12 @@ def test_manual_resources_stop_the_fetch_until_someone_decides(runs_root: Path, 
     assert "NOT PUBLIC" in (run.root / plan.markdown_path).read_text()
     assert env.name == "CS:GO env"
 
-    queue(run, ActionKind.APPROVE)
+    queue(run, ActionKind.APPROVE)  # refused: a resource nobody can download must be acknowledged
+    refused = Engine(run, services(run, llm)).advance()
+    assert (
+        refused.open_gates[0]["gate"] == "plan_gate" and "CS:GO env" in refused.open_gates[0]["summary"]["blocking"][0]
+    )
+    queue(run, ActionKind.APPROVE, payload={"acknowledge_issues": True})
     stopped = Engine(run, services(run, llm)).advance()
     gate = stopped.open_gates[0]
     assert stopped.outcome is Outcome.WAITING_GATE and gate["gate"] == "manual_resources" and gate["in_stage"]
@@ -420,7 +425,7 @@ def test_rejecting_the_manual_resources_sends_the_plan_back(runs_root: Path, tmp
     run = seed(runs_root, tmp_path)
     llm = manual_plan_llm()
     Engine(run, services(run, llm)).advance()
-    queue(run, ActionKind.APPROVE)
+    queue(run, ActionKind.APPROVE, payload={"acknowledge_issues": True})
     Engine(run, services(run, llm)).advance()  # stops at manual_resources
     queue(run, ActionKind.REJECT, payload={"feedback": "use PettingZoo MPE (pip install pettingzoo)"})
     again = Engine(run, services(run, llm)).advance()
@@ -453,3 +458,76 @@ def test_a_metric_pointing_the_wrong_way_is_sent_back(runs_root: Path, tmp_path:
     assert plan.issues == [] and collisions.higher_is_better is False
     repair = [r.messages[-1].content for r in llm.calls if schema(r) == "PlanCore"][1]
     assert "metric collision_frequency says higher is better" in repair
+
+
+def test_a_note_on_a_failed_fetch_sends_the_plan_back_to_the_planner(runs_root: Path, tmp_path: Path) -> None:
+    """Seen on Barkla (2026-11-23): the researcher's corrections went to the fetch stage, which never read them."""
+    run = seed(runs_root, tmp_path)
+
+    def gone(repo_id: str, repo_type: str, local_dir: str, token: str | None) -> str:
+        if repo_id == "stanfordnlp/imdb":
+            raise RuntimeError("404 Repository Not Found")
+        return fake_snapshot(repo_id, repo_type, local_dir, token)
+
+    def choose(request: ChatRequest) -> dict[str, Any]:
+        chosen = resources(request)
+        if "use ag_news" in request.messages[-1].content:
+            chosen["resources"][0] |= {"name": "AG News", "identifier": "fancyzero/ag_news"}
+        else:
+            chosen["resources"][0]["identifier"] = "stanfordnlp/imdb"
+        return chosen
+
+    llm = MockLLM()
+    llm.add(lambda r: schema(r) == "PlanCore", core)
+    llm.add(lambda r: schema(r) == "ResourcePlan", choose)
+    llm.add(
+        lambda r: schema(r) == "ComputeEstimate",
+        {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 1.5, "justification": "BERT base fits"},
+    )
+    tools = {"resource_checker": Checker(), "resource_fetcher": lambda root: Fetcher(root, snapshot=gone)}
+
+    def advance() -> Any:
+        return Engine(run, Services(llm=LLMClient(llm, run.config.llm), tools=tools)).advance()
+
+    advance()
+    queue(run, ActionKind.APPROVE)
+    failed = advance()
+    assert failed.outcome is Outcome.NEEDS_HUMAN
+    assert "rtool retry <run> --note" in load_status(run)[1]["fetch"].last_error
+
+    queue(run, ActionKind.RETRY, stage="fetch", payload={"note": "use ag_news"})
+    again = advance()
+    assert again.open_gates[0]["gate"] == "plan_gate"  # the plan was redone with the note and waits for approval
+    asked = [r.messages[-1].content for r in llm.calls if schema(r) == "ResourcePlan"]
+    assert "use ag_news" in asked[-1]
+    assert ArtifactStore(run.artifacts_dir).get("experiment_plan").resources[0].identifier == "fancyzero/ag_news"
+
+    queue(run, ActionKind.APPROVE)
+    assert advance().outcome is Outcome.DONE
+    manifest = ArtifactStore(run.artifacts_dir).get("resource_manifest")
+    assert {r.name: r.status for r in manifest.resources}["AG News"] == "ready"
+
+
+def test_the_resource_prompt_lists_what_the_hub_found_for_each_need(runs_root: Path, tmp_path: Path) -> None:
+    run = seed(runs_root, tmp_path)
+
+    class Searching(Checker):
+        def search(self, kind: str, term: str, limit: int = 5) -> list[dict[str, Any]]:
+            return [{"id": "stanfordnlp/imdb", "downloads": 9, "pipeline_tag": None, "gated": False}]
+
+    llm = MockLLM()
+    llm.add(lambda r: schema(r) == "PlanCore", core)
+    llm.add(
+        lambda r: schema(r) == "ResourceNeeds",
+        {"needs": [{"kind": "dataset", "role": "sentiment reviews", "search": "IMDB"}]},
+    )
+    llm.add(lambda r: schema(r) == "ResourcePlan", resources)
+    llm.add(
+        lambda r: schema(r) == "ComputeEstimate",
+        {"gpu_memory_gb": 14, "gpus_per_run": 1, "hours_per_run": 1.5, "justification": "BERT base fits"},
+    )
+    tools = {"resource_checker": Searching(), "resource_fetcher": lambda root: Fetcher(root, snapshot=fake_snapshot)}
+    Engine(run, Services(llm=LLMClient(llm, run.config.llm), tools=tools)).advance()
+    asked = [r.messages[-1].content for r in llm.calls if schema(r) == "ResourcePlan"]
+    assert '- "IMDB":\n  - stanfordnlp/imdb' in asked[0] and len(asked) == 2  # repaired once, same candidates
+    assert [schema(r) for r in llm.calls].count("ResourceNeeds") == 1  # looked up once per plan, not per repair

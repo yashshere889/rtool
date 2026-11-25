@@ -648,11 +648,23 @@ class Engine:
                     review.append(str(self.run.root / path))
         if review:
             summary["review_files"] = review
+        blocking = self._blocking(rs, st)
+        if blocking:
+            summary["blocking"] = blocking
         if rs.gate.kind is GateKind.SELECT:
             summary["options"] = [
                 {"index": i, "title": _option_title(item)} for i, item in enumerate(self._gate_options(rs, st))
             ]
         return summary
+
+    def _blocking(self, rs: ResolvedStage, st: StageState) -> list[str]:
+        """Problems an agent left in its outputs (artifact meta ``blocking``) that approval must acknowledge."""
+        found: list[str] = []
+        for name in rs.agent_produces:
+            version = st.output_versions.get(name)
+            if version is not None:
+                found += [str(b) for b in self.store.envelope(name, version).meta.get("blocking") or []]
+        return found
 
     def _resolve_stage_gate(
         self,
@@ -830,6 +842,13 @@ class Engine:
                 if kind is ActionKind.SELECT:
                     raise ActionError("in-stage gates take approve or reject, not select")
                 return self._resolve_in_stage_gate(sid, approved, feedback, dict(action.payload), action.by)
+            if approved and not action.payload.get("acknowledge_issues"):
+                blocking = self._blocking(self.pipeline.stage(sid), st)
+                if blocking:
+                    raise ActionError(
+                        "the plan has problems to acknowledge before approving (`rtool approve --acknowledge-issues`, "
+                        "or the tick box in the web UI): " + "; ".join(blocking)
+                    )
             index = action.payload.get("index")
             if kind is ActionKind.SELECT and index is None:
                 raise ActionError("select needs an index")
@@ -1023,6 +1042,11 @@ class Engine:
             st.input_versions[name] = version
         if st.gate is not None and st.gate.status is GateStatus.OPEN and name in st.gate.summary.get("artifacts", {}):
             st.gate.summary["artifacts"][name] = version  # the checkpoint now asks about the edited version
+            blocking = self._blocking(rs, st)
+            if blocking:
+                st.gate.summary["blocking"] = blocking
+            else:
+                st.gate.summary.pop("blocking", None)
         self._save(st)
         self.events.emit("artifact_committed", stage=owner, artifact=name, version=version)
         before = {sid: self.stages[sid].status for sid in self.pipeline.order}

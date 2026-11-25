@@ -20,7 +20,7 @@ from ...hpc.jobspec import parse_time_limit
 from ...schemas.common import ResearchBrief
 from ...schemas.plan import ComputeRequest, ExperimentPlan
 from .agent import PlannerConfig, render_markdown
-from .checks import SAFETY_FACTOR, UNCHECKED, format_time, plan_issues, results_schema, slug
+from .checks import SAFETY_FACTOR, UNCHECKED, blocking_issues, format_time, plan_issues, results_schema, slug
 
 FIXED = ("hypothesis_id", "hypothesis", "null_hypothesis", "markdown_path")
 
@@ -123,4 +123,4 @@ def edit_plan(value: dict[str, Any], ctx: EditContext) -> EditResult:
     files = {}
     if plan.markdown_path:
         files[plan.markdown_path.rsplit("/", 1)[-1]] = render_markdown(plan, _hypothesis_title(ctx, plan))
-    return EditResult(plan, files=files)
+    return EditResult(plan, files=files, meta={"blocking": blocking_issues(plan.resources)})

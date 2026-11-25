@@ -9,6 +9,8 @@ import pytest
 from pydantic import ValidationError
 
 from research_tool.agents.planner.checks import (
+    UNCHECKED,
+    blocking_issues,
     brief_issues,
     compute_issues,
     design_issues,
@@ -389,3 +391,150 @@ def test_only_a_data_analysis_must_list_a_dataset() -> None:  # a simulation mak
     numpy = ResourceSpec(kind="code", name="numpy", source="pip", identifier="numpy", purpose="", verified=True)
     assert resource_issues([numpy], max_dataset_gb=100) == []
     assert "no dataset is listed" in resource_issues([numpy], max_dataset_gb=100, units=True)[0]
+
+
+def test_the_brief_can_limit_models_and_forbid_downloads() -> None:
+    nemo = ResourceSpec(
+        kind="model", name="Nemotron", source="huggingface", identifier="nvidia/NVIDIA-Nemotron-Nano-12B-v2", purpose=""
+    )
+    bert = ResourceSpec(kind="model", name="BERT", source="huggingface", identifier="bert-base-uncased", purpose="")
+    gsm = ResourceSpec(kind="dataset", name="GSM8K", source="huggingface", identifier="openai/gsm8k", purpose="")
+    pkg = ResourceSpec(kind="code", name="vllm", source="pip", identifier="vllm", purpose="")
+
+    only = ResearchBrief(topic="t", models=["nvidia/NVIDIA-Nemotron-Nano-12B-v2"])
+    assert brief_issues(only, resources=[nemo, pkg]) == []
+    assert "BERT is not one of the models" in brief_issues(only, resources=[nemo, bert])[0]
+    assert "Use only these models" in only.requirements()[0]
+
+    nothing = ResearchBrief(topic="t", no_download=True)
+    assert brief_issues(nothing, resources=[pkg]) == []
+    assert len(brief_issues(nothing, resources=[gsm, nemo, pkg])) == 2
+    assert "List no dataset or model" in nothing.requirements()[0]
+
+
+def test_blocking_issues_are_what_the_researcher_must_acknowledge() -> None:
+    missing = ResourceSpec(kind="dataset", name="C-Eval", source="huggingface", identifier="hfl/ceval", purpose="")
+    missing.note = "HTTP 404"
+    manual = ResourceSpec(kind="dataset", name="CS:GO env", source="manual", identifier="x", purpose="")
+    own_code = ResourceSpec(kind="code", name="audit", source="manual", identifier="", purpose="")
+    gated = ResourceSpec(kind="model", name="Llama", source="huggingface", identifier="meta-llama/L", purpose="")
+    gated.verified, gated.note = True, "gated (manual): needs HF_TOKEN and accepted terms"
+    by_hand = ResourceSpec(kind="dataset", name="PubMed", source="url", identifier="https://x/y.parquet", purpose="")
+    by_hand.note = UNCHECKED
+    fine = ResourceSpec(kind="dataset", name="MNIST", source="torchvision", identifier="MNIST", purpose="")
+    fine.verified = True
+    found = blocking_issues([missing, manual, own_code, gated, by_hand, fine])
+    assert len(found) == 3 and "HTTP 404" in found[0] and "not public" in found[1] and "gated" in found[2]
+
+
+def test_a_hypothesis_that_names_data_the_brief_forbids_is_flagged() -> None:
+    from research_tool.agents.hypothesis.agent import _HypothesisRun
+    from research_tool.schemas.hypothesis import Hypothesis
+
+    def hypothesis(*datasets: str) -> Hypothesis:
+        return Hypothesis.model_construct(id="h1", datasets=list(datasets))
+
+    run = object.__new__(_HypothesisRun)
+    run.brief = ResearchBrief(topic="t", datasets=["MNIST", "CIFAR-10"])
+    assert run.brief_conflicts(hypothesis("CIFAR-10")) == []
+    assert "ImageNet-100" in run.brief_conflicts(hypothesis("CIFAR-10", "ImageNet-100"))[0]
+    run.brief = ResearchBrief(topic="t", no_download=True)
+    assert run.brief_conflicts(hypothesis()) == [] and "GSM8K" in run.brief_conflicts(hypothesis("GSM8K"))[0]
+
+
+def test_models_must_be_hub_ids_and_gated_ones_are_an_issue_unless_cached() -> None:
+    local = ResourceSpec(kind="model", name="8B model", source="local", identifier="8B-parameter model", purpose="")
+    described = ResourceSpec(
+        kind="model", name="4B model", source="huggingface", identifier="4B-parameter BF16 model", purpose=""
+    )
+    gated = ResourceSpec(kind="model", name="Llama", source="huggingface", identifier="meta-llama/L", purpose="")
+    gated.verified, gated.note = True, "gated (manual): needs HF_TOKEN and accepted terms"
+    issues = resource_issues([local, described, gated], max_dataset_gb=100)
+    assert len(issues) == 3 and "Hugging Face id" in issues[0] and "description" in issues[1] and "gated" in issues[2]
+    assert resource_issues([gated], max_dataset_gb=100, cached={"meta-llama/L"}) == []
+
+
+def test_the_hub_search_returns_ids_with_tags() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/models" and request.url.params["search"] == "Nemotron"
+        return httpx.Response(200, json=[{"id": "nvidia/N", "downloads": 5, "pipeline_tag": "text-generation"}, {}])
+
+    checker = HubChecker(
+        PoliteHttp(
+            client=httpx.Client(transport=httpx.MockTransport(handler)), default_interval_s=0, sleep=lambda _s: None
+        )
+    )
+    assert checker.search("model", "Nemotron") == [
+        {"id": "nvidia/N", "downloads": 5, "pipeline_tag": "text-generation", "gated": None}
+    ]
+
+
+def test_a_torchvision_name_that_never_existed_is_not_found_at_plan_time() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    checker = HubChecker(
+        PoliteHttp(
+            client=httpx.Client(transport=httpx.MockTransport(handler)), default_interval_s=0, sleep=lambda _s: None
+        )
+    )
+
+    def check(name: str):  # noqa: ANN202
+        return checker.check(
+            ResourceChoice(kind="dataset", name=name, source="torchvision", identifier=name, purpose="")
+        )
+
+    assert check("ImageNet100").exists is False and "no dataset 'ImageNet100'" in check("ImageNet100").note
+    assert check("CIFAR-10").exists and check("cifar10").exists and check("MNIST").exists
+
+
+def test_torchvision_list_matches_the_installed_torchvision() -> None:
+    datasets = pytest.importorskip("torchvision.datasets")
+    from research_tool.tools.resources.checks import TORCHVISION_DATASETS
+
+    downloadable = {
+        n
+        for n in dir(datasets)
+        if isinstance(getattr(datasets, n), type) and "download" in getattr(datasets, n).__init__.__code__.co_varnames
+    }
+    assert downloadable <= set(TORCHVISION_DATASETS)
+
+
+def test_a_dataset_that_is_only_a_loading_script_is_an_issue() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        files = {
+            "/api/datasets/old/scripted": ["scripted.py", "README.md"],
+            "/api/datasets/new/parquet": ["data/train.parquet"],
+        }
+        if request.url.path in files:
+            return httpx.Response(
+                200, json={"siblings": [{"rfilename": f, "size": 10} for f in files[request.url.path]]}
+            )
+        return httpx.Response(404)
+
+    checker = HubChecker(
+        PoliteHttp(
+            client=httpx.Client(transport=httpx.MockTransport(handler)), default_interval_s=0, sleep=lambda _s: None
+        )
+    )
+    old = checker.check(
+        ResourceChoice(kind="dataset", name="o", source="huggingface", identifier="old/scripted", purpose="")
+    )
+    new = checker.check(
+        ResourceChoice(kind="dataset", name="n", source="huggingface", identifier="new/parquet", purpose="")
+    )
+    assert old.note.startswith("script-only") and new.note == ""
+    spec = ResourceSpec(kind="dataset", name="o", source="huggingface", identifier="old/scripted", purpose="")
+    spec.verified, spec.note = True, old.note
+    assert "loading script" in resource_issues([spec], 100)[0]
+
+
+def test_the_experiments_own_output_is_not_a_local_dataset() -> None:
+    out = ResourceSpec(kind="dataset", name="Simulation Results", source="local", identifier="results.json", purpose="")
+    out2 = ResourceSpec(
+        kind="dataset", name="Queue", source="local", identifier="queue_simulation_results.csv", purpose=""
+    )
+    real = ResourceSpec(kind="dataset", name="cells", source="local", identifier="cells", purpose="")
+    real.verified = True
+    issues = resource_issues([out, out2, real], max_dataset_gb=100)
+    assert len(issues) == 2 and all("own output" in i for i in issues)

@@ -55,6 +55,8 @@ export function NewResearch() {
   const [seeds, setSeeds] = useState("");
   const [minutes, setMinutes] = useState("");
   const [datasets, setDatasets] = useState("");
+  const [models, setModels] = useState("");
+  const [noDownload, setNoDownload] = useState(false);
   const [more, setMore] = useState(false);
 
   const submit = async () => {
@@ -70,6 +72,8 @@ export function NewResearch() {
       seeds: seeds ? Number(seeds) : null,
       max_minutes_per_run: minutes ? Number(minutes) : null,
       datasets: lines(datasets),
+      models: lines(models),
+      no_download: noDownload,
     });
     toast.success("Research started", { description: created.kick.detail });
     navigate(runPath(created.run.project, created.run.run_id));
@@ -205,6 +209,18 @@ export function NewResearch() {
               >
                 <Textarea id="datasets" className="min-h-16" value={datasets} onChange={(e) => setDatasets(e.target.value)} />
               </Field>
+              <Field
+                label="Allowed models"
+                htmlFor="models"
+                hint="One per line, e.g. nvidia/NVIDIA-Nemotron-Nano-12B-v2. Leave empty to let the planner choose."
+                className="sm:col-span-2"
+              >
+                <Textarea id="models" className="min-h-16" value={models} onChange={(e) => setModels(e.target.value)} />
+              </Field>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" checked={noDownload} onChange={(e) => setNoDownload(e.target.checked)} />
+                Download nothing: the experiment makes its own data (a simulation, or a model trained from scratch)
+              </label>
               <Field
                 label="Project"
                 htmlFor="project"

@@ -1,0 +1,69 @@
+[
+  {
+    "case": "best-language-model: a model written as a size description",
+    "brief": {"topic": "Best language model under 50 billion parameters"},
+    "resources": [
+      {"kind": "model", "name": "8B-parameter BF16 transformer model", "source": "local", "identifier": "8B-parameter BF16 transformer model", "verified": false, "note": "no local dataset"}
+    ],
+    "expect": ["Hugging Face id"]
+  },
+  {
+    "case": "best-language-model: a Hub id the model invented",
+    "brief": {"topic": "Best language model under 50 billion parameters"},
+    "resources": [
+      {"kind": "dataset", "name": "C-Eval Mini", "source": "huggingface", "identifier": "hfl/ceval", "verified": false, "note": "HTTP 404"}
+    ],
+    "expect": ["could not be found"]
+  },
+  {
+    "case": "verify-vllm-cuda: the brief says nothing is downloaded and the plan lists GSM8K and the model",
+    "brief": {"topic": "Does step-by-step prompting help Nemotron?", "no_download": true},
+    "resources": [
+      {"kind": "dataset", "name": "GSM8K", "source": "huggingface", "identifier": "openai/gsm8k", "verified": true},
+      {"kind": "model", "name": "Nemotron Nano 12B", "source": "huggingface", "identifier": "nvidia/NVIDIA-Nemotron-Nano-12B-v2", "verified": true}
+    ],
+    "expect": ["GSM8K would be downloaded", "Nemotron Nano 12B would be downloaded"]
+  },
+  {
+    "case": "verify-audit-fixes: ImageNet100 against MNIST or CIFAR-10",
+    "brief": {"topic": "Does label smoothing improve calibration?", "datasets": ["MNIST", "CIFAR-10"]},
+    "resources": [
+      {"kind": "dataset", "name": "CIFAR10", "source": "torchvision", "identifier": "CIFAR10", "verified": true},
+      {"kind": "dataset", "name": "ImageNet100", "source": "torchvision", "identifier": "ImageNet100", "verified": true}
+    ],
+    "expect": ["ImageNet100 is not one of the datasets the researcher allows"]
+  },
+  {
+    "case": "bdf6-plan-qwen: a gated model that replaces the model the hypothesis controls for",
+    "brief": {"topic": "ARIS audit", "models": ["nvidia/NVIDIA-Nemotron-Nano-12B-v2"]},
+    "resources": [
+      {"kind": "model", "name": "Llama 3.2 3B", "source": "huggingface", "identifier": "meta-llama/Llama-3.2-3B-Instruct", "verified": true, "note": "gated (manual): needs HF_TOKEN and accepted terms"}
+    ],
+    "expect": ["is not one of the models the researcher allows", "gated"]
+  },
+  {
+    "case": "ac16: the experiment's own code and environment as manual resources",
+    "brief": {"topic": "Multi agent research pipeline"},
+    "resources": [
+      {"kind": "dataset", "name": "CS:GO multi-agent environment", "source": "manual", "identifier": "custom_simulation", "verified": false},
+      {"kind": "code", "name": "Training/evaluation script", "source": "manual", "identifier": "custom_script", "verified": false}
+    ],
+    "expect": ["marked manual", "rtool writes it"]
+  },
+  {
+    "case": "vaccination: the run's own output as a local dataset",
+    "brief": {"topic": "Does vaccinating part of a population shrink the epidemic?"},
+    "resources": [
+      {"kind": "dataset", "name": "simulation_results", "source": "local", "identifier": "results.json", "verified": false, "note": "no local dataset"}
+    ],
+    "expect": ["own output"]
+  },
+  {
+    "case": "bdf6 PubMed: a loading script with no data files",
+    "brief": {"topic": "ARIS audit"},
+    "resources": [
+      {"kind": "dataset", "name": "scientific_papers", "source": "huggingface", "identifier": "scientific_papers", "verified": true, "note": "script-only: the repository holds a loading script and no data files, which current `datasets` versions refuse to run; choose a repository with parquet or csv files"}
+    ],
+    "expect": ["loading script"]
+  }
+]

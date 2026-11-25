@@ -110,6 +110,16 @@ class ResourceChoice(BaseModel):
     purpose: str
 
 
+class ResourceNeed(BaseModel):
+    kind: Literal["dataset", "model"]
+    role: str = Field(description="What the experiment uses it for, in a few words")
+    search: str = Field(description="A short name to search the Hugging Face Hub for, e.g. 'GSM8K' or 'Nemotron Nano'")
+
+
+class ResourceNeeds(BaseModel):
+    needs: list[ResourceNeed] = Field(default_factory=list, max_length=8)
+
+
 class ResourcePlan(BaseModel):
     resources: list[ResourceChoice] = Field(min_length=1)
 

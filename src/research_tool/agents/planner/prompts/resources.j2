@@ -10,6 +10,15 @@ Datasets mentioned in the collected literature: {{ known_datasets | join(", ") o
 {% if cached_models %}
 Models already on the cluster (no download, no token; prefer one of these when a model is needed): {{ cached_models | join(", ") }}
 {% endif %}
+{% if candidates %}
+Repositories found on the Hugging Face Hub for what this experiment needs (most downloaded first). Choose from these: an id that is not listed here, or on the cluster, may not exist.
+{% for term, hits in candidates.items() %}
+- "{{ term }}":
+{% for c in hits %}
+  - {{ c.id }}{{ " (" ~ c.pipeline_tag ~ ")" if c.pipeline_tag else "" }}{{ ", gated: needs a token" if c.gated else "" }}
+{% endfor %}
+{% endfor %}
+{% endif %}
 {% if local_datasets %}
 Datasets the researcher provided on the cluster (use source "local" with exactly this name as the identifier):
 {% for name, dataset in local_datasets.items() %}
@@ -49,5 +58,6 @@ Rules:
 - Use source "url" only for a direct download link, "torchvision" for torchvision datasets, "pip" for software packages, "local" only for a dataset the researcher provided (listed above), and "manual" only if nothing public exists.
 {% endif %}
 - Only give identifiers you are confident exist; prefer well-known resources.
+- A model is source "huggingface" with its repository id (org/name), never a size or description; prefer a model already on the cluster, or one the researcher named.
 - A simulation, or an experiment that makes its own data, needs no dataset: then list none, and never invent one.
 - Do not list the experiment's own code (pipelines, scripts, analysis): rtool writes it. List code only if it already exists, e.g. a pip package.

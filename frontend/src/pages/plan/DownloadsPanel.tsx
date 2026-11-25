@@ -28,7 +28,7 @@ export function DownloadsPanel({ run }: { run: RunDetail }) {
       </div>
       {view.last_error && view.status === "failed" && (
         <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">
-          {view.last_error} Fix it, then use Retry on the Overview page; finished downloads are kept.
+          {view.last_error} Fix it, then use Retry on the Overview page; finished downloads are kept. If the plan chose a wrong id, add a note on Retry saying what to use instead: the planner redoes the plan with it.
         </p>
       )}
       <ul className="divide-y divide-line">

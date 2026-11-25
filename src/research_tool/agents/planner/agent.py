@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from ...core.agent import Agent
 from ...core.context import AgentContext
 from ...core.registry import register_agent
+from ...llm.client import LLMOutputError
 from ...llm.prompts import PromptLibrary
 from ...packs import load_pack, pack_plan_issues
 from ...schemas.common import ResearchBrief, SelectedItem
@@ -28,13 +29,16 @@ from ...schemas.plan import (
     Metric,
     PlanCore,
     PlanCoreUnits,
+    ResourceNeeds,
     ResourcePlan,
     ResourceSpec,
 )
 from ...tools.http import PoliteHttp
 from ...tools.resources.checks import HubChecker, ResourceChecker
+from ...tools.resources.fetch import local_models
 from ..common import SYSTEM, cached_models, compute_profile, open_corpus_kb, refuse
 from .checks import (
+    blocking_issues,
     brief_issues,
     design_issues,
     fit_compute,
@@ -70,7 +74,7 @@ SOURCE_RULES = {
 
 class PlannerConfig(BaseModel):
     min_seeds: int = Field(default=3, ge=1)
-    repair_rounds: int = Field(default=1, ge=0, le=3)
+    repair_rounds: int = Field(default=2, ge=0, le=3)  # a repair that fixes one id often breaks another
     evidence_snippets: int = Field(default=8, ge=0)
     check_resources: bool = True
     max_dataset_gb: float = Field(default=200, gt=0)
@@ -114,7 +118,8 @@ class PlannerAgent(Agent):
         core_issues: list[str] = []
         res_issues: list[str] = []
         cmp_issues: list[str] = []
-        core = resources = estimate = None
+        core = resources = estimate = candidates = None
+        cached = set(local_models(ctx.app_config.llm.server.hf_home))
         for _round in range(cfg.repair_rounds + 1):
             if core is None or core_issues:
                 core = normalise_core(
@@ -143,6 +148,8 @@ class PlannerAgent(Agent):
                     brief, conditions=core.conditions, metrics=core.metrics, units=units
                 )
             if resources is None or res_issues:
+                if candidates is None:  # look up before choosing: the Hub's own answer, not the model's memory
+                    candidates = self.candidates(ctx, checker, render, brief, hypothesis, core, known, feedback)
                 plan = ctx.llm.structured(
                     ResourcePlan,
                     render(
@@ -153,6 +160,7 @@ class PlannerAgent(Agent):
                         known_datasets=known,
                         cached_models=cached,
                         local_datasets=ctx.app_config.experiments.local_data,
+                        candidates=candidates,
                         source_rules=[SOURCE_RULES[s] for s in pack.resource_sources if s in SOURCE_RULES],
                         feedback=feedback,
                         issues=res_issues,
@@ -162,7 +170,7 @@ class PlannerAgent(Agent):
                 )
                 resources = [self.verify(checker, choice, cfg.check_resources) for choice in plan.resources]
                 res_issues = (
-                    resource_issues(resources, cfg.max_dataset_gb, units=units)
+                    resource_issues(resources, cfg.max_dataset_gb, units=units, cached=cached)
                     + source_issues(resources, pack)
                     + brief_issues(brief, resources=resources)
                 )
@@ -220,8 +228,44 @@ class PlannerAgent(Agent):
         markdown = ctx.workspace.write_text("experiment_plan.md", render_markdown(plan_artifact, hypothesis.title))
         plan_artifact.markdown_path = ctx.relative(markdown)
         ctx.outputs.put(
-            "experiment_plan", plan_artifact, meta={"review": plan_artifact.markdown_path, "prompts": provenance}
+            "experiment_plan",
+            plan_artifact,
+            meta={
+                "review": plan_artifact.markdown_path,
+                "prompts": provenance,
+                "blocking": blocking_issues(plan_artifact.resources),
+            },
         )
+
+    @staticmethod
+    def candidates(
+        ctx: AgentContext,
+        checker: ResourceChecker,
+        render: Any,
+        brief: ResearchBrief,
+        hypothesis: Hypothesis,
+        core: PlanCore,
+        known: list[str],
+        feedback: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Hub repositories for each dataset or model the experiment needs (empty if the checker cannot search)."""
+        search = getattr(checker, "search", None)
+        if search is None:
+            return {}
+        try:
+            needs = ctx.llm.structured(
+                ResourceNeeds,
+                render(
+                    "resource_needs.j2", brief=brief, h=hypothesis, core=core, known_datasets=known, feedback=feedback
+                ),
+                profile="reason",
+                system=SYSTEM,
+            ).needs
+        except LLMOutputError as exc:  # the list is a help, not a requirement
+            ctx.emit("resource_search_skipped", error=str(exc)[:200])
+            return {}
+        found = {n.search: search(n.kind, n.search, 5) for n in needs}
+        return {term: hits for term, hits in found.items() if hits}
 
     @staticmethod
     def evidence(ctx: AgentContext, corpus: Corpus, h: Hypothesis, k: int) -> list[dict[str, str]]:

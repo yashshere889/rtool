@@ -2583,6 +2583,19 @@
       ],
       "title": "Max Minutes Per Run"
      },
+     "models": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Models",
+      "type": "array"
+     },
+     "no_download": {
+      "default": false,
+      "title": "No Download",
+      "type": "boolean"
+     },
      "pack": {
       "default": "generic",
       "title": "Pack",
