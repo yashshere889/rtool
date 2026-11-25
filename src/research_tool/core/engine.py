@@ -1021,34 +1021,48 @@ class Engine:
         if refusal:
             raise ActionError(refusal)
         note = str(payload.get("note") or "").strip()
-        meta = {**previous.meta, **result.meta, "edited_from": previous.version, "edited_by": action.by}
-        if note:
-            meta["edit_note"] = note
-        version = self.store.put(
-            name,
-            result.value,
-            producer=Producer(stage=owner, agent=f"human:{action.by}", attempt=st.attempt),  # no token: a new version
-            inputs=dict(previous.inputs),
-            meta=meta,
-        )
-        if version == previous.version:
-            return {"stage_id": owner, "artifact": name, "version": version, "unchanged": True}
+        rs = self.pipeline.stage(owner)
+        stored: list[tuple[str, int]] = []  # the artifacts this edit made a new version of
+        for artifact, edited in [(name, result.value), *result.extra.items()]:
+            before = previous if artifact == name else self.store.envelope(artifact, self.store.head(artifact))
+            meta = {**before.meta, **(result.meta if artifact == name else {})}
+            meta |= {"edited_from": before.version, "edited_by": action.by}
+            if note:
+                meta["edit_note"] = note
+            version = self.store.put(
+                artifact,
+                edited,
+                producer=Producer(stage=owner, agent=f"human:{action.by}", attempt=st.attempt),  # no token: new version
+                inputs=dict(before.inputs),
+                meta=meta,
+            )
+            if version == before.version:
+                continue
+            st.output_versions[artifact] = version
+            if artifact in rs.all_inputs:
+                st.input_versions[artifact] = version
+            if (
+                st.gate is not None
+                and st.gate.status is GateStatus.OPEN
+                and artifact in st.gate.summary.get("artifacts", {})
+            ):
+                st.gate.summary["artifacts"][artifact] = version  # the checkpoint now asks about the edited version
+            stored.append((artifact, version))
+        if not stored:
+            return {"stage_id": owner, "artifact": name, "version": previous.version, "unchanged": True}
         workspace = Workspace(self.run.work_dir(owner))
         for path, text in result.files.items():
             workspace.write_text(path, text)
-        rs = self.pipeline.stage(owner)
-        st.output_versions[name] = version
-        if name in rs.all_inputs:
-            st.input_versions[name] = version
-        if st.gate is not None and st.gate.status is GateStatus.OPEN and name in st.gate.summary.get("artifacts", {}):
-            st.gate.summary["artifacts"][name] = version  # the checkpoint now asks about the edited version
-            blocking = self._blocking(rs, st)
+        gate_artifacts = st.gate.summary.get("artifacts", {}) if st.gate is not None else {}
+        if st.gate is not None and st.gate.status is GateStatus.OPEN and any(a in gate_artifacts for a, _ in stored):
+            blocking = self._blocking(rs, st)  # what keeps the checkpoint from being approved, for the edited versions
             if blocking:
                 st.gate.summary["blocking"] = blocking
             else:
                 st.gate.summary.pop("blocking", None)
         self._save(st)
-        self.events.emit("artifact_committed", stage=owner, artifact=name, version=version)
+        for artifact, version in stored:
+            self.events.emit("artifact_committed", stage=owner, artifact=artifact, version=version)
         before = {sid: self.stages[sid].status for sid in self.pipeline.order}
         self._propagate_staleness(owner)
         stale = [
@@ -1056,8 +1070,12 @@ class Engine:
             for s in self.pipeline.order
             if self.stages[s].status is StageStatus.STALE and before[s] is not StageStatus.STALE
         ]
-        self.events.emit("artifact_edited", stage=owner, artifact=name, version=version, by=action.by, stale=stale)
-        return {"stage_id": owner, "artifact": name, "version": version, "stale": stale}
+        first, version = next((a for a in stored if a[0] == name), stored[0])
+        also = [a for a, _ in stored if a != first]
+        self.events.emit(
+            "artifact_edited", stage=owner, artifact=first, version=version, by=action.by, stale=stale, also=also
+        )
+        return {"stage_id": owner, "artifact": first, "version": version, "stale": stale, "also": also}
 
     # ------------------------------------------------------------------- jobs
     def _poll_jobs(self) -> None:

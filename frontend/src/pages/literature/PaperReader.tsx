@@ -162,7 +162,7 @@ export function PaperReader() {
             />
           ) : (
             <Card>
-              <CardBody className="max-h-[78vh] overflow-y-auto py-5">
+              <CardBody className="max-h-[78vh] overflow-y-auto py-5" role="region" aria-label="Text of the paper" tabIndex={0}>
                 {text.isPending && <Loading label="Loading the text" />}
                 {text.isError && <ErrorNote error={text.error} />}
                 {text.data && quote && !text.data.focus && (

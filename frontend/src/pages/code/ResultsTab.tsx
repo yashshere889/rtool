@@ -27,7 +27,7 @@ export function ResultsTab({ run }: { run: RunDetail }) {
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Badge tone={r.complete ? "ok" : "warn"}>{r.complete ? "Every planned run finished" : "Some runs have no results"}</Badge>
         <span className="text-ink-soft">
-          {r.runs.filter((x) => x.status === "ok").length} runs · {r.gpu_hours_requested} GPU-hours requested
+          {r.runs.filter((x) => x.status === "ok").length} runs{r.gpu_hours_requested > 0 ? ` · ${r.gpu_hours_requested} GPU-hours requested` : ""}
         </span>
         <span className="ml-auto flex gap-3">
           {r.tables_path && (

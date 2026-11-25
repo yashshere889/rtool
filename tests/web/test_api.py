@@ -210,12 +210,12 @@ def test_starting_new_research(runs_root: Path) -> None:
 
 
 def test_the_settings_list_the_packs_this_deployment_offers(runs_root: Path, tmp_path: Path) -> None:
-    every = {p["name"]: p for p in client(runs_root).get("/api/settings").json()["packs"]}
+    every = {p["name"]: p for p in client(runs_root, mode="job").get("/api/settings").json()["packs"]}
     assert every["generic"]["title"] == "Any field" and every["medicine"]["pipeline"] == "synthesis"
     assert every["omics"]["pipeline"] == "research"
     site = tmp_path / "site.yaml"
     site.write_text("packs:\n  allowed: [generic, omics]\n", encoding="utf-8")
-    offered = client(runs_root, config_files=[site]).get("/api/settings").json()["packs"]
+    offered = client(runs_root, config_files=[site], mode="job").get("/api/settings").json()["packs"]
     assert [p["name"] for p in offered] == ["generic", "omics"]
 
 
@@ -255,3 +255,12 @@ def test_a_stage_error_names_run_files_without_server_paths(runs_root: Path, mon
     run = c.get("/api/runs/sleep-demo/1-literature").json()
     assert run["stages"][0]["last_error"] == "Fix work/code/experiment.py by hand."
     assert str(runs_root) not in c.get("/api/runs").text  # the projects list carries the stage errors too
+
+
+def test_where_the_time_went(runs_root: Path) -> None:
+    c = client(runs_root)
+    stats = c.get("/api/runs/sleep-demo/6-done/stats").json()
+    assert stats["wall"]["total_s"] >= 0 and {s["stage"] for s in stats["stages"]} >= {"literature", "plan", "code"}
+    assert stats["llm"]["calls"] > 0 and any(g["gate"] == "final_report" for g in stats["gates"])
+    assert str(runs_root) not in json.dumps(stats)
+    assert c.get("/api/runs/sleep-demo/nope/stats").status_code == 404

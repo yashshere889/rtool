@@ -129,3 +129,22 @@ def test_links_planted_in_the_code_folder_are_not_followed(runs_root: Path, tmp_
     archive = zipfile.ZipFile(io.BytesIO(c.get(f"{AT_GATE}/code/archive").content))
     assert not any(n.endswith("notes.txt") for n in archive.namelist())
     assert all(b"PRIVATE KEY" not in archive.read(n) for n in archive.namelist())
+
+
+def test_runs_of_the_tool_calling_agent_are_listed(runs_root: Path) -> None:
+    c = web_client(runs_root)
+    assert c.get(f"{AT_GATE}/code").json()["agent_runs"] == []  # the demo's model has no tools
+    run = open_run(runs_root, "sleep-demo", "4-gpu-runs")
+    EventLog(run.events_path, run.run_id).emit(
+        "tool_agent",
+        stage="code",
+        name="coder",
+        turns=7,
+        stopped="max_turns",
+        tool_calls={"write_file": 3, "run": 2},
+        tool_errors={"run": 1},
+        denials=1,
+        seconds=41.5,
+    )
+    [agent] = c.get(f"{AT_GATE}/code").json()["agent_runs"]
+    assert (agent["turns"], agent["stopped"], agent["tool_errors"], agent["denials"]) == (7, "max_turns", {"run": 1}, 1)

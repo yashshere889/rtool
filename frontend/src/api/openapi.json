@@ -210,6 +210,190 @@
     "title": "Affected",
     "type": "object"
    },
+   "AgentInfo": {
+    "properties": {
+     "consumes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Consumes",
+      "type": "array"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "optional": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Optional",
+      "type": "array"
+     },
+     "produces": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Produces",
+      "type": "array"
+     },
+     "uses_llm": {
+      "title": "Uses Llm",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "consumes",
+     "description",
+     "name",
+     "optional",
+     "produces",
+     "uses_llm"
+    ],
+    "title": "AgentInfo",
+    "type": "object"
+   },
+   "AgentRunView": {
+    "description": "One run of the tool-calling agent (the Coder with tools): how long it worked and what its tools did.",
+    "properties": {
+     "denials": {
+      "title": "Denials",
+      "type": "integer"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "seconds": {
+      "title": "Seconds",
+      "type": "number"
+     },
+     "stopped": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stopped"
+     },
+     "tool_calls": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Tool Calls",
+      "type": "object"
+     },
+     "tool_errors": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Tool Errors",
+      "type": "object"
+     },
+     "turns": {
+      "title": "Turns",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "denials",
+     "name",
+     "seconds",
+     "stopped",
+     "tool_calls",
+     "tool_errors",
+     "turns"
+    ],
+    "title": "AgentRunView",
+    "type": "object"
+   },
+   "ArchiveRequest": {
+    "properties": {
+     "max_file_mb": {
+      "default": 200.0,
+      "exclusiveMinimum": 0.0,
+      "maximum": 200.0,
+      "title": "Max File Mb",
+      "type": "number"
+     }
+    },
+    "title": "ArchiveRequest",
+    "type": "object"
+   },
+   "ArchiveView": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "can_archive": {
+      "title": "Can Archive",
+      "type": "boolean"
+     },
+     "default_max_file_mb": {
+      "title": "Default Max File Mb",
+      "type": "number"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "files": {
+      "title": "Files",
+      "type": "integer"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "run_bytes": {
+      "title": "Run Bytes",
+      "type": "integer"
+     },
+     "skipped": {
+      "items": {
+       "$ref": "#/components/schemas/Skipped"
+      },
+      "title": "Skipped",
+      "type": "array"
+     },
+     "state": {
+      "enum": [
+       "none",
+       "running",
+       "done",
+       "failed"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "why_not": {
+      "title": "Why Not",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bytes",
+     "can_archive",
+     "default_max_file_mb",
+     "error",
+     "files",
+     "path",
+     "run_bytes",
+     "skipped",
+     "state",
+     "why_not"
+    ],
+    "title": "ArchiveView",
+    "type": "object"
+   },
    "ArtifactEnvelope": {
     "properties": {
      "content_hash": {
@@ -379,6 +563,113 @@
     "title": "AuditFinding",
     "type": "object"
    },
+   "Card": {
+    "properties": {
+     "categories": {
+      "additionalProperties": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "title": "Categories",
+      "type": "object"
+     },
+     "cost": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "title": "Cost",
+      "type": "object"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "false_claims": {
+      "$ref": "#/components/schemas/Rate"
+     },
+     "headline": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/Rate"
+      },
+      "title": "Headline",
+      "type": "object"
+     },
+     "levels": {
+      "additionalProperties": {
+       "additionalProperties": {
+        "type": "integer"
+       },
+       "type": "object"
+      },
+      "title": "Levels",
+      "type": "object"
+     },
+     "limits": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Limits",
+      "type": "array"
+     },
+     "pack": {
+      "title": "Pack",
+      "type": "string"
+     },
+     "provenance": {
+      "additionalProperties": true,
+      "title": "Provenance",
+      "type": "object"
+     },
+     "runs": {
+      "default": 0,
+      "title": "Runs",
+      "type": "integer"
+     },
+     "unconfirmed": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/Rate"
+      },
+      "title": "Unconfirmed",
+      "type": "object"
+     },
+     "unfinished": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Unfinished",
+      "type": "array"
+     },
+     "variants": {
+      "additionalProperties": {
+       "additionalProperties": {
+        "$ref": "#/components/schemas/Rate"
+       },
+       "type": "object"
+      },
+      "title": "Variants",
+      "type": "object"
+     }
+    },
+    "required": [
+     "categories",
+     "cost",
+     "created_at",
+     "false_claims",
+     "headline",
+     "levels",
+     "limits",
+     "pack",
+     "provenance",
+     "runs",
+     "unconfirmed",
+     "unfinished",
+     "variants"
+    ],
+    "title": "Card",
+    "type": "object"
+   },
    "Check": {
     "properties": {
      "detail": {
@@ -401,6 +692,29 @@
      "ok"
     ],
     "title": "Check",
+    "type": "object"
+   },
+   "CheckInfo": {
+    "properties": {
+     "detail": {
+      "title": "Detail",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "detail",
+     "name",
+     "status"
+    ],
+    "title": "CheckInfo",
     "type": "object"
    },
    "CheckedEvidence": {
@@ -429,6 +743,34 @@
      "verified"
     ],
     "title": "CheckedEvidence",
+    "type": "object"
+   },
+   "ClaimRef": {
+    "properties": {
+     "bib_key": {
+      "title": "Bib Key",
+      "type": "string"
+     },
+     "paper_id": {
+      "title": "Paper Id",
+      "type": "string"
+     },
+     "quote": {
+      "title": "Quote",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bib_key",
+     "paper_id",
+     "quote",
+     "text"
+    ],
+    "title": "ClaimRef",
     "type": "object"
    },
    "ClaimView": {
@@ -593,6 +935,14 @@
    },
    "CodeView": {
     "properties": {
+     "agent_runs": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/AgentRunView"
+      },
+      "title": "Agent Runs",
+      "type": "array"
+     },
      "baseline": {
       "anyOf": [
        {
@@ -758,6 +1108,7 @@
      }
     },
     "required": [
+     "agent_runs",
      "baseline",
      "bundle_version",
      "code_root",
@@ -782,6 +1133,95 @@
      "why_not_editable"
     ],
     "title": "CodeView",
+    "type": "object"
+   },
+   "CollectView": {
+    "properties": {
+     "can_upload": {
+      "title": "Can Upload",
+      "type": "boolean"
+     },
+     "columns": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Columns",
+      "type": "array"
+     },
+     "conditions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "data_format": {
+      "title": "Data Format",
+      "type": "string"
+     },
+     "inbox_file": {
+      "title": "Inbox File",
+      "type": "boolean"
+     },
+     "n_per_condition": {
+      "title": "N Per Condition",
+      "type": "integer"
+     },
+     "paired": {
+      "title": "Paired",
+      "type": "boolean"
+     },
+     "received": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/StudyData"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "status": {
+      "$ref": "#/components/schemas/StageStatus"
+     },
+     "template": {
+      "title": "Template",
+      "type": "string"
+     },
+     "unit": {
+      "title": "Unit",
+      "type": "string"
+     },
+     "waiting": {
+      "title": "Waiting",
+      "type": "boolean"
+     },
+     "why_not": {
+      "title": "Why Not",
+      "type": "string"
+     }
+    },
+    "required": [
+     "can_upload",
+     "columns",
+     "conditions",
+     "data_format",
+     "inbox_file",
+     "n_per_condition",
+     "paired",
+     "received",
+     "stage",
+     "status",
+     "template",
+     "unit",
+     "waiting",
+     "why_not"
+    ],
+    "title": "CollectView",
     "type": "object"
    },
    "Comparison": {
@@ -1184,6 +1624,11 @@
    },
    "DownloadsView": {
     "properties": {
+     "can_upload": {
+      "default": false,
+      "title": "Can Upload",
+      "type": "boolean"
+     },
      "items": {
       "items": {
        "$ref": "#/components/schemas/DownloadItem"
@@ -1244,6 +1689,7 @@
      }
     },
     "required": [
+     "can_upload",
      "items",
      "last_error",
      "plan_version",
@@ -1284,6 +1730,32 @@
     "title": "Draft",
     "type": "object"
    },
+   "DroppedSentence": {
+    "properties": {
+     "claims": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Claims",
+      "type": "array"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "claims",
+     "reason",
+     "text"
+    ],
+    "title": "DroppedSentence",
+    "type": "object"
+   },
    "EntityView": {
     "properties": {
      "kind": {
@@ -1308,6 +1780,282 @@
      "paper_ids"
     ],
     "title": "EntityView",
+    "type": "object"
+   },
+   "EpisodeStats": {
+    "properties": {
+     "after_jobs": {
+      "items": {
+       "type": "string"
+      },
+      "title": "After Jobs",
+      "type": "array"
+     },
+     "attempt": {
+      "default": 1,
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "busy_fraction": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Busy Fraction"
+     },
+     "completion_tokens": {
+      "default": 0,
+      "title": "Completion Tokens",
+      "type": "integer"
+     },
+     "ended": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ended"
+     },
+     "episode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Episode"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "first_llm_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Llm S"
+     },
+     "gpu": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gpu"
+     },
+     "job": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job"
+     },
+     "kind": {
+      "default": "local",
+      "title": "Kind",
+      "type": "string"
+     },
+     "llm_busy_s": {
+      "default": 0.0,
+      "title": "Llm Busy S",
+      "type": "number"
+     },
+     "llm_calls": {
+      "default": 0,
+      "title": "Llm Calls",
+      "type": "integer"
+     },
+     "node": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Node"
+     },
+     "outcome": {
+      "default": "",
+      "title": "Outcome",
+      "type": "string"
+     },
+     "partition": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Partition"
+     },
+     "prompt_tokens": {
+      "default": 0,
+      "title": "Prompt Tokens",
+      "type": "integer"
+     },
+     "queue_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Queue S"
+     },
+     "ran": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Ran",
+      "type": "array"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "run_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Run S"
+     },
+     "server_failures": {
+      "default": 0,
+      "title": "Server Failures",
+      "type": "integer"
+     },
+     "server_ready": {
+      "default": false,
+      "title": "Server Ready",
+      "type": "boolean"
+     },
+     "server_start_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Server Start S"
+     },
+     "started": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started"
+     },
+     "submitted": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Submitted"
+     },
+     "truncated": {
+      "default": 0,
+      "title": "Truncated",
+      "type": "integer"
+     },
+     "wait_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wait S"
+     }
+    },
+    "required": [
+     "after_jobs",
+     "attempt",
+     "busy_fraction",
+     "completion_tokens",
+     "ended",
+     "episode",
+     "error",
+     "first_llm_s",
+     "gpu",
+     "job",
+     "kind",
+     "llm_busy_s",
+     "llm_calls",
+     "node",
+     "outcome",
+     "partition",
+     "prompt_tokens",
+     "queue_s",
+     "ran",
+     "reason",
+     "run_s",
+     "server_failures",
+     "server_ready",
+     "server_start_s",
+     "started",
+     "submitted",
+     "truncated",
+     "wait_s"
+    ],
+    "title": "EpisodeStats",
     "type": "object"
    },
    "EventPage": {
@@ -1625,6 +2373,61 @@
     "title": "FieldChange",
     "type": "object"
    },
+   "FieldInfo": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "detail": {
+      "title": "Detail",
+      "type": "string"
+     },
+     "max_gpu_hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Gpu Hours"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "origin": {
+      "title": "Origin",
+      "type": "string"
+     },
+     "pipeline": {
+      "title": "Pipeline",
+      "type": "string"
+     },
+     "state": {
+      "title": "State",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "description",
+     "detail",
+     "max_gpu_hours",
+     "name",
+     "origin",
+     "pipeline",
+     "state",
+     "title"
+    ],
+    "title": "FieldInfo",
+    "type": "object"
+   },
    "FileText": {
     "properties": {
      "content": {
@@ -1757,6 +2560,107 @@
      "paper_ids"
     ],
     "title": "GapView",
+    "type": "object"
+   },
+   "GateStats": {
+    "properties": {
+     "apply_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Apply S"
+     },
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "decided": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decided"
+     },
+     "gate": {
+      "title": "Gate",
+      "type": "string"
+     },
+     "human_s": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Human S"
+     },
+     "in_stage": {
+      "default": false,
+      "title": "In Stage",
+      "type": "boolean"
+     },
+     "opened": {
+      "title": "Opened",
+      "type": "string"
+     },
+     "resolved": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Resolved"
+     },
+     "result": {
+      "default": "open",
+      "title": "Result",
+      "type": "string"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "wait_s": {
+      "default": 0.0,
+      "title": "Wait S",
+      "type": "number"
+     }
+    },
+    "required": [
+     "apply_s",
+     "by",
+     "decided",
+     "gate",
+     "human_s",
+     "in_stage",
+     "opened",
+     "resolved",
+     "result",
+     "stage",
+     "wait_s"
+    ],
+    "title": "GateStats",
     "type": "object"
    },
    "HTTPValidationError": {
@@ -2186,6 +3090,35 @@
     "title": "JobView",
     "type": "object"
    },
+   "KeptSentence": {
+    "properties": {
+     "claims": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Claims",
+      "type": "array"
+     },
+     "papers": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Papers",
+      "type": "array"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "claims",
+     "papers",
+     "text"
+    ],
+    "title": "KeptSentence",
+    "type": "object"
+   },
    "KickResult": {
     "properties": {
      "detail": {
@@ -2215,6 +3148,91 @@
      "submitted"
     ],
     "title": "KickResult",
+    "type": "object"
+   },
+   "KindRate": {
+    "properties": {
+     "high": {
+      "title": "High",
+      "type": "number"
+     },
+     "k": {
+      "title": "K",
+      "type": "integer"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "low": {
+      "title": "Low",
+      "type": "number"
+     },
+     "n": {
+      "title": "N",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "high",
+     "k",
+     "kind",
+     "low",
+     "n"
+    ],
+    "title": "KindRate",
+    "type": "object"
+   },
+   "LLMTotals": {
+    "properties": {
+     "busy_s": {
+      "default": 0.0,
+      "title": "Busy S",
+      "type": "number"
+     },
+     "by_profile": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "By Profile",
+      "type": "object"
+     },
+     "calls": {
+      "default": 0,
+      "title": "Calls",
+      "type": "integer"
+     },
+     "completion_tokens": {
+      "default": 0,
+      "title": "Completion Tokens",
+      "type": "integer"
+     },
+     "latency_s": {
+      "default": 0.0,
+      "title": "Latency S",
+      "type": "number"
+     },
+     "prompt_tokens": {
+      "default": 0,
+      "title": "Prompt Tokens",
+      "type": "integer"
+     },
+     "truncated": {
+      "default": 0,
+      "title": "Truncated",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "busy_s",
+     "by_profile",
+     "calls",
+     "completion_tokens",
+     "latency_s",
+     "prompt_tokens",
+     "truncated"
+    ],
+    "title": "LLMTotals",
     "type": "object"
    },
    "LiteratureView": {
@@ -2785,6 +3803,22 @@
    },
    "PackChoice": {
     "properties": {
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "max_gpu_hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Gpu Hours"
+     },
      "name": {
       "title": "Name",
       "type": "string"
@@ -2799,6 +3833,8 @@
      }
     },
     "required": [
+     "description",
+     "max_gpu_hours",
      "name",
      "pipeline",
      "title"
@@ -3394,6 +4430,89 @@
     "title": "PartitionView",
     "type": "object"
    },
+   "PhaseStats": {
+    "properties": {
+     "attempt": {
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "ended": {
+      "title": "Ended",
+      "type": "string"
+     },
+     "included": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Included"
+     },
+     "papers": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Papers"
+     },
+     "phase": {
+      "title": "Phase",
+      "type": "string"
+     },
+     "seconds": {
+      "title": "Seconds",
+      "type": "number"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "attempt",
+     "ended",
+     "included",
+     "papers",
+     "phase",
+     "seconds",
+     "stage"
+    ],
+    "title": "PhaseStats",
+    "type": "object"
+   },
+   "PipelineInfo": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "stages": {
+      "items": {
+       "$ref": "#/components/schemas/StageInfo"
+      },
+      "title": "Stages",
+      "type": "array"
+     }
+    },
+    "required": [
+     "description",
+     "name",
+     "stages"
+    ],
+    "title": "PipelineInfo",
+    "type": "object"
+   },
    "PlaceholderInfo": {
     "properties": {
      "key": {
@@ -3578,6 +4697,273 @@
     "title": "Producer",
     "type": "object"
    },
+   "Protocol": {
+    "properties": {
+     "allocation_path": {
+      "title": "Allocation Path",
+      "type": "string"
+     },
+     "alpha": {
+      "title": "Alpha",
+      "type": "number"
+     },
+     "baseline": {
+      "title": "Baseline",
+      "type": "string"
+     },
+     "blinding": {
+      "title": "Blinding",
+      "type": "string"
+     },
+     "checklist": {
+      "items": {
+       "$ref": "#/components/schemas/Check"
+      },
+      "title": "Checklist",
+      "type": "array"
+     },
+     "conditions": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "data_format": {
+      "title": "Data Format",
+      "type": "string"
+     },
+     "effect_size": {
+      "title": "Effect Size",
+      "type": "number"
+     },
+     "markdown_path": {
+      "default": "",
+      "title": "Markdown Path",
+      "type": "string"
+     },
+     "materials": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Materials",
+      "type": "array"
+     },
+     "n_per_condition": {
+      "title": "N Per Condition",
+      "type": "integer"
+     },
+     "paired": {
+      "title": "Paired",
+      "type": "boolean"
+     },
+     "power": {
+      "title": "Power",
+      "type": "number"
+     },
+     "primary_metric": {
+      "title": "Primary Metric",
+      "type": "string"
+     },
+     "unit": {
+      "title": "Unit",
+      "type": "string"
+     }
+    },
+    "required": [
+     "allocation_path",
+     "alpha",
+     "baseline",
+     "blinding",
+     "checklist",
+     "conditions",
+     "data_format",
+     "effect_size",
+     "markdown_path",
+     "materials",
+     "n_per_condition",
+     "paired",
+     "power",
+     "primary_metric",
+     "unit"
+    ],
+    "title": "Protocol",
+    "type": "object"
+   },
+   "ProtocolCheck": {
+    "properties": {
+     "changed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Changed",
+      "type": "array"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "protocol": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Protocol"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "changed",
+     "error",
+     "ok",
+     "protocol"
+    ],
+    "title": "ProtocolCheck",
+    "type": "object"
+   },
+   "ProtocolView": {
+    "properties": {
+     "allocation_preview": {
+      "items": {
+       "additionalProperties": {
+        "type": "string"
+       },
+       "type": "object"
+      },
+      "title": "Allocation Preview",
+      "type": "array"
+     },
+     "allocation_rows": {
+      "title": "Allocation Rows",
+      "type": "integer"
+     },
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "edit_note": {
+      "title": "Edit Note",
+      "type": "string"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "edited_from": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edited From"
+     },
+     "head": {
+      "title": "Head",
+      "type": "integer"
+     },
+     "hypothesis_title": {
+      "title": "Hypothesis Title",
+      "type": "string"
+     },
+     "plan": {
+      "$ref": "#/components/schemas/ExperimentPlan"
+     },
+     "protocol": {
+      "$ref": "#/components/schemas/Protocol"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     },
+     "why_not_editable": {
+      "title": "Why Not Editable",
+      "type": "string"
+     }
+    },
+    "required": [
+     "allocation_preview",
+     "allocation_rows",
+     "by",
+     "created_at",
+     "edit_note",
+     "editable",
+     "edited_from",
+     "head",
+     "hypothesis_title",
+     "plan",
+     "protocol",
+     "stage",
+     "version",
+     "versions",
+     "why_not_editable"
+    ],
+    "title": "ProtocolView",
+    "type": "object"
+   },
+   "Provided": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "filename": {
+      "title": "Filename",
+      "type": "string"
+     },
+     "files": {
+      "title": "Files",
+      "type": "integer"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "total_bytes": {
+      "title": "Total Bytes",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "bytes",
+     "filename",
+     "files",
+     "name",
+     "total_bytes"
+    ],
+    "title": "Provided",
+    "type": "object"
+   },
    "QualityCheck": {
     "description": "One measured property of the literature stage's output, for the researcher at the review gate.",
     "properties": {
@@ -3622,6 +5008,96 @@
      "kick"
     ],
     "title": "Queued",
+    "type": "object"
+   },
+   "Rate": {
+    "properties": {
+     "high": {
+      "title": "High",
+      "type": "number"
+     },
+     "k": {
+      "title": "K",
+      "type": "integer"
+     },
+     "low": {
+      "title": "Low",
+      "type": "number"
+     },
+     "n": {
+      "title": "N",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "high",
+     "k",
+     "low",
+     "n"
+    ],
+    "title": "Rate",
+    "type": "object"
+   },
+   "Received": {
+    "properties": {
+     "rows": {
+      "title": "Rows",
+      "type": "integer"
+     },
+     "units": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Units",
+      "type": "object"
+     }
+    },
+    "required": [
+     "rows",
+     "units"
+    ],
+    "title": "Received",
+    "type": "object"
+   },
+   "ReplayRequest": {
+    "properties": {
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "tag": {
+      "default": "again",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,30}$",
+      "title": "Tag",
+      "type": "string"
+     }
+    },
+    "required": [
+     "stage"
+    ],
+    "title": "ReplayRequest",
+    "type": "object"
+   },
+   "Replayed": {
+    "properties": {
+     "kick": {
+      "$ref": "#/components/schemas/KickResult"
+     },
+     "project": {
+      "title": "Project",
+      "type": "string"
+     },
+     "run_id": {
+      "title": "Run Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "kick",
+     "project",
+     "run_id"
+    ],
+    "title": "Replayed",
     "type": "object"
    },
    "ReportCheck": {
@@ -4641,6 +6117,106 @@
     "title": "RunState",
     "type": "object"
    },
+   "RunStats": {
+    "properties": {
+     "auto_gates": {
+      "default": 0,
+      "title": "Auto Gates",
+      "type": "integer"
+     },
+     "episodes": {
+      "items": {
+       "$ref": "#/components/schemas/EpisodeStats"
+      },
+      "title": "Episodes",
+      "type": "array"
+     },
+     "first": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First"
+     },
+     "gates": {
+      "items": {
+       "$ref": "#/components/schemas/GateStats"
+      },
+      "title": "Gates",
+      "type": "array"
+     },
+     "last": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last"
+     },
+     "llm": {
+      "$ref": "#/components/schemas/LLMTotals"
+     },
+     "notes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+     },
+     "phases": {
+      "items": {
+       "$ref": "#/components/schemas/PhaseStats"
+      },
+      "title": "Phases",
+      "type": "array"
+     },
+     "run": {
+      "default": "",
+      "title": "Run",
+      "type": "string"
+     },
+     "servers": {
+      "items": {
+       "$ref": "#/components/schemas/ServerStart"
+      },
+      "title": "Servers",
+      "type": "array"
+     },
+     "stages": {
+      "items": {
+       "$ref": "#/components/schemas/StageStats"
+      },
+      "title": "Stages",
+      "type": "array"
+     },
+     "wall": {
+      "$ref": "#/components/schemas/WallTime"
+     }
+    },
+    "required": [
+     "auto_gates",
+     "episodes",
+     "first",
+     "gates",
+     "last",
+     "llm",
+     "notes",
+     "phases",
+     "run",
+     "servers",
+     "stages",
+     "wall"
+    ],
+    "title": "RunStats",
+    "type": "object"
+   },
    "RunSummary": {
     "properties": {
      "created_at": {
@@ -4923,6 +6499,121 @@
     "title": "ServerSettings",
     "type": "object"
    },
+   "ServerStart": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "episode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Episode"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "gpu": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Gpu"
+     },
+     "model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "node": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Node"
+     },
+     "ok": {
+      "default": true,
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "partition": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Partition"
+     },
+     "seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seconds"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     }
+    },
+    "required": [
+     "at",
+     "episode",
+     "error",
+     "gpu",
+     "model",
+     "node",
+     "ok",
+     "partition",
+     "seconds",
+     "stage"
+    ],
+    "title": "ServerStart",
+    "type": "object"
+   },
    "SessionRequest": {
     "properties": {
      "token": {
@@ -4934,6 +6625,24 @@
      "token"
     ],
     "title": "SessionRequest",
+    "type": "object"
+   },
+   "Skipped": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bytes",
+     "path"
+    ],
+    "title": "Skipped",
     "type": "object"
    },
    "SmokeView": {
@@ -4971,6 +6680,135 @@
      "seconds"
     ],
     "title": "SmokeView",
+    "type": "object"
+   },
+   "StageInfo": {
+    "properties": {
+     "after": {
+      "items": {
+       "type": "string"
+      },
+      "title": "After",
+      "type": "array"
+     },
+     "agent": {
+      "title": "Agent",
+      "type": "string"
+     },
+     "gate": {
+      "title": "Gate",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "produces": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Produces",
+      "type": "array"
+     }
+    },
+    "required": [
+     "after",
+     "agent",
+     "gate",
+     "id",
+     "produces"
+    ],
+    "title": "StageInfo",
+    "type": "object"
+   },
+   "StageStats": {
+    "properties": {
+     "active_s": {
+      "default": 0.0,
+      "title": "Active S",
+      "type": "number"
+     },
+     "attempts": {
+      "default": 0,
+      "title": "Attempts",
+      "type": "integer"
+     },
+     "completion_tokens": {
+      "default": 0,
+      "title": "Completion Tokens",
+      "type": "integer"
+     },
+     "first_started": {
+      "title": "First Started",
+      "type": "string"
+     },
+     "last": {
+      "default": "",
+      "title": "Last",
+      "type": "string"
+     },
+     "last_ended": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Ended"
+     },
+     "llm_busy_s": {
+      "default": 0.0,
+      "title": "Llm Busy S",
+      "type": "number"
+     },
+     "llm_calls": {
+      "default": 0,
+      "title": "Llm Calls",
+      "type": "integer"
+     },
+     "prompt_tokens": {
+      "default": 0,
+      "title": "Prompt Tokens",
+      "type": "integer"
+     },
+     "server_start_s": {
+      "default": 0.0,
+      "title": "Server Start S",
+      "type": "number"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "truncated": {
+      "default": 0,
+      "title": "Truncated",
+      "type": "integer"
+     },
+     "turns": {
+      "default": 0,
+      "title": "Turns",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "active_s",
+     "attempts",
+     "completion_tokens",
+     "first_started",
+     "last",
+     "last_ended",
+     "llm_busy_s",
+     "llm_calls",
+     "prompt_tokens",
+     "server_start_s",
+     "stage",
+     "truncated",
+     "turns"
+    ],
+    "title": "StageStats",
     "type": "object"
    },
    "StageStatus": {
@@ -5167,6 +7005,37 @@
     "title": "StopRequest",
     "type": "object"
    },
+   "StudyData": {
+    "properties": {
+     "path": {
+      "title": "Path",
+      "type": "string"
+     },
+     "rows": {
+      "title": "Rows",
+      "type": "integer"
+     },
+     "sha256": {
+      "title": "Sha256",
+      "type": "string"
+     },
+     "units": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Units",
+      "type": "object"
+     }
+    },
+    "required": [
+     "path",
+     "rows",
+     "sha256",
+     "units"
+    ],
+    "title": "StudyData",
+    "type": "object"
+   },
    "SubtopicView": {
     "properties": {
      "name": {
@@ -5186,6 +7055,195 @@
      "paper_ids"
     ],
     "title": "SubtopicView",
+    "type": "object"
+   },
+   "Synthesis": {
+    "description": "The review's sentences with the claims each rests on, for checking and scoring (the text is final_report).",
+    "properties": {
+     "checks": {
+      "items": {
+       "$ref": "#/components/schemas/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+     },
+     "claims": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/ClaimRef"
+      },
+      "title": "Claims",
+      "type": "object"
+     },
+     "dropped": {
+      "items": {
+       "$ref": "#/components/schemas/DroppedSentence"
+      },
+      "title": "Dropped",
+      "type": "array"
+     },
+     "markdown_path": {
+      "default": "",
+      "title": "Markdown Path",
+      "type": "string"
+     },
+     "sections": {
+      "items": {
+       "$ref": "#/components/schemas/SynthesisSection"
+      },
+      "title": "Sections",
+      "type": "array"
+     },
+     "topic": {
+      "title": "Topic",
+      "type": "string"
+     }
+    },
+    "required": [
+     "checks",
+     "claims",
+     "dropped",
+     "markdown_path",
+     "sections",
+     "topic"
+    ],
+    "title": "Synthesis",
+    "type": "object"
+   },
+   "SynthesisCheck": {
+    "properties": {
+     "changed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Changed",
+      "type": "array"
+     },
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "synthesis": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Synthesis"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "changed",
+     "error",
+     "ok",
+     "synthesis"
+    ],
+    "title": "SynthesisCheck",
+    "type": "object"
+   },
+   "SynthesisSection": {
+    "properties": {
+     "sentences": {
+      "items": {
+       "$ref": "#/components/schemas/KeptSentence"
+      },
+      "title": "Sentences",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "sentences",
+     "title"
+    ],
+    "title": "SynthesisSection",
+    "type": "object"
+   },
+   "SynthesisView": {
+    "properties": {
+     "by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "edit_note": {
+      "title": "Edit Note",
+      "type": "string"
+     },
+     "editable": {
+      "title": "Editable",
+      "type": "boolean"
+     },
+     "edited_from": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edited From"
+     },
+     "head": {
+      "title": "Head",
+      "type": "integer"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     },
+     "synthesis": {
+      "$ref": "#/components/schemas/Synthesis"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Versions",
+      "type": "array"
+     },
+     "why_not_editable": {
+      "title": "Why Not Editable",
+      "type": "string"
+     }
+    },
+    "required": [
+     "by",
+     "created_at",
+     "edit_note",
+     "editable",
+     "edited_from",
+     "head",
+     "stage",
+     "synthesis",
+     "version",
+     "versions",
+     "why_not_editable"
+    ],
+    "title": "SynthesisView",
     "type": "object"
    },
    "TextSection": {
@@ -5350,6 +7408,68 @@
     "title": "ValidationError",
     "type": "object"
    },
+   "ValidityNote": {
+    "properties": {
+     "code": {
+      "title": "Code",
+      "type": "string"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "false_claims": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KindRate"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "measured": {
+      "title": "Measured",
+      "type": "boolean"
+     },
+     "model": {
+      "title": "Model",
+      "type": "string"
+     },
+     "pack": {
+      "title": "Pack",
+      "type": "string"
+     },
+     "runs": {
+      "title": "Runs",
+      "type": "integer"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "top_level": {
+      "items": {
+       "$ref": "#/components/schemas/KindRate"
+      },
+      "title": "Top Level",
+      "type": "array"
+     }
+    },
+    "required": [
+     "code",
+     "created_at",
+     "false_claims",
+     "measured",
+     "model",
+     "pack",
+     "runs",
+     "text",
+     "top_level"
+    ],
+    "title": "ValidityNote",
+    "type": "object"
+   },
    "Variable": {
     "properties": {
      "description": {
@@ -5375,6 +7495,93 @@
      "values"
     ],
     "title": "Variable",
+    "type": "object"
+   },
+   "WallTime": {
+    "description": "The run's wall time split into exclusive parts (an instant counts for the first that applies).",
+    "properties": {
+     "failed_s": {
+      "default": 0.0,
+      "title": "Failed S",
+      "type": "number"
+     },
+     "gpu_cold_start_s": {
+      "default": 0.0,
+      "title": "Gpu Cold Start S",
+      "type": "number"
+     },
+     "gpu_episodes": {
+      "default": 0,
+      "title": "Gpu Episodes",
+      "type": "integer"
+     },
+     "gpu_llm_busy_s": {
+      "default": 0.0,
+      "title": "Gpu Llm Busy S",
+      "type": "number"
+     },
+     "gpu_run_s": {
+      "default": 0.0,
+      "title": "Gpu Run S",
+      "type": "number"
+     },
+     "gpu_startup_bounded": {
+      "default": 0,
+      "title": "Gpu Startup Bounded",
+      "type": "integer"
+     },
+     "gpu_startup_s": {
+      "default": 0.0,
+      "title": "Gpu Startup S",
+      "type": "number"
+     },
+     "idle_s": {
+      "default": 0.0,
+      "title": "Idle S",
+      "type": "number"
+     },
+     "jobs_s": {
+      "default": 0.0,
+      "title": "Jobs S",
+      "type": "number"
+     },
+     "person_s": {
+      "default": 0.0,
+      "title": "Person S",
+      "type": "number"
+     },
+     "queue_s": {
+      "default": 0.0,
+      "title": "Queue S",
+      "type": "number"
+     },
+     "running_s": {
+      "default": 0.0,
+      "title": "Running S",
+      "type": "number"
+     },
+     "total_s": {
+      "default": 0.0,
+      "title": "Total S",
+      "type": "number"
+     }
+    },
+    "required": [
+     "failed_s",
+     "gpu_cold_start_s",
+     "gpu_episodes",
+     "gpu_llm_busy_s",
+     "gpu_run_s",
+     "gpu_startup_bounded",
+     "gpu_startup_s",
+     "idle_s",
+     "jobs_s",
+     "person_s",
+     "queue_s",
+     "running_s",
+     "total_s"
+    ],
+    "title": "WallTime",
     "type": "object"
    },
    "WorkerState": {
@@ -5491,6 +7698,31 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/api/agents": {
+   "get": {
+    "operationId": "agents_api_agents_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AgentInfo"
+         },
+         "title": "Response Agents Api Agents Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Agents",
+    "tags": [
+     "system"
+    ]
+   }
+  },
   "/api/artifact-types": {
    "get": {
     "description": "JSON Schema of every artifact type, so pages for new agents can be generated.",
@@ -5515,6 +7747,80 @@
     ]
    }
   },
+  "/api/doctor": {
+   "get": {
+    "description": "Whether this machine can run the pipeline with this config (`network`: also reach the paper APIs).",
+    "operationId": "doctor_api_doctor_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "network",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Network",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CheckInfo"
+         },
+         "title": "Response Doctor Api Doctor Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Doctor",
+    "tags": [
+     "system"
+    ]
+   }
+  },
+  "/api/fields": {
+   "get": {
+    "description": "Every pack, as `rtool packs` lists them, and whether this server offers it to new runs.",
+    "operationId": "fields_api_fields_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/FieldInfo"
+         },
+         "title": "Response Fields Api Fields Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Fields",
+    "tags": [
+     "system"
+    ]
+   }
+  },
   "/api/health": {
    "get": {
     "operationId": "health_api_health_get",
@@ -5533,6 +7839,31 @@
     "summary": "Health",
     "tags": [
      "session"
+    ]
+   }
+  },
+  "/api/pipelines": {
+   "get": {
+    "operationId": "pipelines_api_pipelines_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/PipelineInfo"
+         },
+         "title": "Response Pipelines Api Pipelines Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Pipelines",
+    "tags": [
+     "system"
     ]
    }
   },
@@ -5820,6 +8151,117 @@
     "summary": "Action State",
     "tags": [
      "actions"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/archive": {
+   "get": {
+    "operationId": "archive_state_api_runs__project___run_id__archive_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ArchiveView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Archive State",
+    "tags": [
+     "copies"
+    ]
+   },
+   "post": {
+    "description": "Pack the run into ``paths.archive_root`` in the background; poll GET for the outcome.",
+    "operationId": "archive_start_api_runs__project___run_id__archive_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ArchiveRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ArchiveView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Archive Start",
+    "tags": [
+     "copies"
     ]
    }
   },
@@ -6289,6 +8731,109 @@
     "summary": "Log",
     "tags": [
      "code"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/collect": {
+   "get": {
+    "operationId": "collect_api_runs__project___run_id__collect_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CollectView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Collect",
+    "tags": [
+     "study"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/collect/inbox": {
+   "put": {
+    "description": "The study's data.csv as the request body. It is kept only if it follows the protocol.",
+    "operationId": "upload_api_runs__project___run_id__collect_inbox_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Received"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload",
+    "tags": [
+     "study"
     ]
    }
   },
@@ -7311,6 +9856,197 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/protocol": {
+   "get": {
+    "operationId": "protocol_api_runs__project___run_id__protocol_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProtocolView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Protocol",
+    "tags": [
+     "study"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/protocol/check": {
+   "post": {
+    "description": "What an edited protocol would become (sample size, allocation, checklist), without storing anything.",
+    "operationId": "check_api_runs__project___run_id__protocol_check_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/research_tool__web__api__plan__CheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProtocolCheck"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Check",
+    "tags": [
+     "study"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/replay": {
+   "post": {
+    "description": "Copy the run and redo ``stage`` in the copy (same inputs); the copy stops at that stage's checkpoint.",
+    "operationId": "replay_api_runs__project___run_id__replay_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReplayRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Replayed"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Replay",
+    "tags": [
+     "copies"
+    ]
+   }
+  },
   "/api/runs/{project}/{run_id}/report": {
    "get": {
     "description": "The report (``which=report``) or the final report after the review, as sections with what they render to.",
@@ -7502,6 +10238,76 @@
     "summary": "Check",
     "tags": [
      "report"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/resources/{name}/inbox": {
+   "put": {
+    "description": "A file of a resource that is not public, as the request body, into that resource's folder.\n\nOnly while the manual-resources checkpoint waits for that resource, and only into the folder the checkpoint\nnames. Files are limited to the same size as papers; larger data is copied onto the cluster by hand.",
+    "operationId": "provide_api_runs__project___run_id__resources__name__inbox_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "filename",
+      "required": true,
+      "schema": {
+       "title": "Filename",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Provided"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Provide",
+    "tags": [
+     "plan"
     ]
    }
   },
@@ -7758,6 +10564,58 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/stats": {
+   "get": {
+    "description": "Where the run's wall time went (what `rtool stats` prints), read from its event log.",
+    "operationId": "stats_api_runs__project___run_id__stats_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunStats"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Stats",
+    "tags": [
+     "runs"
+    ]
+   }
+  },
   "/api/runs/{project}/{run_id}/stop": {
    "post": {
     "operationId": "stop_api_runs__project___run_id__stop_post",
@@ -7826,6 +10684,187 @@
     ]
    }
   },
+  "/api/runs/{project}/{run_id}/synthesis": {
+   "get": {
+    "operationId": "synthesis_api_runs__project___run_id__synthesis_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "version",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SynthesisView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Synthesis",
+    "tags": [
+     "synthesis"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/synthesis/check": {
+   "post": {
+    "description": "What an edited review would become, or why a sentence would be refused; nothing is stored.",
+    "operationId": "check_api_runs__project___run_id__synthesis_check_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/research_tool__web__api__plan__CheckRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SynthesisCheck"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Check",
+    "tags": [
+     "synthesis"
+    ]
+   }
+  },
+  "/api/runs/{project}/{run_id}/validity": {
+   "get": {
+    "description": "What this run's field has been measured at (nothing, if it has no card).",
+    "operationId": "run_validity_api_runs__project___run_id__validity_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project",
+      "required": true,
+      "schema": {
+       "title": "Project",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ValidityNote"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Run Validity",
+    "tags": [
+     "validity"
+    ]
+   }
+  },
   "/api/session": {
    "post": {
     "operationId": "sign_in_api_session_post",
@@ -7878,6 +10917,32 @@
     "summary": "Server Settings",
     "tags": [
      "session"
+    ]
+   }
+  },
+  "/api/validity": {
+   "get": {
+    "description": "The newest validity card of each field, as `rtool validity score` wrote it.",
+    "operationId": "cards_api_validity_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Card"
+         },
+         "title": "Response Cards Api Validity Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Cards",
+    "tags": [
+     "validity"
     ]
    }
   }

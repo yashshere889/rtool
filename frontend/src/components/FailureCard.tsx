@@ -56,13 +56,14 @@ export function FailureCard({ run, stage }: { run: RunDetail; stage: StageSummar
       label: `${stageTitle(stage.id)}: ${resume ? "continue" : "try again"}`,
     });
   const queued = run.queued_actions.some((a) => a.kind === "retry" && a.stage === stage.id);
+  const refused = (stage.last_error ?? "").startsWith("rtool refuses");
   return (
     <section aria-label="Needs attention" className="rounded-xl border border-bad/30 bg-bad-soft/50 p-5">
       <p className="flex flex-wrap items-center gap-x-2 text-xs font-semibold tracking-wide text-bad uppercase">
         <CircleAlert className="size-4" /> Needs attention · {stageTitle(stage.id)}
       </p>
       <p className="mt-2 text-sm font-medium">
-        This stage stopped with an error
+        {refused ? "rtool will not do this" : "This stage stopped with an error"}
         {failure && (
           <>
             {" "}
@@ -77,6 +78,12 @@ export function FailureCard({ run, stage }: { run: RunDetail; stage: StageSummar
       <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-surface p-3 font-mono text-xs whitespace-pre-wrap">
         {stage.last_error || "no error message was recorded"}
       </pre>
+      {refused && (
+        <p className="mt-3 text-sm">
+          This is a rule that applies to every field, not a fault: trying again with the same text gives the same answer.
+          Change what it was asked to do (for example, choose another hypothesis), or give guidance below.
+        </p>
+      )}
       {failure && failure.retries > 0 && (
         <p className="mt-3 text-sm">
           The tool already tried again {failure.retries} time{failure.retries === 1 ? "" : "s"} by itself before

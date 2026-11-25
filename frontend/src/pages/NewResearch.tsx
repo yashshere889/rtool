@@ -38,7 +38,13 @@ const REVIEW_MODES: { value: NewRun["review"]; title: string; text: string }[] =
 ];
 
 // until the server's list arrives: the server sends the packs this deployment offers
-const FALLBACK_PACKS: ServerSettings["packs"] = [{ name: "generic", title: "Any field", pipeline: "research" }];
+const PIPELINE_WORDS: Record<string, string> = {
+  research: "An experiment on the cluster",
+  study: "A study you carry out, then analyse",
+  synthesis: "A literature review only, with no experiment",
+};
+
+const FALLBACK_PACKS: ServerSettings["packs"] = [{ name: "generic", title: "Any field", pipeline: "research", description: "", max_gpu_hours: null }];
 
 export function NewResearch() {
   const navigate = useNavigate();
@@ -50,6 +56,8 @@ export function NewResearch() {
   const [constraints, setConstraints] = useState("");
   const [queries, setQueries] = useState("");
   const [pack, setPack] = useState("generic");
+  const packs = settings.data?.packs?.length ? settings.data.packs : FALLBACK_PACKS;
+  const chosen = packs.find((p) => p.name === pack);
   const [review, setReview] = useState<NewRun["review"]>("every_step");
   const [gpuHours, setGpuHours] = useState("");
   const [seeds, setSeeds] = useState("");
@@ -178,22 +186,30 @@ export function NewResearch() {
               <Field label="Search queries to start from" htmlFor="queries" hint="One per line (optional).">
                 <Textarea id="queries" className="min-h-20" value={queries} onChange={(e) => setQueries(e.target.value)} />
               </Field>
-              <Field label="Field" htmlFor="pack" hint="Gives the coding agent the right starting point.">
+              <Field
+                label="Field"
+                htmlFor="pack"
+                hint={chosen?.description ? `${PIPELINE_WORDS[chosen.pipeline] ?? chosen.pipeline}. ${chosen.description}` : "Gives the coding agent the right starting point."}
+              >
                 <select
                   id="pack"
                   className="h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm"
                   value={pack}
                   onChange={(e) => setPack(e.target.value)}
                 >
-                  {(settings.data?.packs?.length ? settings.data.packs : FALLBACK_PACKS).map((p) => (
+                  {packs.map((p) => (
                     <option key={p.name} value={p.name}>
-                      {p.pipeline === "research" ? p.title : `${p.title} (${p.pipeline} pipeline)`}
+                      {p.title}
                     </option>
                   ))}
                 </select>
               </Field>
-              <Field label="GPU-hour limit" htmlFor="gpu" hint="Optional cap for the whole study.">
-                <Input id="gpu" type="number" min={1} step={1} value={gpuHours} onChange={(e) => setGpuHours(e.target.value)} />
+              <Field
+                label="GPU-hour limit"
+                htmlFor="gpu"
+                hint={chosen?.max_gpu_hours != null ? `This server caps ${chosen.title} at ${chosen.max_gpu_hours} GPU-hours.` : "Optional cap for the whole study."}
+              >
+                <Input id="gpu" type="number" min={1} max={chosen?.max_gpu_hours ?? undefined} step={1} value={gpuHours} onChange={(e) => setGpuHours(e.target.value)} />
               </Field>
               <Field label="Seeds per condition" htmlFor="seeds" hint="Optional: exactly this many repeats.">
                 <Input id="seeds" type="number" min={1} max={100} step={1} value={seeds} onChange={(e) => setSeeds(e.target.value)} />

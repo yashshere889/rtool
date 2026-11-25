@@ -215,9 +215,23 @@ class AnalyseTable(Task):
             for name, text in (("experiment.py", script), ("config.json", (code / "config.json").read_text()))
         ]
         fingerprint = sha256_text("\n".join(f"{f.path}:{f.sha256}" for f in files))
+        readme = code / "README.md"  # the reviewer's reproducibility check looks for it
+        atomic_write_text(
+            readme,
+            "# Analysis of the study's data\n\n"
+            f"`experiment.py` is rtool's own script: it reads `{DATA_FILE}` (one row per unit and condition, as the "
+            "protocol says) and returns one entry per unit for each condition. `config.json` lists the conditions "
+            "and metrics. rtool compares the conditions across units; the results are in `results/results.json`.\n",
+        )
         ctx.outputs.put(
             "code_bundle",
-            CodeBundle(root=ctx.relative(code), files=files, pack=brief.domain_pack, fingerprint=fingerprint),
+            CodeBundle(
+                root=ctx.relative(code),
+                files=files,
+                pack=brief.domain_pack,
+                readme_path=ctx.relative(readme),
+                fingerprint=fingerprint,
+            ),
         )
         ctx.outputs.put(
             "experiment_results",

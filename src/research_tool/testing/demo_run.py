@@ -1,6 +1,6 @@
-"""Demo runs of the research pipeline, for developing and testing the web UI without a cluster.
+"""Demo runs of the research, study and synthesis pipelines, for developing and testing the web UI without a cluster.
 
-    python -m research_tool.testing.demo_run runs/demo     # one run stopped at each checkpoint, plus a finished one
+    python -m research_tool.testing.demo_run runs/demo     # per pipeline: a run at each checkpoint, plus a finished one
 
 The real agents and engine run end to end; only the outside world is faked:
 paper search and downloads (the fictional papers of :mod:`.demo_data`, served
@@ -13,10 +13,13 @@ advance runs locally (``rtool ui --mode local``) know to use these fakes.
 from __future__ import annotations
 
 import argparse
+import csv
 import itertools
+import random
 import re
 import textwrap
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +27,7 @@ import httpx
 
 from ..agents.literature.toolkit import LiteratureToolkit
 from ..core.actions import ActionKind
+from ..core.artifacts import ArtifactStore
 from ..core.config import deep_merge, load_config
 from ..core.engine import AdvanceResult, Engine, Outcome
 from ..core.fs import atomic_write_json
@@ -82,6 +86,47 @@ DECISIONS: tuple[tuple[str, ActionKind, dict[str, Any]], ...] = (
     ("final_report", ActionKind.APPROVE, {}),
 )
 _PDF_MARKER = re.compile(rb"%rtool-demo-paper:([a-z0-9]+)")
+
+
+@dataclass(frozen=True)
+class Scenario:
+    """One pipeline's demo: the pack a researcher picks for it, the decisions that walk it, and its run ids."""
+
+    project: str
+    pack: str
+    decisions: tuple[tuple[str, ActionKind, dict[str, Any]], ...]
+    run_ids: dict[str, str]  # checkpoint (or "done") -> run id
+
+
+SCENARIOS: dict[str, Scenario] = {
+    "research": Scenario(PROJECT, "generic", DECISIONS, RUN_IDS),
+    "study": Scenario(
+        "sleep-study-demo",
+        "study",
+        (
+            ("literature_review", ActionKind.APPROVE, {}),
+            ("hypothesis_selection", ActionKind.SELECT, {"index": 0}),
+            ("protocol_review", ActionKind.APPROVE, {}),
+            ("data_upload", ActionKind.APPROVE, {}),  # the demo's data.csv is put in the inbox first
+            ("final_report", ActionKind.APPROVE, {}),
+        ),
+        {
+            "literature_review": "1-literature",
+            "hypothesis_selection": "2-hypotheses",
+            "protocol_review": "3-protocol",
+            "data_upload": "4-data",
+            "final_report": "5-final-report",
+            "done": "6-done",
+        },
+    ),
+    "synthesis": Scenario(
+        "sleep-review-demo",
+        "medicine",
+        (("literature_review", ActionKind.APPROVE, {}), ("final_report", ActionKind.APPROVE, {})),
+        {"literature_review": "1-literature", "final_report": "2-review", "done": "3-done"},
+    ),
+}
+DEMO_PACKS = tuple(s.pack for s in SCENARIOS.values())  # the packs a demo server offers: the others need real data
 
 
 # ---------------------------------------------------------------- documents
@@ -367,6 +412,14 @@ class DemoModel:
                 return {**template["scores"], "comment": template["comment"]}
         return {"novelty": 3, "feasibility": 3, "testability": 3, "significance": 3, "clarity": 3, "comment": "ok"}
 
+    # ---- synthesis: restate each finding offered, plus a sentence no finding supports (it must be dropped)
+    @staticmethod
+    def paragraph(request: ChatRequest) -> dict[str, Any]:
+        offered = re.findall(r"^\[(C\d+)\] (.+?) \(quote:", _last(request), re.M)
+        sentences = [{"text": text, "claims": [cid]} for cid, text in offered]
+        sentences.append({"text": "Stimulation also cures insomnia.", "claims": ["C999"]})
+        return {"sentences": sentences[:14]}
+
     # ---- report
     @staticmethod
     def section(request: ChatRequest) -> str:
@@ -417,6 +470,43 @@ DEMO_SCOPE = {
 }
 
 
+DEMO_PROTOCOL: dict[str, Any] = {
+    "objective": "Compare overnight recall gain after phase-locked clicks and after sham",
+    "design": "A parallel, two-arm, randomised, double-blind study of one night of stimulation",
+    "independent_variables": [
+        {"name": "stimulation", "description": "sham or phase-locked", "values": ["sham", "phase_locked"]}
+    ],
+    "dependent_variables": [{"name": "recall_gain", "description": "words recalled in the morning minus the evening"}],
+    "controls": ["the same word list", "the same bedtime and room"],
+    "conditions": [
+        {"name": "sham", "description": "headband on, no clicks", "is_baseline": True},
+        {"name": "phase_locked", "description": "clicks timed to the up-state of slow oscillations"},
+    ],
+    "ablations": [],
+    "metrics": [
+        {
+            "name": "recall_gain",
+            "definition": "words recalled in the morning minus the evening",
+            "higher_is_better": True,
+            "primary": True,
+        }
+    ],
+    "statistical_tests": [{"test": "Welch t-test", "comparison": "phase_locked vs sham"}],
+    "n_seeds": 1,
+    "procedure": [
+        "Recruit healthy adults",
+        "Randomise by the allocation table",
+        "Learn the word list in the evening, sleep with the headband, test recall in the morning",
+        "Record one row each",
+    ],
+    "expected_results": "A larger recall gain after phase-locked clicks",
+    "risks": ["a headband that slips during the night"],
+    "unit_of_analysis": "participant",
+    "expected_effect_size": 0.8,
+    "materials": ["EEG headband with a click generator", "word list", "recall sheet"],
+    "blinding": "participants and the person scoring recall do not know which night had clicks",
+}
+
 _AUDIT_QUESTION = re.compile(r'^\d+\. aspect "(\w+)"(?:, subject "([^"]*)")?', re.M)
 
 
@@ -440,6 +530,8 @@ def demo_llm() -> MockLLM:
         "TopicLabel": model.topic_label,
         "OpenProblems": model.open_problems,
         "Overview": model.overview,
+        "ProtocolDraft": DEMO_PROTOCOL,
+        "ParagraphDraft": model.paragraph,
         "HypothesisDrafts": model.drafts,
         "NoveltyJudgment": model.novelty,
         "RubricScores": model.rubric,
@@ -468,7 +560,7 @@ def demo_llm() -> MockLLM:
                 {
                     "section": "results",
                     "problem": "The text reports significance without naming the test, so it cannot be checked",
-                    "suggestion": "Say that paired t-tests compared each condition with sham",
+                    "suggestion": "Say which t-test compared each condition with sham",
                     "target": "report",
                     "severity": "major",
                 }
@@ -483,7 +575,7 @@ def demo_llm() -> MockLLM:
     llm.add("Revise the experiment code below", code)
     llm.add(
         "You are editing the",
-        lambda r: model.section(r) + "\n\nEach condition was compared with sham using a paired t-test.",
+        lambda r: model.section(r) + "\n\nEach condition was compared with sham using a t-test.",
     )
     llm.add(lambda r: _last(r).startswith("Rewrite this"), model.section)
     llm.add("section of a research report", model.section)
@@ -580,20 +672,28 @@ def advance(run: RunHandle, services: Services, *, max_episodes: int = 30) -> Ad
 def create_demo_run(
     runs_root: Path,
     *,
-    project: str = PROJECT,
+    project: str | None = None,
     run_id: str | None = None,
     topic: str = "",
     questions: list[str] | None = None,
     overrides: dict[str, Any] | None = None,
+    pack: str = "generic",
 ) -> RunHandle:
-    """A new research run that uses the demo fakes (any topic; the papers are always the demo papers)."""
+    """A new run that uses the demo fakes (any topic; the papers are always the demo papers).
+
+    ``pack`` picks the pipeline as it does for a real run: generic -> research, study -> study, medicine -> synthesis.
+    """
+    if pack not in DEMO_PACKS:
+        raise ValueError(f"the demo has no scenario for the pack {pack!r}; it has {', '.join(DEMO_PACKS)}")
     settings = deep_merge(deep_merge(CLUSTER, dict(overrides or {})), {"paths": {"runs_root": str(runs_root)}})
     config = load_config(overrides=settings, env={})
+    scenario = next(s for s in SCENARIOS.values() if s.pack == pack)
     run = create_run(
         config,
-        project,
+        project or scenario.project,
         topic or data.TOPIC,
         questions=data.QUESTIONS if questions is None and not topic else (questions or []),
+        pack=pack,
         run_id=run_id,
         created_by="demo",
     )
@@ -601,21 +701,52 @@ def create_demo_run(
     return run
 
 
+def put_demo_data(run: RunHandle) -> None:
+    """What the researcher would upload at the data checkpoint: a data.csv that follows the protocol's allocation."""
+    store = ArtifactStore(run.artifacts_dir)
+    plan, protocol = store.get("experiment_plan"), store.get("protocol")
+    assert not protocol.paired, "the demo protocol is unpaired"
+    stage = next(s.id for s in run.spec.pipeline.stages if s.agent == "collect_data")
+    inbox = run.work_dir(stage) / "inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    rng = random.Random(7)
+    metrics = [m.name for m in plan.metrics]
+    with (
+        (run.root / protocol.allocation_path).open(newline="") as source,
+        (inbox / "data.csv").open("w", newline="") as target,
+    ):
+        writer = csv.writer(target)
+        writer.writerow(["unit", "condition", *metrics])
+        for row in csv.DictReader(source):
+            mean = (
+                4.0 if row["condition"] == protocol.baseline else 7.5
+            )  # a real effect, so the report has one to state
+            writer.writerow([row["unit"], row["condition"], *(f"{rng.gauss(mean, 3.0):.2f}" for _ in metrics)])
+
+
 def build_demo_run(
-    runs_root: Path, stop_at: str = "done", *, project: str = PROJECT, run_id: str | None = None
+    runs_root: Path,
+    stop_at: str = "done",
+    *,
+    project: str | None = None,
+    run_id: str | None = None,
+    pipeline: str = "research",
 ) -> RunHandle:
-    """A demo run advanced through the real pipeline until checkpoint ``stop_at`` is open (or to the end)."""
-    if stop_at not in CHECKPOINTS:
-        raise ValueError(f"stop_at must be one of {CHECKPOINTS}")
-    run = create_demo_run(runs_root, project=project, run_id=run_id or RUN_IDS[stop_at])
+    """A demo run of ``pipeline`` advanced through the real engine until ``stop_at`` is open (or to the end)."""
+    scenario = SCENARIOS[pipeline]
+    if stop_at not in scenario.run_ids:
+        raise ValueError(f"stop_at must be one of {tuple(scenario.run_ids)} for the {pipeline} pipeline")
+    run = create_demo_run(runs_root, project=project, run_id=run_id or scenario.run_ids[stop_at], pack=scenario.pack)
     services = demo_services(run)
-    for gate, kind, payload in DECISIONS:
+    for gate, kind, payload in scenario.decisions:
         result = advance(run, services)
         opened = [g["gate"] for g in result.open_gates]
         if gate not in opened:
             raise RuntimeError(f"expected checkpoint {gate!r}, got {result.outcome.value}: {result.message} {opened}")
         if stop_at == gate:
             return run
+        if gate == "data_upload":
+            put_demo_data(run)
         queue(run, kind, payload=payload)
     result = advance(run, services)
     if result.outcome is not Outcome.DONE:
@@ -623,17 +754,26 @@ def build_demo_run(
     return run
 
 
-def build_demo_runs(runs_root: Path) -> list[RunHandle]:
+def build_demo_runs(runs_root: Path, pipeline: str = "research") -> list[RunHandle]:
     """One run stopped at each checkpoint, plus a finished one."""
-    return [build_demo_run(runs_root, stop_at) for stop_at in CHECKPOINTS]
+    return [build_demo_run(runs_root, stop_at, pipeline=pipeline) for stop_at in SCENARIOS[pipeline].run_ids]
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("runs_root", type=Path, help="Where to create the demo runs (e.g. runs/demo).")
-    parser.add_argument("--stop-at", choices=CHECKPOINTS, help="Build only the run stopped at this checkpoint.")
+    parser.add_argument("--pipeline", choices=[*SCENARIOS, "all"], default="all", help="Which pipeline's demo runs.")
+    parser.add_argument("--stop-at", help="Build only the run stopped at this checkpoint (needs one --pipeline).")
     args = parser.parse_args(argv)
-    runs = [build_demo_run(args.runs_root, args.stop_at)] if args.stop_at else build_demo_runs(args.runs_root)
+    if args.stop_at and args.pipeline == "all":
+        parser.error("--stop-at needs --pipeline")
+    runs = []
+    for name in SCENARIOS if args.pipeline == "all" else [args.pipeline]:
+        runs += (
+            [build_demo_run(args.runs_root, args.stop_at, pipeline=name)]
+            if args.stop_at
+            else build_demo_runs(args.runs_root, name)
+        )
     for run in runs:
         print(f"{run.spec.project}/{run.run_id}: {run.root}")
 

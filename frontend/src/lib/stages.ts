@@ -39,6 +39,30 @@ export const STAGES: Record<string, StageInfo> = {
       "Writes the experiment code, tests it on a CPU, runs it on the GPUs you approve, repairs failures and " +
       "computes every statistic and figure from the results.",
   },
+  protocol: {
+    title: "Study protocol",
+    description:
+      "Designs a study you carry out: the conditions, the primary outcome, how many units each needs, who gets which " +
+      "condition (a seeded random table), what to prepare and who is blinded.",
+  },
+  collect: {
+    title: "Study data",
+    description:
+      "Waits for the data you collect by following the protocol. Upload a data.csv; it is checked against the " +
+      "protocol before it is kept.",
+  },
+  analyse: {
+    title: "Analysis",
+    description:
+      "Compares the conditions across units with rtool's own analysis script, fixed by the protocol before any data " +
+      "came in, and computes every statistic and figure.",
+  },
+  synthesis: {
+    title: "Review",
+    description:
+      "Writes a literature review sentence by sentence. A sentence stays only if every finding it rests on was " +
+      "found as a quote in its paper and every number it states is in those findings; the rest are dropped.",
+  },
   report: {
     title: "Report",
     description:
@@ -87,6 +111,30 @@ const GATES: Record<string, GateInfo> = {
     reject: "Request changes",
     help: "Approving lets the tool download the datasets and models the plan lists.",
     redo: "The planner writes a new plan from your comments, and its datasets and models are checked again.",
+  },
+  protocol_review: {
+    title: "Approve the study protocol",
+    approve: "Approve protocol",
+    reject: "Request changes",
+    help:
+      "Approving fixes the design, the sample size and the allocation. Then carry out the study exactly as the " +
+      "protocol says and bring the data back.",
+    redo: "The protocol is written again from your comments, and its sample size and allocation are worked out again.",
+  },
+  data_upload: {
+    title: "The study's data",
+    approve: "Analyse the data",
+    reject: "Not ready",
+    help: "Upload the data first. Approving has rtool read it and analyse it; “Not ready” stops this stage until you retry it.",
+  },
+  manual_resources: {
+    title: "Datasets you have to provide",
+    approve: "Continue",
+    reject: "Request plan changes",
+    help:
+      "Put the files of each listed resource in its folder on the cluster, then continue. Continuing without them " +
+      "has the Coder try to build them in code; check that code at the GPU-runs checkpoint.",
+    redo: "The planner writes a new plan from your comments, e.g. with a public dataset instead.",
   },
   gpu_runs: {
     title: "Approve GPU time",

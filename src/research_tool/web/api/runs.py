@@ -12,6 +12,7 @@ from ...core.actions import Action
 from ...core.errors import RToolError
 from ...core.run import RunHandle, is_valid_name
 from ...core.state import RunState
+from ...core.stats import RunStats, stats_for_run_dir
 from ...hpc.episode import llm_needed
 from ...service import KickResult, RunSummary, create_run, list_runs, load_app_config, run_status, stop_run
 from ..deps import get_run, hide_run_paths, public_summary, runner_of, settings_of
@@ -122,10 +123,17 @@ def new_run(body: NewRun, request: Request) -> Created:
     questions = [q.strip() for q in body.questions if q.strip()]
     try:
         if settings.runs_locally:
-            from ...testing.demo_run import create_demo_run
+            from ...testing.demo_run import DEMO_PACKS, create_demo_run
 
+            if body.pack not in DEMO_PACKS:
+                raise HTTPException(422, f"this demo server offers only: {', '.join(DEMO_PACKS)}")
             run = create_demo_run(
-                settings.runs_root, project=project, topic=body.topic.strip(), questions=questions, overrides=overrides
+                settings.runs_root,
+                project=project,
+                topic=body.topic.strip(),
+                questions=questions,
+                overrides=overrides,
+                pack=body.pack,
             )
         else:
             config = load_app_config(settings.config_files, runs_root=settings.runs_root, overrides=overrides)
@@ -168,3 +176,17 @@ def stop(project: str, run_id: str, body: StopRequest, request: Request) -> dict
     if settings_of(request).runs_locally:
         raise HTTPException(409, "local runs cannot be paused; they stop at the next checkpoint by themselves")
     return {"cancelled": stop_run(run, cancel_experiments=body.experiments).cancelled}
+
+
+@router.get("/runs/{project}/{run_id}/stats", response_model=RunStats)
+def stats(project: str, run_id: str, request: Request) -> RunStats:
+    """Where the run's wall time went (what `rtool stats` prints), read from its event log."""
+    run = get_run(request, project, run_id)
+    try:
+        report = stats_for_run_dir(run.root)
+    except (RToolError, OSError) as exc:
+        raise HTTPException(404, "no event log to read yet") from exc
+    for episode in report.episodes:
+        if episode.error:
+            episode.error = hide_run_paths(project, run_id, episode.error)
+    return report

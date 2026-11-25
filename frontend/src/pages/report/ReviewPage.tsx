@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { CRITERIA } from "@/lib/report";
+import { ValidityBadge } from "@/components/ValidityBadge";
 import { STAGES } from "@/lib/stages";
 
 import { Section } from "../plan/PlanRead";
@@ -169,6 +170,9 @@ export function ReviewPage({ run, stage }: { run: RunDetail; stage: StageSummary
         <StatusBadge stage={stage} run={run} />
       </div>
       <p className="mt-2 max-w-3xl text-sm text-ink-soft">{STAGES.review.description}</p>
+      <div className="mt-3 max-w-3xl">
+        <ValidityBadge run={run} />
+      </div>
     </header>
   );
   // what the reviewer raised that neither its edits nor a revision request dealt with: offered as requests

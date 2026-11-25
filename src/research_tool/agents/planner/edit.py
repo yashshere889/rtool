@@ -82,7 +82,7 @@ def _brief(ctx: EditContext) -> ResearchBrief | None:
         return None
 
 
-@artifact_editor("experiment_plan")
+@artifact_editor("experiment_plan", agent="planner")
 def edit_plan(value: dict[str, Any], ctx: EditContext) -> EditResult:
     previous = ExperimentPlan.model_validate(ctx.previous.payload)
     plan = ExperimentPlan.model_validate({**value, **previous.model_dump(include=set(FIXED))})

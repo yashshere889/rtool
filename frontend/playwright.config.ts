@@ -17,7 +17,7 @@ export default defineConfig({
   reporter: [["list"]],
   use: { baseURL: `http://127.0.0.1:${PORT}`, channel: "chrome", headless: true, trace: "retain-on-failure" },
   webServer: {
-    command: `rm -rf .e2e && mkdir -p .e2e/runs && ../.venv/bin/rtool ui --mode local --runs-root .e2e/runs --port ${PORT} --token-file .e2e/token`,
+    command: `rm -rf .e2e && mkdir -p .e2e/runs && "${process.env.RTOOL ?? "../.venv/bin/rtool"}" ui --mode local --runs-root .e2e/runs --port ${PORT} --token-file .e2e/token`,
     url: `http://127.0.0.1:${PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 60_000,

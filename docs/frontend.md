@@ -14,14 +14,31 @@ generic page (its checkpoint, problems, every version of its outputs as JSON, ac
 |---|---|---|
 | Projects | every run with its stage dots and a one-line status | open one, start new research |
 | New research | question, review mode, optional questions, constraints, start queries, field, GPU-hour cap | start |
-| Overview | open checkpoints, failures, stage stepper, activity feed, queued decisions, usage | decide, retry, undo, resume, stop |
+| Overview | open checkpoints, failures, stage stepper, activity feed, queued decisions, usage, where the wall time went | decide, retry, undo, resume, stop |
 | Literature | a card per paper (relevance, how it was found, read in full or not, AI summary), filters; Map, Gaps, State of the art, full-text Search | open the paper, Summary / Methodology / Key findings / Limitations / Gaps / Datasets / References / Cite, upload a PDF you have, mark papers Keep or Drop, approve or request changes, reopen the checkpoint later |
 | Paper reader | the PDF or web copy, or the text with every verified finding (or a quoted passage) marked | jump from a finding to its sentence |
 | Hypotheses | the shortlist side by side: design, novelty, feasibility, scores and judges' comments, papers used, citations with "show in paper", references; a comparison table; the other drafts and why they were set aside | choose, edit and choose (with a note for the planner), ask for new ones, change your choice later |
 | Experiment plan | the plan as a document; datasets and models with links; compute against the budget; downloads after approval | edit any part (form or JSON) with live checks, see what applying redoes, approve |
 | Code & runs | progress strip; every file; smoke tests; what the tool repaired; a condition × seed grid of runs with logs; results per metric | edit `experiment.py` (tested again before any GPU time), compare with the generated code, approve GPU time, cancel jobs, download the code |
-| Report | the report with linked citations, figures and references | edit prose sections (placeholders and citations as chips, insert pickers), print or save as PDF, download Markdown, BibTeX or everything |
+| Datasets & models | each dataset and model of the approved plan: found, downloaded, installed later, or needs you (with the folder to put its files in) | add small files to a resource that is not public (up to 60 MB each, into the folder the checkpoint names; larger data is copied on the cluster), continue or request plan changes at the "datasets you have to provide" checkpoint |
+| Literature review (synthesis pipeline) | every sentence with the findings and quotes it rests on, the sentences left out and why, the checks | open a quote in the paper, approve or request another round |
+| Study protocol (study pipeline) | the design, sample size and the seeded allocation table, materials, blinding, the data format, a checklist | edit the effect size, materials and blinding (the sample size, allocation and checklist are worked out again), approve |
+| Study data | what to bring back, with a template that has the units and conditions filled in | upload data.csv (checked against the protocol before it is kept, every problem listed), then approve the checkpoint |
+| Analysis | results per metric from rtool's own analysis script, and the script | read |
+| Report | the report with linked citations, figures and references, and what its field has been measured at (printed with it) | edit prose sections (placeholders and citations as chips, insert pickers), print or save as PDF, download Markdown, BibTeX or everything |
+| Settings | this server and its API keys; the fields (packs) with the pipeline each runs; every pipeline's stages and every agent; validity cards; machine checks (`rtool doctor`, the paper APIs only when asked) | read |
 | Review | verdict, scores against the bar, automated checks, each issue and what became of it, revision rounds, the final report, the reviewer's edits as a diff | approve and finish, request another round, edit the final report |
+
+On the Overview, "This run as a whole" has two actions. **Redo a stage in a copy** (`rtool replay`) copies the run and
+runs the chosen stage again in the copy from the same inputs; the original is untouched. **Archive this run**
+(`rtool archive`) packs the run into one .tar.gz under `paths.archive_root` in a background thread (a size cap per file,
+200 MB at most; the archive stays on the server). Neither is a decision, so neither goes through the action inbox.
+
+A report states what its field has been measured at: the Report and Review pages show a note built from the field's
+newest validity card (`<runs root>/.validity-cards`, written by `rtool validity score`), or say that no level is
+claimed when there is none. The same sentence is written into the report itself (a line in the Writer's Reproducibility
+section, and a locked "How far this review can be trusted" section of a literature review), so an exported Markdown
+or the bundle carries it.
 
 What the agents wrote is labelled. Findings carry their quote and whether it was found in the
 paper; AI-written digests and summaries say so and flag numbers the paper does not contain;
@@ -44,9 +61,13 @@ browser ──POST /api/runs/<p>/<r>/actions──▶ checks (now, against the r
   `retry`, `note`, `reopen` (a finished stage's checkpoint, e.g. to change the chosen hypothesis
   or add papers).
 * Edits: `edit` replaces an output with your version (`experiment_plan`, `report`,
-  `final_report`). The owning agent's editor (`core/editing.py`, registered by the agent)
-  recomputes everything derived and refuses what would break later stages; the same editor
-  checks drafts live (`POST …/plan/check`, `…/report/check`). `write_file` rewrites a file an
+  `final_report`, `protocol`, `synthesis`). The owning agent's editor (`core/editing.py`, registered for
+  the artifact *and* the agent that owns it) recomputes everything derived and refuses what would break
+  later stages; the same editor checks drafts live (`POST …/plan/check`, `…/report/check`,
+  `…/protocol/check`, `…/synthesis/check`). An edit may change the stage's other outputs that follow from
+  it (`EditResult.extra`): editing a study's design rewrites its protocol, and rewriting a review's
+  sentences rebuilds its report; the engine stores them all as one edit, and the checkpoint is then bound
+  to every new version. `write_file` rewrites a file an
   agent declares editable (`Agent.editable_files`; the Coder's `experiment.py`).
 * Every decision is bound to what the page showed (`payload.expect`: the checkpoint's nonce and
   artifact versions), so a decision made on a stale page is refused, not applied to something
@@ -87,7 +108,7 @@ browser. See the [Barkla runbook](barkla_runbook.md#the-web-ui).
 ## Development
 
 ```bash
-.venv/bin/python -m research_tool.testing.demo_run runs/demo     # demo runs, one stopped at each checkpoint
+.venv/bin/python -m research_tool.testing.demo_run runs/demo     # demo runs of the research, study and synthesis pipelines, one stopped at each checkpoint
 .venv/bin/rtool ui --mode local --runs-root runs/demo --token-file runs/ui-token
 cd frontend && npm ci && npm run dev                              # Vite on :5173, /api forwarded to :8765
 ```
@@ -106,10 +127,13 @@ are loaded when first opened.
     `npm run typecheck`, `npm run lint`;
   * `.venv/bin/pytest tests/web` for the API (security, every page's routes, actions through the
     engine on demo runs);
-  * `npm run build && npm run e2e`: Playwright drives the built app against a real local server,
-    takes a new question through every checkpoint, and checks each page for WCAG 2.1 A/AA
-    problems with axe, in the light and the dark theme. Playwright's own Chromium does not run on
-    macOS 13, so the installed Google Chrome is used, with a fresh temporary profile.
+  * `npm run build && npm run e2e`: Playwright drives the built app against a real local server and
+    takes a new question through every checkpoint of each pipeline (research; study, with the protocol
+    edited and a refused and an accepted data upload; synthesis), plus the Settings tabs and the run-level
+    dialogs, and checks each page for WCAG 2.1 A/AA problems with axe, in the light and the dark theme.
+    Playwright's own Chromium does not run on macOS 13, so the installed Google Chrome is used, with a
+    fresh temporary profile. `RTOOL=<path to rtool>` names another `rtool` (default `../.venv/bin/rtool`),
+    and the path may contain spaces.
 * Node: pinned to versions that run on Node 22.0 (Vite 6, Vitest 3). `npm audit` reports two
   moderate advisories in Vitest's mocker, which only runs in development.
 
@@ -117,7 +141,7 @@ are loaded when first opened.
 
 1. Give the agent's outputs what a page needs: plain artifacts, `ctx.emit(...)` events for
    progress, and (if researchers may edit an output) an editor registered with
-   `@artifact_editor("<artifact>")` or files in `editable_files`.
+   `@artifact_editor("<artifact>", agent="<your agent>")` or files in `editable_files`.
 2. Add an API module in `src/research_tool/web/api/` that reads the run (`get_run`), returns
    page-shaped Pydantic models, and register it in `api/__init__.py`. Never write engine state:
    changes are actions.

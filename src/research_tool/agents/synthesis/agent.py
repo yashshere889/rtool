@@ -25,6 +25,7 @@ from ...schemas.common import ResearchBrief
 from ...schemas.literature import Claim, Corpus, KnowledgeMap, Topic
 from ...schemas.report import Check, Report, ReportSection
 from ...tools.report.render import bibtex_subset, reference_list
+from ...validity.note import statement_for
 from ..common import SYSTEM
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
@@ -152,33 +153,14 @@ class SynthesisAgent(Agent):
     def write(
         self, ctx: AgentContext, brief: ResearchBrief, corpus: Corpus, synthesis: Synthesis, provenance: dict[str, Any]
     ) -> None:
-        cited = list(dict.fromkeys(k for s in synthesis.kept() for k in s.papers))
-        sections = [
-            ReportSection(
-                id=f"topic_{i}",
-                title=section.title,
-                template=" ".join(
-                    f"{s.text.rstrip('.')} [{'; '.join('@' + k for k in s.papers)}]." for s in section.sentences
-                ),
-                origin="llm",
-            )
-            for i, section in enumerate(synthesis.sections, 1)
-        ]
-        used = sorted({c for s in synthesis.kept() for c in s.claims}, key=lambda c: int(c[1:]))
-        evidence = "\n".join(
-            f'- **{c}** [@{synthesis.claims[c].bib_key}]: {synthesis.claims[c].text} — "{synthesis.claims[c].quote}"'
-            for c in used
-        )
-        sections.append(ReportSection(id="evidence", title="Evidence", template=evidence, origin="llm"))
-        title = f"Literature review: {brief.topic}"
-        body = "\n\n".join(f"## {s.title}\n\n{s.template}" for s in sections)
-        markdown = f"# {title}\n\n{body}\n\n## References\n\n{reference_list(corpus, cited)}\n"
+        source_bib = ctx.absolute(corpus.bibtex_path) if corpus.bibtex_path else None
+        bib_text = source_bib.read_text(encoding="utf-8") if source_bib is not None and source_bib.exists() else ""
+        validity = statement_for(ctx.app_config.paths.resolved_runs_root(), brief.domain_pack)
+        title, sections, markdown, bibtex, cited = render_review(brief.topic, corpus, synthesis, validity, bib_text)
         out = ctx.workspace.path("review")
         out.mkdir(parents=True, exist_ok=True)
         atomic_write_text(out / "review.md", markdown)
-        source_bib = ctx.absolute(corpus.bibtex_path) if corpus.bibtex_path else None
-        bibtex = source_bib.read_text(encoding="utf-8") if source_bib is not None and source_bib.exists() else ""
-        atomic_write_text(out / "refs.bib", bibtex_subset(bibtex, cited))
+        atomic_write_text(out / "refs.bib", bibtex)
         synthesis.markdown_path = ctx.relative(out / "review.md")
         ctx.outputs.put("synthesis", synthesis, meta={"prompts": provenance})
         ctx.outputs.put(
@@ -192,6 +174,41 @@ class SynthesisAgent(Agent):
             ),
             meta={"review": synthesis.markdown_path},
         )
+
+
+def render_review(
+    topic: str, corpus: Corpus, synthesis: Synthesis, validity: str, bib_text: str, human: frozenset[str] = frozenset()
+) -> tuple[str, list[ReportSection], str, str, list[str]]:
+    """The review as a report: its title, sections, Markdown, the BibTeX of what it cites, and the bib keys cited.
+
+    ``human``: titles of sections a researcher rewrote (they are marked as theirs). The agent and the researcher's
+    editor both build the report here, so an edited review reads exactly like a written one.
+    """
+    cited = list(dict.fromkeys(k for s in synthesis.kept() for k in s.papers))
+    sections = [
+        ReportSection(
+            id=f"topic_{i}",
+            title=section.title,
+            template=" ".join(
+                f"{s.text.rstrip('.')} [{'; '.join('@' + k for k in s.papers)}]." for s in section.sentences
+            ),
+            origin="human" if section.title in human else "llm",
+        )
+        for i, section in enumerate(synthesis.sections, 1)
+    ]
+    used = sorted({c for s in synthesis.kept() for c in s.claims}, key=lambda c: int(c[1:]))
+    evidence = "\n".join(
+        f'- **{c}** [@{synthesis.claims[c].bib_key}]: {synthesis.claims[c].text} — "{synthesis.claims[c].quote}"'
+        for c in used
+    )
+    sections.append(ReportSection(id="evidence", title="Evidence", template=evidence, origin="llm"))
+    sections.append(
+        ReportSection(id="validity", title="How far this review can be trusted", template=validity, origin="rtool")
+    )
+    title = f"Literature review: {topic}"
+    body = "\n\n".join(f"## {s.title}\n\n{s.template}" for s in sections)
+    markdown = f"# {title}\n\n{body}\n\n## References\n\n{reference_list(corpus, cited)}\n"
+    return title, sections, markdown, bibtex_subset(bib_text, cited), cited
 
 
 def checks(synthesis: Synthesis, offered: int) -> list[Check]:

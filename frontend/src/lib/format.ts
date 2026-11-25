@@ -31,6 +31,14 @@ export function compactNumber(n: number): string {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
+/** 4500 -> "1 h 15 min"; 90 -> "1 min 30 s"; 8 -> "8 s" */
+export function duration(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ""}`;
+  return `${Math.floor(s / 3600)} h${Math.round((s % 3600) / 60) ? ` ${Math.round((s % 3600) / 60)} min` : ""}`;
+}
+
 /** "literature_phase_done" -> "Literature phase done" */
 export function humanize(id: string): string {
   const words = id.replace(/[_-]+/g, " ").trim();

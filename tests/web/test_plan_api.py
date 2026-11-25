@@ -120,3 +120,49 @@ def test_downloads(runs_root: Path) -> None:
     assert items["numpy"]["status"] == "deferred"
     impact = {a["stage"]: a["effect"] for a in c.get(f"{LATER}/stages/plan/impact").json()}
     assert impact["fetch"] == "redo" and impact["code"] == "redo"  # editing a finished plan redoes these
+
+
+def open_manual_gate(runs_root: Path, folder: Path) -> None:
+    """The demo run's download step, waiting at the manual-resources checkpoint for one resource."""
+    from research_tool.core.state import GateState, StageState, StageStatus, StateStore
+
+    folder.mkdir(parents=True)  # the download step makes an empty folder for each manual resource
+    run = open_run(runs_root, "sleep-demo", "3-plan")
+    store = StateStore(run.state_dir)
+    stage = store.load_stage("fetch") or StageState(stage_id="fetch")  # the plan checkpoint is before it starts
+    stage.status, stage.attempt = StageStatus.AWAITING_GATE, 1
+    stage.gate = GateState(
+        gate_id="manual_resources",
+        in_stage=True,
+        summary={"missing": [{"name": "Sleep-EDF", "path": str(folder)}], "message": "put the files there"},
+    )
+    store.save_stage(stage)
+
+
+def test_files_of_a_resource_that_is_not_public_go_into_its_folder(runs_root: Path, tmp_path: Path) -> None:
+    folder = tmp_path / "resources" / "sleep-edf"
+    c = web_client(runs_root)
+    url = f"{AT_GATE}/resources/Sleep-EDF/inbox"
+    assert c.put(url, params={"filename": "a.csv"}, content=b"x", headers=WRITE).status_code == 409  # no checkpoint yet
+    open_manual_gate(runs_root, folder)
+    view = c.get(f"{AT_GATE}/downloads").json()
+    item = next(i for i in view["items"] if i["name"] == "Sleep-EDF")
+    assert view["can_upload"] and item["status"] == "manual" and "not provided" in item["note"]
+
+    sent = c.put(url, params={"filename": "recordings.csv"}, content=b"night,n3\n1,84\n", headers=WRITE)
+    assert (
+        sent.status_code == 201
+        and sent.json()["files"] == 1
+        and (folder / "recordings.csv").read_bytes() == b"night,n3\n1,84\n"
+    )
+    item = next(i for i in c.get(f"{AT_GATE}/downloads").json()["items"] if i["name"] == "Sleep-EDF")
+    assert item["files"] == 1 and item["bytes"] == 14 and "provided by hand" in item["note"]
+
+    assert c.put(url, params={"filename": "x.csv"}, content=b"x").status_code == 403  # writes need the header
+    for bad in ("../escape.csv", ".hidden", "a/b.csv", "..", "x" * 200):
+        assert c.put(url, params={"filename": bad}, content=b"x", headers=WRITE).status_code == 422, bad
+    assert (
+        c.put(f"{AT_GATE}/resources/Other/inbox", params={"filename": "a.csv"}, content=b"x", headers=WRITE).status_code
+        == 409
+    )
+    assert sorted(p.name for p in folder.iterdir()) == ["recordings.csv"]  # nothing else was written

@@ -32,6 +32,8 @@ class PackChoice(BaseModel):
     name: str
     title: str
     pipeline: str  # the pipeline its runs use
+    description: str = ""
+    max_gpu_hours: float | None = None  # this deployment's cap on a run's GPU budget in this field
 
 
 class ServerSettings(BaseModel):
@@ -43,17 +45,32 @@ class ServerSettings(BaseModel):
     packs: list[PackChoice] = []  # the domain packs this deployment offers new runs
 
 
-def offered_packs(allowed: list[str]) -> list[PackChoice]:
-    """The packs new runs may use here; a pack that does not load is left out (``rtool packs`` shows why)."""
+def offered_packs(allowed: list[str], caps: dict[str, float] | None = None, *, demo: bool = False) -> list[PackChoice]:
+    """The packs new runs may use here; a pack that does not load is left out (``rtool packs`` shows why).
+
+    ``demo``: a demo server can only simulate the packs it has a scenario for.
+    """
+    demo_packs: tuple[str, ...] = ()
+    if demo:  # the demo module and its fakes are only loaded for a demo server
+        from ...testing.demo_run import DEMO_PACKS as demo_packs
+
     choices = []
     for name in sorted(available_packs(), key=lambda n: n != DEFAULT_PACK):  # the default first
-        if allowed and name not in allowed:
+        if (allowed and name not in allowed) or (demo and name not in demo_packs):
             continue
         try:
             pack = load_pack(name)
         except RToolError:
             continue
-        choices.append(PackChoice(name=name, title=pack.title, pipeline=pack.pipeline or "research"))
+        choices.append(
+            PackChoice(
+                name=name,
+                title=pack.title,
+                pipeline=pack.pipeline or "research",
+                description=pack.description,
+                max_gpu_hours=(caps or {}).get(name),
+            )
+        )
     return choices
 
 
@@ -81,7 +98,8 @@ def sign_in(body: SessionRequest, request: Request, response: Response) -> None:
 def server_settings(request: Request) -> ServerSettings:
     settings = settings_of(request)
     try:
-        packs = offered_packs(load_app_config(settings.config_files, runs_root=settings.runs_root).packs.allowed)
+        config = load_app_config(settings.config_files, runs_root=settings.runs_root).packs
+        packs = offered_packs(config.allowed, config.max_gpu_hours, demo=settings.runs_locally)
     except RToolError:
         packs = []  # a broken site config is reported when a run is created; settings still load
     return ServerSettings(

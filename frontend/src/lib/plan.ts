@@ -16,6 +16,13 @@ export const RESOURCE_SOURCES: [ResourceSpec["source"], string][] = [
   ["url", "Web address"],
   ["torchvision", "torchvision"],
   ["pip", "Python package (pip)"],
+  ["local", "A dataset you provided"],
+  ["geo", "NCBI GEO series"],
+  ["cellxgene", "CELLxGENE dataset"],
+  ["biomodels", "BioModels model"],
+  ["uniprot", "UniProt sequence"],
+  ["alphafold", "AlphaFold model"],
+  ["pdb", "Protein Data Bank entry"],
   ["manual", "By hand"],
 ];
 
@@ -32,6 +39,16 @@ export function resourceLink(r: Pick<ResourceSpec, "source" | "identifier" | "ki
       return `https://pypi.org/project/${id.split(/[=<>![ ;]/)[0]}/`;
     case "torchvision":
       return "https://pytorch.org/vision/stable/datasets.html";
+    case "geo":
+      return `https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=${encodeURIComponent(id)}`;
+    case "biomodels":
+      return `https://www.ebi.ac.uk/biomodels/${encodeURIComponent(id)}`;
+    case "uniprot":
+      return `https://www.uniprot.org/uniprotkb/${encodeURIComponent(id)}`;
+    case "alphafold":
+      return `https://alphafold.ebi.ac.uk/entry/${encodeURIComponent(id)}`;
+    case "pdb":
+      return `https://www.rcsb.org/structure/${encodeURIComponent(id)}`;
     default:
       return null;
   }

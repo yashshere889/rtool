@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { useEffect } from "react";
 import { toast } from "sonner";
 
-import { api, ApiError } from "./client";
+import { api, ApiError, uploadResourceFile, uploadStudyData } from "./client";
 import type {
   ActionRequest,
   ActionState,
@@ -17,6 +17,22 @@ import type {
   Draft,
   HypothesesView,
   PlanCheck,
+  ProtocolCheck,
+  SynthesisView,
+  SynthesisCheck,
+  RunStats,
+  ValidityNote,
+  ValidityCard,
+  Replayed,
+  Provided,
+  ArchiveView,
+  FieldInfo,
+  PipelineInfo,
+  AgentInfo,
+  CheckInfo,
+  ProtocolView,
+  CollectView,
+  Received,
   PlanView,
   ReportCheck,
   ReportView,
@@ -293,6 +309,15 @@ export function usePlanCheck(project: string, runId: string, baseVersion: number
   });
 }
 
+export function useProvideResource(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ resource, file }: { resource: string; file: File }) =>
+      uploadResourceFile<Provided>(project, runId, resource, file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.downloads(project, runId) }),
+  });
+}
+
 export function useDownloads(project: string, runId: string, enabled = true) {
   return useQuery({
     queryKey: keys.downloads(project, runId),
@@ -381,6 +406,135 @@ export function useResults(project: string, runId: string, enabled = true) {
     queryKey: ["artifact", project, runId, "results"],
     queryFn: () => api<ResultsView>(`${base(project, runId)}/results`),
     enabled,
+  });
+}
+
+// ------------------------------------------------------------- what this deployment can do
+export const useFields = () => useQuery({ queryKey: ["system", "fields"], queryFn: () => api<FieldInfo[]>("/fields") });
+export const usePipelines = () =>
+  useQuery({ queryKey: ["system", "pipelines"], queryFn: () => api<PipelineInfo[]>("/pipelines"), staleTime: Infinity });
+export const useAgents = () =>
+  useQuery({ queryKey: ["system", "agents"], queryFn: () => api<AgentInfo[]>("/agents"), staleTime: Infinity });
+
+/** The machine's checks; ``network`` also contacts the paper APIs, so it is asked for, never automatic. */
+export function useDoctor(network: boolean, enabled: boolean) {
+  return useQuery({
+    queryKey: ["system", "doctor", network],
+    queryFn: () => api<CheckInfo[]>(`/doctor?network=${network}`),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+// ------------------------------------------------------------- validity, copies, archives
+export const useValidityCards = () =>
+  useQuery({ queryKey: ["system", "validity"], queryFn: () => api<ValidityCard[]>("/validity") });
+
+/** What this run's field has been measured at (nothing, if it has no validity card). */
+export function useRunValidity(project: string, runId: string) {
+  return useQuery({
+    queryKey: ["validity", project, runId],
+    queryFn: () => api<ValidityNote>(`${base(project, runId)}/validity`),
+    staleTime: 60_000,
+  });
+}
+
+export function useReplay(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { stage: string; tag: string }) =>
+      api<Replayed>(`${base(project, runId)}/replay`, { method: "POST", body }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.runs }),
+  });
+}
+
+/** The archive of a run: where it is, or how far along; polled while one is being packed. */
+export function useArchive(project: string, runId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["archive", project, runId],
+    queryFn: () => api<ArchiveView>(`${base(project, runId)}/archive`),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.state === "running" ? 1500 : false),
+  });
+}
+
+export function useStartArchive(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (max_file_mb: number) =>
+      api<ArchiveView>(`${base(project, runId)}/archive`, { method: "POST", body: { max_file_mb } }),
+    onSuccess: (view) => queryClient.setQueryData(["archive", project, runId], view),
+  });
+}
+
+/** Where the run's wall time went (what `rtool stats` prints). */
+export function useRunStats(project: string, runId: string) {
+  return useQuery({
+    queryKey: ["stats", project, runId],
+    queryFn: () => api<RunStats>(`${base(project, runId)}/stats`),
+    staleTime: 30_000,
+  });
+}
+
+// ------------------------------------------------------------- study: protocol, data
+export function useProtocol(project: string, runId: string, version?: number) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "protocol", version ?? "head"],
+    queryFn: () => api<ProtocolView>(`${base(project, runId)}/protocol${version ? `?version=${version}` : ""}`),
+  });
+}
+
+/** What an edited protocol would become (sample size, allocation, checklist); nothing is stored. */
+export function useProtocolCheck(project: string, runId: string, baseVersion: number, value: unknown, enabled: boolean) {
+  return useQuery({
+    queryKey: ["protocol-check", project, runId, baseVersion, JSON.stringify(value)],
+    queryFn: () =>
+      api<ProtocolCheck>(`${base(project, runId)}/protocol/check`, {
+        method: "POST",
+        body: { base_version: baseVersion, value },
+      }),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+}
+
+export function useSynthesis(project: string, runId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "synthesis"],
+    queryFn: () => api<SynthesisView>(`${base(project, runId)}/synthesis`),
+    enabled,
+  });
+}
+
+/** What an edited review would become, or why a sentence would be refused; nothing is stored. */
+export function useSynthesisCheck(project: string, runId: string, baseVersion: number, value: unknown, enabled: boolean) {
+  return useQuery({
+    queryKey: ["synthesis-check", project, runId, baseVersion, JSON.stringify(value)],
+    queryFn: () =>
+      api<SynthesisCheck>(`${base(project, runId)}/synthesis/check`, {
+        method: "POST",
+        body: { base_version: baseVersion, value },
+      }),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+}
+
+export function useCollect(project: string, runId: string) {
+  return useQuery({
+    queryKey: ["artifact", project, runId, "collect"],
+    queryFn: () => api<CollectView>(`${base(project, runId)}/collect`),
+  });
+}
+
+export function useUploadData(project: string, runId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => uploadStudyData<Received>(project, runId, file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["artifact", project, runId, "collect"] }),
   });
 }
 

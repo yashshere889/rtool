@@ -17,6 +17,7 @@ import { Empty, ErrorNote, Loading } from "@/components/ui/states";
 import { Tooltip } from "@/components/ui/tooltip";
 import { sameJson } from "@/lib/equal";
 import { dateTime, timeAgo } from "@/lib/format";
+import { ValidityBadge } from "@/components/ValidityBadge";
 import { ORIGINS, sectionHeadings, type ReportDraft } from "@/lib/report";
 import { stageTitle } from "@/lib/stages";
 import { useDebounced } from "@/lib/useDebounced";
@@ -49,6 +50,7 @@ function ReportDocument({ run, view, stage, papers }: { run: RunDetail; view: Re
   return (
     <article className="space-y-6 rounded-xl border border-line bg-surface p-5 sm:p-8 print:border-0 print:p-0">
       <h1 className="text-2xl leading-tight font-semibold sm:text-3xl">{view.title}</h1>
+      <ValidityBadge run={run} />
       {view.sections.map((section) => (
         <section key={section.id} id={`section-${section.id}`} aria-labelledby={`heading-${section.id}`} className="scroll-mt-24">
           <div className="flex flex-wrap items-center gap-2">

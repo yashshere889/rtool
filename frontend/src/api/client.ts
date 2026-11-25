@@ -76,26 +76,14 @@ export function runPath(project: string, runId: string): string {
   return `/runs/${encodeURIComponent(project)}/${encodeURIComponent(runId)}`;
 }
 
-/** Send a paper the researcher has (PDF or HTML) into the literature stage's inbox. */
-export async function uploadPaper<T>(
-  project: string,
-  runId: string,
-  file: File,
-  fields: { title: string; paper_id?: string; doi?: string },
-): Promise<T> {
-  const params = new URLSearchParams(
-    Object.entries(fields).filter((entry): entry is [string, string] => Boolean(entry[1])),
-  );
-  const html = /\.html?$/i.test(file.name) || file.type === "text/html";
-  const response = await fetch(
-    `/api/runs/${encodeURIComponent(project)}/${encodeURIComponent(runId)}/literature/inbox?${params}`,
-    {
-      method: "PUT",
-      headers: { "X-Requested-With": "rtool", "Content-Type": html ? "text/html" : "application/pdf" },
-      body: file,
-      credentials: "same-origin",
-    },
-  );
+/** PUT a file as the request body to ``path`` (under /api); the server's reason comes back as the error. */
+async function putFile<T>(path: string, file: File, contentType: string): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    method: "PUT",
+    headers: { "X-Requested-With": "rtool", "Content-Type": contentType },
+    body: file,
+    credentials: "same-origin",
+  });
   if (!response.ok) {
     let detail = response.statusText;
     try {
@@ -106,6 +94,37 @@ export async function uploadPaper<T>(
     throw new ApiError(response.status, String(detail));
   }
   return (await response.json()) as T;
+}
+
+const runApi = (project: string, runId: string) => `/runs/${encodeURIComponent(project)}/${encodeURIComponent(runId)}`;
+
+/** Send a paper the researcher has (PDF or HTML) into the literature stage's inbox. */
+export function uploadPaper<T>(
+  project: string,
+  runId: string,
+  file: File,
+  fields: { title: string; paper_id?: string; doi?: string },
+): Promise<T> {
+  const params = new URLSearchParams(
+    Object.entries(fields).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  );
+  const html = /\.html?$/i.test(file.name) || file.type === "text/html";
+  return putFile(`${runApi(project, runId)}/literature/inbox?${params}`, file, html ? "text/html" : "application/pdf");
+}
+
+/** Send one file of a resource that is not public into its folder (while the checkpoint waits for it). */
+export function uploadResourceFile<T>(project: string, runId: string, resource: string, file: File): Promise<T> {
+  const query = new URLSearchParams({ filename: file.name });
+  return putFile(
+    `${runApi(project, runId)}/resources/${encodeURIComponent(resource)}/inbox?${query}`,
+    file,
+    "application/octet-stream",
+  );
+}
+
+/** Send the study's data.csv into the collect stage's inbox (the server checks it against the protocol). */
+export function uploadStudyData<T>(project: string, runId: string, file: File): Promise<T> {
+  return putFile(`${runApi(project, runId)}/collect/inbox`, file, "text/csv");
 }
 
 /** In-app reader for one paper (optionally scrolled to one of its claims). */
